@@ -22,7 +22,7 @@ export const GET: RouteHandler = async (req, res) => {
       const r = await fetch(`${BASE_URL}/open_api/oauth2/access_token/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ appid: APP_ID, secret: APP_SECRET, auth_code, grant_type: 'auth_code' }),
+        body: JSON.stringify({ appid: Number(APP_ID), secret: APP_SECRET, auth_code, grant_type: 'auth_code' }),
       });
       const data = await r.json() as any;
       if (data.message !== 'OK' || !data.data) {

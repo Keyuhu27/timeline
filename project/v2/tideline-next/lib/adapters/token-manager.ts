@@ -106,7 +106,7 @@ export const tokenManager = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        appid:         appId,
+        appid:         Number(appId),
         secret:        appSecret,
         grant_type:    'refresh_token',
         refresh_token: cred.refreshToken,
