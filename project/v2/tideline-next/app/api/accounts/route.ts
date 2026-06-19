@@ -27,7 +27,7 @@ export const POST: RouteHandler = async (req, res) => {
   // 取一个可用的 access token（用默认凭证）
   let accessToken: string;
   try {
-    accessToken = await tokenManager.getToken(appId, 'oceanengine');
+    accessToken = await tokenManager.getAnyToken('oceanengine');
   } catch (e) {
     return err(res, `无法获取 Access Token: ${String(e)}`);
   }

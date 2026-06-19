@@ -148,6 +148,25 @@ export const tokenManager = {
     }
   },
 
+  /** 获取任意一个可用 token（当不确定 accountId 时使用） */
+  async getAnyToken(platform: PlatformCredential['platform']): Promise<string> {
+    // 优先从已注册凭证中找
+    for (const [key, cred] of credentials) {
+      if (cred.platform === platform) {
+        return this.getToken(cred.accountId, platform);
+      }
+    }
+    // 降级：直接用环境变量中的 access token
+    if (platform === 'oceanengine') {
+      const envToken = process.env.OCEANENGINE_ACCESS_TOKEN;
+      if (envToken) {
+        console.log('[TokenManager] 降级：直接使用环境变量 OCEANENGINE_ACCESS_TOKEN');
+        return envToken;
+      }
+    }
+    throw new Error(`[TokenManager] 没有任何可用的 ${platform} Token`);
+  },
+
   /** 获取所有凭证状态摘要（供 API 返回） */
   getStatus(): Array<{ accountId: string; platform: string; expiresAt: number; healthy: boolean }> {
     const now = Date.now();
