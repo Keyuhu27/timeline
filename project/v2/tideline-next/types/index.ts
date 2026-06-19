@@ -1,0 +1,213 @@
+// 潮线 Tideline · 核心类型定义
+
+export interface Brand {
+  id: string;
+  name: string;
+  cat: string;
+  logo: string;
+}
+
+export interface TeamMember {
+  id: string;
+  name: string;
+  role: string;
+  email: string;
+  dept: string;
+  brands: string[];
+  status: 'online' | 'offline' | 'live';
+  last: string;
+  initial: string;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  brand: string;
+  stage: 'plan' | 'shoot' | 'edit' | 'review' | 'done';
+  assignee: string;
+  due: string;
+  priority: 'high' | 'med' | 'low';
+  cover: 'video' | 'image' | 'doc';
+  score: number;
+}
+
+export interface Account {
+  id: string;
+  name: string;
+  followers: number;
+  growth7d: number;
+  gmv7d: number;
+  live7d: number;
+  video7d: number;
+  avgVV: number;
+  ctr: number;
+  cvr: number;
+  brand: string;
+  color: string;
+  externalId?: string;
+  tokenExpiresAt?: number;
+}
+
+export interface LiveSession {
+  id: string;
+  brand: string;
+  account: string;
+  title: string;
+  anchor: string;
+  startTime: string;
+  duration: number;
+  gmv: number;
+  viewers: number;
+  orders: number;
+  ctr: number;
+  cvr: number;
+  status: 'live' | 'ended';
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  brand: string;
+  cat: string;
+  price: number;
+  orig: number;
+  stock: number;
+  sold30d: number;
+  gmv30d: number;
+  comm: number;
+  sample: number;
+  status: 'active' | 'hot' | 'new' | 'paused';
+  trend: 'up' | 'down' | 'flat';
+  score: number;
+}
+
+export interface FinanceRecord {
+  id: string;
+  brand: string;
+  type: 'commission' | 'service' | 'bonus';
+  amount: number;
+  status: 'paid' | 'reconciled' | 'pending' | 'dispute';
+  period: string;
+  dueDate: string;
+}
+
+export interface AdCampaign {
+  id: string;
+  name: string;
+  brand: string;
+  account: string;
+  budget: number;
+  spent: number;
+  roas: number;
+  cpm: number;
+  ctr: number;
+  cvr: number;
+  gmv: number;
+  status: 'active' | 'paused' | 'ended';
+  startDate: string;
+  externalId?: string;
+  adGroupId?: string;
+  lastSyncAt?: number;
+}
+
+export interface ScheduleItem {
+  id: string;
+  title: string;
+  brand: string;
+  type: 'live' | 'video' | 'post';
+  date: string;
+  time: string;
+  platform: string;
+  assignee: string;
+  status: 'draft' | 'approved' | 'scheduled' | 'published' | 'failed';
+  videoPath?: string;
+  externalVideoId?: string;
+  publishedAt?: string;
+  failReason?: string;
+}
+
+export interface Competitor {
+  id: string;
+  name: string;
+  platform: string;
+  followers: number;
+  growth7d: number;
+  avgVV: number;
+  postFreq: number;
+  category: string;
+  threat: 'high' | 'med' | 'low';
+}
+
+// ─── 调控规则 ─────────────────────────────────────────────────────────────
+export type RuleMetric   = 'roas' | 'ctr' | 'cvr' | 'cpm' | 'spent_pct' | 'gmv';
+export type RuleOperator = 'lt' | 'gt' | 'lte' | 'gte';
+export type RuleAction   = 'pause' | 'resume' | 'increase_budget' | 'decrease_budget' | 'alert';
+
+export interface AutoRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  brand: string;                 // 品牌 id，'all' 表示全部
+  metric: RuleMetric;
+  operator: RuleOperator;
+  threshold: number;
+  action: RuleAction;
+  actionValue?: number;          // 幅度百分比，如 20 = ±20%
+  cooldownMinutes: number;
+  createdBy: string;
+  createdAt: string;
+  lastTriggeredAt?: string;
+}
+
+// ─── 操作日志 ─────────────────────────────────────────────────────────────
+export type LogSource = 'auto_rule' | 'manual' | 'scheduler' | 'system';
+export type LogLevel  = 'info' | 'warn' | 'error' | 'success';
+
+export interface OperationLog {
+  id: string;
+  source: LogSource;
+  level: LogLevel;
+  campaignId?: string;
+  campaignName?: string;
+  ruleId?: string;
+  ruleName?: string;
+  action: string;
+  before?: Record<string, unknown>;
+  after?: Record<string, unknown>;
+  success: boolean;
+  errorMsg?: string;
+  operatorId?: string;
+  createdAt: string;
+}
+
+// ─── 平台凭证 ─────────────────────────────────────────────────────────────
+export interface PlatformCredential {
+  id: string;
+  accountId: string;
+  platform: 'oceanengine' | 'qianchuan' | 'douyin_open';
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+  advertiserId?: string;
+  appId?: string;
+  updatedAt: string;
+}
+
+// ─── 告警配置 ─────────────────────────────────────────────────────────────
+export interface AlertConfig {
+  id: string;
+  type: 'webhook' | 'email';
+  name: string;
+  endpoint: string;
+  enabled: boolean;
+  events: Array<'rule_triggered' | 'publish_failed' | 'budget_low' | 'token_expiring'>;
+}
+
+// ─── API 响应 ─────────────────────────────────────────────────────────────
+export interface ApiResponse<T> {
+  data: T;
+  total?: number;
+  page?: number;
+  pageSize?: number;
+  error?: string;
+}
