@@ -43,7 +43,8 @@ const NAV_GROUPS = [
 
 const NAV_BY_ID = NAV_GROUPS.flatMap(g => g.items).reduce((m, it) => (m[it.id] = it, m), {});
 
-const PINNED_BRANDS = ['b1', 'b2', 'b4'];
+// 显示所有品牌（动态从 TL.brands 读取）
+const PINNED_BRANDS = null; // null = 显示全部
 
 const DEFAULT_MODULE_ORDER = ['today', 'kanban', 'activity', 'quickAi', 'brands', 'schedule'];
 
@@ -112,7 +113,7 @@ function App() {
         ))}
 
         <div className="sb-section-title">在管品牌</div>
-        {TL.brands.filter(b => PINNED_BRANDS.includes(b.id)).map(b => (
+        {TL.brands.map(b => (
           <div key={b.id} className="sb-item">
             <span style={{ width: 15, height: 15, borderRadius: 4, background: 'var(--bg-subtle)', border: '1px solid var(--border)', display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 600 }}>{b.logo}</span>
             <span>{b.name}</span>

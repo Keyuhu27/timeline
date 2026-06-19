@@ -3,9 +3,9 @@ import { OceanEngineAdapter }  from './oceanengine-adapter';
 import { tokenManager }        from './token-manager';
 import type { PlatformCredential } from '../../types/index';
 
-// 广告适配器：真实巨量引擎 API
+// 广告适配器：MCN 模式，用同一个主 token 管所有广告主
 export const adAdapter = new OceanEngineAdapter(
-  (advertiserId) => tokenManager.getToken(advertiserId, 'oceanengine')
+  (_advertiserId) => tokenManager.getAnyToken('oceanengine')
 );
 
 // 内容发布：仍用 Mock（Content API 待接入）

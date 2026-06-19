@@ -1,12 +1,12 @@
 // GET  /api/accounts         — 返回当前账户列表
 // POST /api/accounts/sync    — 从巨量引擎 API 自动发现并同步所有授权广告主
 
-import { accounts, brands } from '../../../lib/db';
-import { ok, err, paginate } from '../../../lib/api';
-import { OceanEngineAdapter } from '../../../lib/adapters/oceanengine-adapter';
-import { tokenManager }       from '../../../lib/adapters/token-manager';
-import type { RouteHandler }  from '../../../lib/api';
-import type { Account, Brand } from '../../../types/index';
+import { accounts, brands, adCampaigns } from '../../../lib/db';
+import { ok, err, paginate }             from '../../../lib/api';
+import { OceanEngineAdapter }            from '../../../lib/adapters/oceanengine-adapter';
+import { tokenManager, adAdapter }       from '../../../lib/adapters/index';
+import type { RouteHandler }             from '../../../lib/api';
+import type { Account, Brand, AdCampaign } from '../../../types/index';
 
 export const GET: RouteHandler = (req, res) => {
   const { brand } = req.query;
@@ -81,5 +81,34 @@ export const POST: RouteHandler = async (req, res) => {
     console.log(`[AccountSync] 新增广告主: ${advName} (${advId})`);
   }
 
-  ok(res, { synced, total: advertiserList.length, accounts: result }, {});
+  // 同步完广告主后，立即拉取各广告主下的计划列表
+  let campaignsSynced = 0;
+  for (const account of result) {
+    if (!account.externalId) continue;
+    try {
+      const campList = await (adAdapter as OceanEngineAdapter).fetchCampaignList(account.externalId);
+      for (const camp of campList) {
+        const existing = adCampaigns.find(c => c.externalId === String(camp.campaign_id));
+        if (existing) continue;
+        const newCamp: AdCampaign = {
+          id:         `c_${camp.campaign_id}`,
+          name:       camp.campaign_name,
+          brand:      account.brand,
+          account:    account.id,
+          externalId: String(camp.campaign_id),
+          budget:     camp.budget ?? 0,
+          spent:      0, roas: 0, cpm: 0, ctr: 0, cvr: 0, gmv: 0,
+          status:     camp.status === 'CAMPAIGN_STATUS_ENABLE' ? 'active' : 'paused',
+          startDate:  new Date().toISOString().slice(0, 10),
+        };
+        adCampaigns.push(newCamp);
+        campaignsSynced++;
+      }
+      console.log(`[AccountSync] ${account.name}: 同步 ${campList.length} 个计划`);
+    } catch (e) {
+      console.warn(`[AccountSync] 拉取计划失败 ${account.name}:`, e);
+    }
+  }
+
+  ok(res, { synced, total: advertiserList.length, campaignsSynced, accounts: result }, {});
 };

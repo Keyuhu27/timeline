@@ -24,7 +24,7 @@ const Ads = function Ads() {
       const r = await fetch('/api/accounts', { method: 'POST' });
       const d = await r.json();
       if (d.data) {
-        setSyncMsg(`已同步 ${d.data.synced} 个新广告主，共 ${d.data.total} 个`);
+        setSyncMsg(`已同步 ${d.data.synced} 个新广告主，共 ${d.data.total} 个，拉取 ${d.data.campaignsSynced ?? 0} 个计划`);
         // 刷新品牌/账户数据
         await TL._loadFromApi();
         loadSummary();

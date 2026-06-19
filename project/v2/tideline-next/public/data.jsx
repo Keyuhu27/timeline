@@ -93,14 +93,7 @@ TL.activity = [
   { who: 'u1', what: '新建项目', obj: '北麓 N1 耳机 5月排期', when: '昨天 18:24' },
 ];
 
-// Account / live data ----
-TL.accounts = [
-  { id: 'a1', name: '青朴自然·官方旗舰', followers: 412800, growth7d: 0.063, gmv7d: 1284600, live7d: 8, video7d: 14, avgVV: 38200, ctr: 0.072, cvr: 0.041, brand: 'b1', color: 'c1' },
-  { id: 'a2', name: '林野鲜食小铺', followers: 267400, growth7d: 0.041, gmv7d: 826400, live7d: 12, video7d: 21, avgVV: 24600, ctr: 0.061, cvr: 0.039, brand: 'b2', color: 'c2' },
-  { id: 'a3', name: '小鹿家·甄选', followers: 189300, growth7d: -0.008, gmv7d: 412800, live7d: 5, video7d: 9, avgVV: 18900, ctr: 0.052, cvr: 0.028, brand: 'b3', color: 'c3' },
-  { id: 'a4', name: '云杉运动 OUTDOOR', followers: 521600, growth7d: 0.124, gmv7d: 2087000, live7d: 10, video7d: 18, avgVV: 64300, ctr: 0.083, cvr: 0.047, brand: 'b4', color: 'c4' },
-  { id: 'a5', name: '北麓数码评测室', followers: 96400, growth7d: 0.018, gmv7d: 184500, live7d: 3, video7d: 11, avgVV: 12400, ctr: 0.044, cvr: 0.021, brand: 'b5', color: 'c5' },
-];
+// TL.accounts 已在文件顶部由 API 加载（见 TL._loadFromApi），此处不再覆盖
 
 // GMV trend (last 14 days)
 TL.gmvTrend = [128,142,118,156,184,168,192,210,178,224,256,238,272,298];
