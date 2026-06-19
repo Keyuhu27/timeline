@@ -60,6 +60,14 @@ function App() {
   // 直播大屏：独立全屏覆盖层，不占用工作区版心
   const [liveScreenOpen, setLiveScreenOpen] = useState(false);
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  // 侧边栏品牌列表（响应式，API 加载后更新）
+  const [brands, setBrands] = useState(TL.brands || []);
+  useEffect(() => {
+    TL._loadFromApi().then(() => setBrands([...TL.brands]));
+    const onUpdate = () => setBrands([...TL.brands]);
+    window.addEventListener('tl:brands-updated', onUpdate);
+    return () => window.removeEventListener('tl:brands-updated', onUpdate);
+  }, []);
 
   useEffect(() => {
     if (!Array.isArray(tweaks.homeOrder) || tweaks.homeOrder.length === 0) {
@@ -113,7 +121,7 @@ function App() {
         ))}
 
         <div className="sb-section-title">在管品牌</div>
-        {TL.brands.map(b => (
+        {brands.map(b => (
           <div key={b.id} className="sb-item">
             <span style={{ width: 15, height: 15, borderRadius: 4, background: 'var(--bg-subtle)', border: '1px solid var(--border)', display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 600 }}>{b.logo}</span>
             <span>{b.name}</span>

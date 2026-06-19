@@ -25,8 +25,9 @@ const Ads = function Ads() {
       const d = await r.json();
       if (d.data) {
         setSyncMsg(`已同步 ${d.data.synced} 个新广告主，共 ${d.data.total} 个，拉取 ${d.data.campaignsSynced ?? 0} 个计划`);
-        // 刷新品牌/账户数据
+        // 刷新品牌/账户数据，然后触发全局 brands 更新事件
         await TL._loadFromApi();
+        window.dispatchEvent(new Event('tl:brands-updated'));
         loadSummary();
       } else {
         setSyncMsg(d.error || '同步失败');
