@@ -8,11 +8,16 @@ const APP_SECRET   = process.env.OCEANENGINE_APP_SECRET ?? '';
 const CALLBACK_URL = process.env.OCEANENGINE_CALLBACK_URL ?? '';
 const BASE_URL     = 'https://open.oceanengine.com';
 
+function redirect(res: import('../../../lib/api').TideResponse, location: string) {
+  res.writeHead(302, { Location: location });
+  res.end();
+}
+
 export const GET: RouteHandler = async (req, res) => {
   const { advertiser_id, auth_code, error_code } = req.query;
 
   if (auth_code) {
-    if (error_code) { res.raw.writeHead(302, { Location: '/?oauth=denied' }); res.raw.end(); return; }
+    if (error_code) { redirect(res, '/?oauth=denied'); return; }
     try {
       const r = await fetch(`${BASE_URL}/open_api/oauth2/access_token/`, {
         method: 'POST',
@@ -21,14 +26,13 @@ export const GET: RouteHandler = async (req, res) => {
       });
       const data = await r.json() as any;
       if (data.message !== 'OK' || !data.data) {
-        res.raw.writeHead(302, { Location: `/?oauth=error&msg=${encodeURIComponent(data.message)}` });
-        res.raw.end(); return;
+        console.error('[OAuth] 换 token 失败:', data.message, data);
+        redirect(res, `/?oauth=error&msg=${encodeURIComponent(data.message ?? 'unknown')}`);
+        return;
       }
       const { access_token, refresh_token, expires_in, advertiser_ids } = data.data;
       const expiresAt = Date.now() + expires_in * 1000;
-      // 每个授权广告主都注册同一个 token（MCN 模式：一次授权管所有广告主）
       const ids: string[] = Array.isArray(advertiser_ids) ? advertiser_ids.map(String) : [];
-      // 同时注册一个以 app_id 为 key 的通用凭证，供 getAnyToken 使用
       const primaryId = ids[0] ?? APP_ID;
       const cred: PlatformCredential = {
         id: `cred_${Date.now()}`, accountId: primaryId,
@@ -36,21 +40,19 @@ export const GET: RouteHandler = async (req, res) => {
         expiresAt, advertiserId: primaryId, appId: APP_ID, updatedAt: new Date().toISOString(),
       };
       tokenManager.register(cred);
-      // 为 APP_ID 也注册一份，确保 getAnyToken 兜底能找到
       tokenManager.register({ ...cred, id: `cred_app_${Date.now()}`, accountId: APP_ID });
       console.log(`[OAuth] ✅ 授权成功 advertiser_ids: ${ids.join(', ')}, expires_in: ${expires_in}s`);
-      res.raw.writeHead(302, { Location: '/?oauth=success' }); res.raw.end();
+      redirect(res, '/?oauth=success');
     } catch (e) {
-      console.error('[OAuth] 失败:', e);
-      res.raw.writeHead(302, { Location: '/?oauth=error&msg=network' }); res.raw.end();
+      console.error('[OAuth] 网络错误:', e);
+      redirect(res, '/?oauth=error&msg=network');
     }
     return;
   }
 
   if (!advertiser_id) return err(res, '缺少 advertiser_id');
   const params = new URLSearchParams({ app_id: APP_ID, redirect_uri: CALLBACK_URL, state: String(advertiser_id) });
-  res.raw.writeHead(302, { Location: `${BASE_URL}/open_api/oauth2/authorize/?${params}` });
-  res.raw.end();
+  redirect(res, `${BASE_URL}/open_api/oauth2/authorize/?${params}`);
 };
 
 export const POST: RouteHandler = (req, res) => {
