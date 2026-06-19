@@ -64,7 +64,7 @@ const ROUTES: Record<string, RouteModule> = {
   '/api/auth/callback': routeOAuth,   // 巨量引擎 OAuth 回调别名
 };
 
-const PUBLIC_ROUTES = new Set(['/api/auth/login', '/api/auth']);
+const PUBLIC_ROUTES = new Set(['/api/auth/login', '/api/auth', '/api/auth/callback']);
 
 // ── 静态文件 ─────────────────────────────────────────────────────────────
 const MIME: Record<string, string> = {
