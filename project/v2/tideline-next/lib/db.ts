@@ -9,11 +9,16 @@ import type {
 
 // ─── Brands ────────────────────────────────────────────────────────────────
 export const brands: Brand[] = [
-  { id: 'b1', name: '青朴自然护肤', cat: '美妆个护', logo: '青' },
-  { id: 'b2', name: '林野鲜食',     cat: '食品饮料', logo: '林' },
-  { id: 'b3', name: '小鹿家居',     cat: '家居日用', logo: '鹿' },
-  { id: 'b4', name: '云杉运动',     cat: '运动户外', logo: '云' },
-  { id: 'b5', name: '北麓数码',     cat: '3C数码',   logo: '北' },
+  { id: 'b1',  name: '快乐蜂（中国）餐饮',         cat: '餐饮',   logo: '快' },
+  { id: 'b2',  name: '耀银-广州烨道餐饮',           cat: '餐饮',   logo: '耀' },
+  { id: 'b3',  name: '广州烨道餐饮上城钱江',        cat: '餐饮',   logo: '广' },
+  { id: 'b4',  name: '亿滋本地推',                  cat: '餐饮',   logo: '亿' },
+  { id: 'b5',  name: '萤山の温泉',                  cat: '休闲旅游', logo: '萤' },
+  { id: 'b6',  name: '武义蝶来望境温泉酒店',        cat: '酒店',   logo: '蝶' },
+  { id: 'b7',  name: '武义宏马文化发展',            cat: '文旅',   logo: '宏' },
+  { id: 'b8',  name: '天鸿丝绸(福田三区店)',        cat: '零售',   logo: '天' },
+  { id: 'b9',  name: '上前小店',                    cat: '零售',   logo: '上' },
+  { id: 'b10', name: '半日懒竹林漂流',              cat: '户外休闲', logo: '竹' },
 ];
 
 // ─── Team ────────────────────────────────────────────────────────────────
@@ -42,12 +47,18 @@ export const tasks: Task[] = [
 ];
 
 // ─── Accounts ────────────────────────────────────────────────────────────
+// externalId = 巨量引擎广告主 ID（advertiser_id）
 export const accounts: Account[] = [
-  { id: 'a1', name: '青朴自然·官方旗舰',   followers: 412800, growth7d: 0.063, gmv7d: 1284600, live7d: 8,  video7d: 14, avgVV: 38200, ctr: 0.072, cvr: 0.041, brand: 'b1', color: 'c1' },
-  { id: 'a2', name: '林野鲜食小铺',         followers: 267400, growth7d: 0.041, gmv7d: 826400,  live7d: 12, video7d: 21, avgVV: 24600, ctr: 0.061, cvr: 0.039, brand: 'b2', color: 'c2' },
-  { id: 'a3', name: '小鹿家·甄选',         followers: 189300, growth7d: -0.008,gmv7d: 412800,  live7d: 5,  video7d: 9,  avgVV: 18900, ctr: 0.052, cvr: 0.028, brand: 'b3', color: 'c3' },
-  { id: 'a4', name: '云杉运动 OUTDOOR',     followers: 521600, growth7d: 0.124, gmv7d: 2087000, live7d: 10, video7d: 18, avgVV: 64300, ctr: 0.083, cvr: 0.047, brand: 'b4', color: 'c4' },
-  { id: 'a5', name: '北麓数码评测室',       followers: 96400,  growth7d: 0.018, gmv7d: 184500,  live7d: 3,  video7d: 11, avgVV: 12400, ctr: 0.044, cvr: 0.021, brand: 'b5', color: 'c5' },
+  { id: 'a1',  name: '快乐蜂（中国）餐饮管理有限公司',        externalId: '1745303406415880', brand: 'b1',  color: 'c1',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  { id: 'a2',  name: '耀银-广州烨道餐饮-上城钱江路',          externalId: '1847915308786764', brand: 'b2',  color: 'c2',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  { id: 'a3',  name: '广州烨道餐饮管理有限公司上城钱江',      externalId: '1839229761224026', brand: 'b3',  color: 'c3',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  { id: 'a4',  name: '亿滋本地推',                             externalId: '1851121699721292', brand: 'b4',  color: 'c4',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  { id: 'a5',  name: '萤山の温泉',                             externalId: '1815580479574091', brand: 'b5',  color: 'c5',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  { id: 'a6',  name: '武义蝶来望境温泉酒店_3号',              externalId: '1845654470244352', brand: 'b6',  color: 'c6',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  { id: 'a7',  name: '武义宏马文化发展有限公司_2号',          externalId: '1845654181143703', brand: 'b7',  color: 'c7',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  { id: 'a8',  name: '天鸿丝绸(福田三区店)-gfs',              externalId: '1844144155187404', brand: 'b8',  color: 'c8',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  { id: 'a9',  name: '上前小店-gfs',                          externalId: '1840323758018395', brand: 'b9',  color: 'c9',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  { id: 'a10', name: '半日懒竹林漂流',                        externalId: '',                 brand: 'b10', color: 'c10', followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
 ];
 
 // ─── Live Sessions ────────────────────────────────────────────────────────
@@ -82,12 +93,18 @@ export const financeRecords: FinanceRecord[] = [
 ];
 
 // ─── Ad Campaigns ────────────────────────────────────────────────────────
+// account 字段存 advertiser_id（直接对接巨量引擎），externalId 为计划 ID（首次同步后填入）
 export const adCampaigns: AdCampaign[] = [
-  { id: 'c1', name: '云杉防晒衣-爆款放量', brand: 'b4', account: 'a4', budget: 80000, spent: 62480, roas: 4.82, cpm: 18.4, ctr: 0.083, cvr: 0.047, gmv: 301194, status: 'active',  startDate: '2026-05-01' },
-  { id: 'c2', name: '青朴精华-母亲节专项', brand: 'b1', account: 'a1', budget: 50000, spent: 48200, roas: 3.94, cpm: 22.1, ctr: 0.071, cvr: 0.041, gmv: 189908, status: 'active',  startDate: '2026-05-05' },
-  { id: 'c3', name: '林野松子-场景种草',   brand: 'b2', account: 'a2', budget: 30000, spent: 28640, roas: 2.87, cpm: 16.8, ctr: 0.061, cvr: 0.038, gmv: 82197,  status: 'active',  startDate: '2026-05-03' },
-  { id: 'c4', name: '小鹿枕套-搜索词投放', brand: 'b3', account: 'a3', budget: 20000, spent: 12840, roas: 2.14, cpm: 24.2, ctr: 0.052, cvr: 0.028, gmv: 27477,  status: 'paused',  startDate: '2026-04-28' },
-  { id: 'c5', name: '北麓耳机-新品测流',   brand: 'b5', account: 'a5', budget: 15000, spent: 15000, roas: 1.68, cpm: 31.6, ctr: 0.044, cvr: 0.021, gmv: 25200,  status: 'ended',   startDate: '2026-04-20' },
+  { id: 'c1',  name: '快乐蜂-本地推投放',      brand: 'b1',  account: '1745303406415880', externalId: '', budget: 0, spent: 0, roas: 0, cpm: 0, ctr: 0, cvr: 0, gmv: 0, status: 'active', startDate: '2026-06-01' },
+  { id: 'c2',  name: '耀银烨道-本地推投放',     brand: 'b2',  account: '1847915308786764', externalId: '', budget: 0, spent: 0, roas: 0, cpm: 0, ctr: 0, cvr: 0, gmv: 0, status: 'active', startDate: '2026-06-01' },
+  { id: 'c3',  name: '烨道上城钱江-本地推',     brand: 'b3',  account: '1839229761224026', externalId: '', budget: 0, spent: 0, roas: 0, cpm: 0, ctr: 0, cvr: 0, gmv: 0, status: 'active', startDate: '2026-06-01' },
+  { id: 'c4',  name: '亿滋本地推投放',          brand: 'b4',  account: '1851121699721292', externalId: '', budget: 0, spent: 0, roas: 0, cpm: 0, ctr: 0, cvr: 0, gmv: 0, status: 'active', startDate: '2026-06-01' },
+  { id: 'c5',  name: '萤山温泉-本地推投放',     brand: 'b5',  account: '1815580479574091', externalId: '', budget: 0, spent: 0, roas: 0, cpm: 0, ctr: 0, cvr: 0, gmv: 0, status: 'active', startDate: '2026-06-01' },
+  { id: 'c6',  name: '蝶来望境温泉-本地推',     brand: 'b6',  account: '1845654470244352', externalId: '', budget: 0, spent: 0, roas: 0, cpm: 0, ctr: 0, cvr: 0, gmv: 0, status: 'active', startDate: '2026-06-01' },
+  { id: 'c7',  name: '宏马文化-本地推投放',     brand: 'b7',  account: '1845654181143703', externalId: '', budget: 0, spent: 0, roas: 0, cpm: 0, ctr: 0, cvr: 0, gmv: 0, status: 'active', startDate: '2026-06-01' },
+  { id: 'c8',  name: '天鸿丝绸-本地推投放',     brand: 'b8',  account: '1844144155187404', externalId: '', budget: 0, spent: 0, roas: 0, cpm: 0, ctr: 0, cvr: 0, gmv: 0, status: 'active', startDate: '2026-06-01' },
+  { id: 'c9',  name: '上前小店-本地推投放',     brand: 'b9',  account: '1840323758018395', externalId: '', budget: 0, spent: 0, roas: 0, cpm: 0, ctr: 0, cvr: 0, gmv: 0, status: 'active', startDate: '2026-06-01' },
+  { id: 'c10', name: '竹林漂流-本地推投放',     brand: 'b10', account: '',                 externalId: '', budget: 0, spent: 0, roas: 0, cpm: 0, ctr: 0, cvr: 0, gmv: 0, status: 'active', startDate: '2026-06-01' },
 ];
 
 // ─── Schedule ────────────────────────────────────────────────────────────
@@ -190,10 +207,7 @@ export const autoRules: AutoRule[] = [
   },
 ];
 
-// adCampaigns 补充 externalId（对接适配器用）
-adCampaigns.forEach((c, i) => {
-  c.externalId = `ext_c${i + 1}`;
-});
+// externalId 由规则引擎首次同步时从巨量引擎 API 回填，此处不再预设假值
 
 // ─── Operation Logs ────────────────────────────────────────────────────────
 export const operationLogs: OperationLog[] = [

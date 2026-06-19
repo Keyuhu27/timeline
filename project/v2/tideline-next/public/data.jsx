@@ -1,15 +1,59 @@
-// 潮线 Tideline · Mock data ------------------------------------------------
-// All numbers are fictional. Brands/influencers are invented names.
+// 潮线 Tideline · Data layer
+// 品牌/账户由 API 动态加载，其余静态参考数据保留在此
 
 window.TL = window.TL || {};
 
+// 品牌初始占位（API 加载后覆盖）
 TL.brands = [
-  { id: 'b1', name: '青朴自然护肤', cat: '美妆个护', logo: '青' },
-  { id: 'b2', name: '林野鲜食', cat: '食品饮料', logo: '林' },
-  { id: 'b3', name: '小鹿家居', cat: '家居日用', logo: '鹿' },
-  { id: 'b4', name: '云杉运动', cat: '运动户外', logo: '云' },
-  { id: 'b5', name: '北麓数码', cat: '3C数码', logo: '北' },
+  { id: 'b1',  name: '快乐蜂（中国）餐饮',     cat: '餐饮',   logo: '快' },
+  { id: 'b2',  name: '耀银-广州烨道餐饮',       cat: '餐饮',   logo: '耀' },
+  { id: 'b3',  name: '广州烨道餐饮上城钱江',    cat: '餐饮',   logo: '广' },
+  { id: 'b4',  name: '亿滋本地推',              cat: '餐饮',   logo: '亿' },
+  { id: 'b5',  name: '萤山の温泉',              cat: '休闲旅游', logo: '萤' },
+  { id: 'b6',  name: '武义蝶来望境温泉酒店',    cat: '酒店',   logo: '蝶' },
+  { id: 'b7',  name: '武义宏马文化发展',        cat: '文旅',   logo: '宏' },
+  { id: 'b8',  name: '天鸿丝绸(福田三区店)',    cat: '零售',   logo: '天' },
+  { id: 'b9',  name: '上前小店',                cat: '零售',   logo: '上' },
+  { id: 'b10', name: '半日懒竹林漂流',          cat: '户外休闲', logo: '竹' },
 ];
+
+// 账号初始占位（API 加载后覆盖）
+TL.accounts = [
+  { id: 'a1',  name: '快乐蜂（中国）餐饮管理有限公司',     externalId: '1745303406415880', brand: 'b1',  color: 'c1',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  { id: 'a2',  name: '耀银-广州烨道餐饮-上城钱江路',       externalId: '1847915308786764', brand: 'b2',  color: 'c2',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  { id: 'a3',  name: '广州烨道餐饮管理有限公司上城钱江',   externalId: '1839229761224026', brand: 'b3',  color: 'c3',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  { id: 'a4',  name: '亿滋本地推',                          externalId: '1851121699721292', brand: 'b4',  color: 'c4',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  { id: 'a5',  name: '萤山の温泉',                          externalId: '1815580479574091', brand: 'b5',  color: 'c5',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  { id: 'a6',  name: '武义蝶来望境温泉酒店_3号',           externalId: '1845654470244352', brand: 'b6',  color: 'c6',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  { id: 'a7',  name: '武义宏马文化发展有限公司_2号',       externalId: '1845654181143703', brand: 'b7',  color: 'c7',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  { id: 'a8',  name: '天鸿丝绸(福田三区店)-gfs',           externalId: '1844144155187404', brand: 'b8',  color: 'c8',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  { id: 'a9',  name: '上前小店-gfs',                       externalId: '1840323758018395', brand: 'b9',  color: 'c9',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  { id: 'a10', name: '半日懒竹林漂流',                     externalId: '',                 brand: 'b10', color: 'c10', followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+];
+
+// 异步从 API 加载品牌和账号，覆盖占位数据
+TL._loadFromApi = async function() {
+  try {
+    const [bRes, aRes] = await Promise.all([
+      fetch('/api/brands'),
+      fetch('/api/accounts'),
+    ]);
+    if (bRes.ok) {
+      const d = await bRes.json();
+      if (Array.isArray(d.data) && d.data.length) TL.brands = d.data;
+    }
+    if (aRes.ok) {
+      const d = await aRes.json();
+      if (Array.isArray(d.data) && d.data.length) TL.accounts = d.data;
+    }
+    // 更新 lookup helpers
+    TL.brandById   = (id) => TL.brands.find(b => b.id === id);
+    TL.accountById = (id) => TL.accounts.find(a => a.id === id);
+  } catch (e) {
+    console.warn('[TL] API 加载失败，使用占位数据:', e);
+  }
+};
+TL._loadFromApi();
 
 TL.team = [
   { id: 'u1', name: '陈思远', role: '主理人', av: 'av-c1', initial: '陈' },
