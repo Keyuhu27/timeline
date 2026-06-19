@@ -93,19 +93,9 @@ export const financeRecords: FinanceRecord[] = [
 ];
 
 // ─── Ad Campaigns ────────────────────────────────────────────────────────
-// account 字段存 advertiser_id（直接对接巨量引擎），externalId 为计划 ID（首次同步后填入）
-export const adCampaigns: AdCampaign[] = [
-  { id: 'c1',  name: '快乐蜂-本地推投放',      brand: 'b1',  account: '1745303406415880', externalId: '', budget: 0, spent: 0, roas: 0, cpm: 0, ctr: 0, cvr: 0, gmv: 0, status: 'active', startDate: '2026-06-01' },
-  { id: 'c2',  name: '耀银烨道-本地推投放',     brand: 'b2',  account: '1847915308786764', externalId: '', budget: 0, spent: 0, roas: 0, cpm: 0, ctr: 0, cvr: 0, gmv: 0, status: 'active', startDate: '2026-06-01' },
-  { id: 'c3',  name: '烨道上城钱江-本地推',     brand: 'b3',  account: '1839229761224026', externalId: '', budget: 0, spent: 0, roas: 0, cpm: 0, ctr: 0, cvr: 0, gmv: 0, status: 'active', startDate: '2026-06-01' },
-  { id: 'c4',  name: '亿滋本地推投放',          brand: 'b4',  account: '1851121699721292', externalId: '', budget: 0, spent: 0, roas: 0, cpm: 0, ctr: 0, cvr: 0, gmv: 0, status: 'active', startDate: '2026-06-01' },
-  { id: 'c5',  name: '萤山温泉-本地推投放',     brand: 'b5',  account: '1815580479574091', externalId: '', budget: 0, spent: 0, roas: 0, cpm: 0, ctr: 0, cvr: 0, gmv: 0, status: 'active', startDate: '2026-06-01' },
-  { id: 'c6',  name: '蝶来望境温泉-本地推',     brand: 'b6',  account: '1845654470244352', externalId: '', budget: 0, spent: 0, roas: 0, cpm: 0, ctr: 0, cvr: 0, gmv: 0, status: 'active', startDate: '2026-06-01' },
-  { id: 'c7',  name: '宏马文化-本地推投放',     brand: 'b7',  account: '1845654181143703', externalId: '', budget: 0, spent: 0, roas: 0, cpm: 0, ctr: 0, cvr: 0, gmv: 0, status: 'active', startDate: '2026-06-01' },
-  { id: 'c8',  name: '天鸿丝绸-本地推投放',     brand: 'b8',  account: '1844144155187404', externalId: '', budget: 0, spent: 0, roas: 0, cpm: 0, ctr: 0, cvr: 0, gmv: 0, status: 'active', startDate: '2026-06-01' },
-  { id: 'c9',  name: '上前小店-本地推投放',     brand: 'b9',  account: '1840323758018395', externalId: '', budget: 0, spent: 0, roas: 0, cpm: 0, ctr: 0, cvr: 0, gmv: 0, status: 'active', startDate: '2026-06-01' },
-  { id: 'c10', name: '竹林漂流-本地推投放',     brand: 'b10', account: '',                 externalId: '', budget: 0, spent: 0, roas: 0, cpm: 0, ctr: 0, cvr: 0, gmv: 0, status: 'active', startDate: '2026-06-01' },
-];
+// account 字段存 advertiser_id（巨量引擎广告主 ID）
+// 计划列表由 /api/accounts 同步时从 API 自动填充，此处为初始占位
+export const adCampaigns: AdCampaign[] = [];
 
 // ─── Schedule ────────────────────────────────────────────────────────────
 export const schedule: ScheduleItem[] = [

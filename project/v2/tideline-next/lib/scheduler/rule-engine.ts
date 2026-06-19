@@ -19,12 +19,15 @@ function compare(value: number, operator: AutoRule['operator'], threshold: numbe
 // ─── 从 stats 取指标值 ────────────────────────────────────────────────────
 function getMetric(stats: CampaignStats, campaign: AdCampaign, metric: AutoRule['metric']): number {
   switch (metric) {
-    case 'roas':      return stats.roas;
-    case 'ctr':       return stats.ctr;
-    case 'cvr':       return stats.cvr;
-    case 'cpm':       return stats.cpm;
-    case 'gmv':       return stats.gmv;
-    case 'spent_pct': return campaign.budget > 0 ? stats.spent / campaign.budget : 0;
+    case 'store_visits':  return stats.storeVisits ?? 0;
+    case 'leads':         return stats.leads ?? 0;
+    case 'cost_per_lead': return stats.leads > 0 ? stats.spent / stats.leads : 0;
+    case 'ctr':           return stats.ctr;
+    case 'cpm':           return stats.cpm;
+    case 'spent_pct':     return campaign.budget > 0 ? stats.spent / campaign.budget : 0;
+    case 'roas':          return stats.roas;
+    case 'cvr':           return stats.cvr;
+    case 'gmv':           return stats.gmv;
   }
 }
 

@@ -95,18 +95,25 @@ export interface AdCampaign {
   id: string;
   name: string;
   brand: string;
-  account: string;
+  account: string;      // advertiser_id（巨量引擎广告主 ID）
   budget: number;
   spent: number;
-  roas: number;
   cpm: number;
   ctr: number;
+  // 本地推核心指标
+  storeVisits: number;  // 到店量
+  phoneCalls: number;   // 电话确认量
+  mapSearches: number;  // 地图搜索量
+  coupons: number;      // 发券量
+  leads: number;        // 总线索量
+  costPerLead: number;  // 线索成本
+  // 兼容旧字段
+  roas: number;
   cvr: number;
   gmv: number;
   status: 'active' | 'paused' | 'ended';
   startDate: string;
   externalId?: string;
-  adGroupId?: string;
   lastSyncAt?: number;
 }
 
@@ -139,7 +146,7 @@ export interface Competitor {
 }
 
 // ─── 调控规则 ─────────────────────────────────────────────────────────────
-export type RuleMetric   = 'roas' | 'ctr' | 'cvr' | 'cpm' | 'spent_pct' | 'gmv';
+export type RuleMetric   = 'ctr' | 'cpm' | 'spent_pct' | 'store_visits' | 'leads' | 'cost_per_lead' | 'roas' | 'cvr' | 'gmv';
 export type RuleOperator = 'lt' | 'gt' | 'lte' | 'gte';
 export type RuleAction   = 'pause' | 'resume' | 'increase_budget' | 'decrease_budget' | 'alert';
 

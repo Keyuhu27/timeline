@@ -16,12 +16,13 @@ export const GET: RouteHandler = (req, res) => {
 
   const all = adCampaigns;
   const summary = {
-    totalBudget: all.reduce((s, c) => s + c.budget, 0),
-    totalSpent:  all.reduce((s, c) => s + c.spent,  0),
-    totalGmv:    all.reduce((s, c) => s + c.gmv,    0),
-    avgRoas:     all.reduce((s, c) => s + c.roas,   0) / (all.length || 1),
-    activeCnt:   all.filter(c => c.status === 'active').length,
-    lastSyncAt:  Math.max(...all.map(c => c.lastSyncAt ?? 0)) || null,
+    totalBudget:  all.reduce((s, c) => s + c.budget,      0),
+    totalSpent:   all.reduce((s, c) => s + c.spent,       0),
+    totalLeads:   all.reduce((s, c) => s + (c.leads ?? 0), 0),
+    totalVisits:  all.reduce((s, c) => s + (c.storeVisits ?? 0), 0),
+    totalCalls:   all.reduce((s, c) => s + (c.phoneCalls  ?? 0), 0),
+    activeCnt:    all.filter(c => c.status === 'active').length,
+    lastSyncAt:   all.length ? Math.max(...all.map(c => c.lastSyncAt ?? 0)) || null : null,
   };
 
   const { items, total, page, pageSize } = paginate(filtered, req.query);

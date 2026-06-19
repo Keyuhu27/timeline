@@ -1,19 +1,42 @@
-// 潮线 Tideline · 千川投流管理（接真实 API）
+// 潮线 Tideline · 本地推投流管理
 
-const { useState, useEffect } = React;
+const { useState, useEffect, useCallback } = React;
 
 const Ads = function Ads() {
   const [tab, setTab] = useState('campaigns');
   const [summary, setSummary] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState('');
 
-  useEffect(() => {
+  const loadSummary = () => {
     fetch('/api/ads')
       .then(r => r.json())
       .then(d => { if (d.data?.summary) setSummary(d.data.summary); })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+      .catch(() => {});
+  };
+
+  useEffect(loadSummary, []);
+
+  const syncAdvertisers = async () => {
+    setSyncing(true);
+    setSyncMsg('');
+    try {
+      const r = await fetch('/api/accounts', { method: 'POST' });
+      const d = await r.json();
+      if (d.data) {
+        setSyncMsg(`已同步 ${d.data.synced} 个新广告主，共 ${d.data.total} 个`);
+        // 刷新品牌/账户数据
+        await TL._loadFromApi();
+        loadSummary();
+      } else {
+        setSyncMsg(d.error || '同步失败');
+      }
+    } catch (e) {
+      setSyncMsg('同步失败: ' + e.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const fmt = (n) => n >= 10000 ? (n / 10000).toFixed(1) + ' 万' : (n || 0).toLocaleString();
 
@@ -25,27 +48,35 @@ const Ads = function Ads() {
             <h1 className="page-title">本地推投流</h1>
             <p className="page-sub">
               {summary
-                ? `${summary.activeCnt} 个活跃计划 · 今日花费 ¥ ${fmt(summary.totalSpent)} · 综合 ROI ${(summary.avgRoas || 0).toFixed(2)}`
-                : loading ? '加载中…' : '暂无数据'}
+                ? `${summary.activeCnt} 个活跃计划 · 今日花费 ¥ ${fmt(summary.totalSpent)}`
+                : '加载中…'}
             </p>
           </div>
           <div className="page-actions">
-            <button className="btn" onClick={() => window.location.reload()}><Icon name="refresh" size={13} /> 同步</button>
-            <button className="btn primary"><Icon name="plus" size={13} /> 新建计划</button>
+            <button className="btn" onClick={syncAdvertisers} disabled={syncing}>
+              <Icon name="refresh" size={13} /> {syncing ? '同步中…' : '同步广告主'}
+            </button>
+            <button className="btn" onClick={loadSummary}><Icon name="refresh" size={13} /> 刷新数据</button>
           </div>
         </div>
 
+        {syncMsg && (
+          <div style={{ padding: '8px 12px', marginBottom: 12, background: 'var(--surface)', borderRadius: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+            {syncMsg}
+          </div>
+        )}
+
         <div className="g4 mt-sm" style={{ marginBottom: 16 }}>
           <Stat3 label="今日花费" value={summary ? `¥ ${fmt(summary.totalSpent)}` : '—'} sub={summary ? `预算 ¥ ${fmt(summary.totalBudget)}` : ''} />
-          <Stat3 label="今日 GMV" value={summary ? `¥ ${fmt(summary.totalGmv)}` : '—'} />
-          <Stat3 label="综合 ROI" value={summary ? (summary.avgRoas || 0).toFixed(2) : '—'} tone={summary && summary.avgRoas >= 2.8 ? 'success' : undefined} />
+          <Stat3 label="总线索量" value={summary ? fmt(summary.totalLeads ?? 0) : '—'} sub="到店 + 电话 + 发券" />
+          <Stat3 label="线索成本" value={summary ? (summary.totalLeads > 0 ? `¥ ${(summary.totalSpent / summary.totalLeads).toFixed(1)}` : '—') : '—'} />
           <Stat3 label="活跃计划" value={summary ? String(summary.activeCnt) : '—'} sub={summary?.lastSyncAt ? `同步 ${new Date(summary.lastSyncAt).toLocaleTimeString('zh')}` : '未同步'} />
         </div>
 
         <div className="tabs">
           <div className={`tab ${tab === 'campaigns' ? 'active' : ''}`} onClick={() => setTab('campaigns')}>投放计划</div>
-          <div className={`tab ${tab === 'rules' ? 'active' : ''}`} onClick={() => setTab('rules')}>自动规则</div>
-          <div className={`tab ${tab === 'logs' ? 'active' : ''}`} onClick={() => setTab('logs')}>操作日志</div>
+          <div className={`tab ${tab === 'rules'     ? 'active' : ''}`} onClick={() => setTab('rules')}>自动规则</div>
+          <div className={`tab ${tab === 'logs'      ? 'active' : ''}`} onClick={() => setTab('logs')}>操作日志</div>
         </div>
 
         {tab === 'campaigns' && <Campaigns />}
@@ -66,39 +97,45 @@ function Stat3({ label, value, sub, tone }) {
   );
 }
 
-// ── 投放计划 ─────────────────────────────────────────────────────────────
+// ── 投放计划（本地推指标）────────────────────────────────────────────────
 function Campaigns() {
   const [camps, setCamps] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(null);
+  const [acting, setActing] = useState(null);
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true);
     fetch('/api/ads')
       .then(r => r.json())
       .then(d => setCamps(d.data?.campaigns || []))
       .catch(() => setCamps([]))
       .finally(() => setLoading(false));
-  };
+  }, []);
 
-  useEffect(load, []);
+  useEffect(load, [load]);
 
   const toggle = async (c) => {
-    setSyncing(c.id);
+    setActing(c.id);
     const newStatus = c.status === 'active' ? 'paused' : 'active';
     await fetch(`/api/ads?id=${c.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: newStatus }),
     });
-    setSyncing(null);
+    setActing(null);
     load();
   };
 
-  if (loading) return <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>正在从巨量引擎拉取数据…</div>;
+  if (loading) return (
+    <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>
+      正在从巨量引擎拉取数据…
+    </div>
+  );
+
   if (!camps.length) return (
     <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>
-      暂无计划数据。请确认 Token 已注入并运行「同步」。
+      <div style={{ marginBottom: 8 }}>暂无计划数据</div>
+      <div style={{ fontSize: 12 }}>请先点击「同步广告主」拉取账户，规则引擎将在 60 分钟内自动同步计划数据</div>
     </div>
   );
 
@@ -113,19 +150,21 @@ function Campaigns() {
             <th>广告主 / 计划</th>
             <th className="num">预算</th>
             <th className="num">今日花费</th>
-            <th className="num">GMV</th>
-            <th className="num">ROI</th>
-            <th className="num">CTR</th>
-            <th className="num">CVR</th>
+            <th className="num">到店量</th>
+            <th className="num">电话量</th>
+            <th className="num">总线索</th>
+            <th className="num">线索成本</th>
+            <th className="num">点击率</th>
             <th>状态</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
           {camps.map(c => {
-            const brand = TL.brandById(c.brand);
+            const brand = TL.brandById ? TL.brandById(c.brand) : null;
             const pct = c.budget > 0 ? c.spent / c.budget : 0;
-            const isLoading = syncing === c.id;
+            const leads = c.leads ?? (c.storeVisits + c.phoneCalls + c.coupons);
+            const costPerLead = leads > 0 && c.spent > 0 ? c.spent / leads : 0;
             return (
               <tr key={c.id}>
                 <td>
@@ -138,25 +177,28 @@ function Campaigns() {
                   </div>
                   {c.budget > 0 && (
                     <div className="bar" style={{ marginTop: 4 }}>
-                      <div style={{ width: `${pct * 100}%`, background: pct > 0.9 ? 'var(--warning)' : 'var(--accent)' }} />
+                      <div style={{ width: `${Math.min(pct, 1) * 100}%`, background: pct > 0.9 ? 'var(--warning)' : 'var(--accent)' }} />
                     </div>
                   )}
                 </td>
                 <td className="num mono">{c.spent > 0 ? `¥ ${c.spent.toLocaleString()}` : '—'}</td>
-                <td className="num mono">{c.gmv > 0 ? `¥ ${c.gmv.toLocaleString()}` : '—'}</td>
-                <td className="num mono" style={{ fontWeight: 600, color: c.roas >= 2.8 ? 'var(--success)' : c.roas > 0 && c.roas < 1.5 ? 'var(--danger)' : undefined }}>
-                  {c.roas > 0 ? c.roas.toFixed(2) : '—'}
+                <td className="num mono" style={{ color: (c.storeVisits ?? 0) > 0 ? 'var(--success)' : undefined }}>
+                  {(c.storeVisits ?? 0) > 0 ? (c.storeVisits).toLocaleString() : '—'}
+                </td>
+                <td className="num mono">{(c.phoneCalls ?? 0) > 0 ? c.phoneCalls.toLocaleString() : '—'}</td>
+                <td className="num mono" style={{ fontWeight: 600 }}>{leads > 0 ? leads.toLocaleString() : '—'}</td>
+                <td className="num mono" style={{ color: costPerLead > 0 && costPerLead < 50 ? 'var(--success)' : undefined }}>
+                  {costPerLead > 0 ? `¥ ${costPerLead.toFixed(1)}` : '—'}
                 </td>
                 <td className="num mono">{c.ctr > 0 ? (c.ctr * 100).toFixed(1) + '%' : '—'}</td>
-                <td className="num mono">{c.cvr > 0 ? (c.cvr * 100).toFixed(1) + '%' : '—'}</td>
                 <td>
-                  {c.status === 'active'  && <Chip tone="success" dot>投放中</Chip>}
-                  {c.status === 'paused'  && <Chip dot>已暂停</Chip>}
-                  {c.status === 'ended'   && <Chip tone="default">已结束</Chip>}
+                  {c.status === 'active' && <Chip tone="success" dot>投放中</Chip>}
+                  {c.status === 'paused' && <Chip dot>已暂停</Chip>}
+                  {c.status === 'ended'  && <Chip tone="default">已结束</Chip>}
                 </td>
                 <td className="row tight">
-                  <button className="btn ghost icon sm" disabled={isLoading} onClick={() => toggle(c)}>
-                    <Icon name={isLoading ? 'loader' : c.status === 'active' ? 'pause' : 'play'} size={11} />
+                  <button className="btn ghost icon sm" disabled={acting === c.id} onClick={() => toggle(c)}>
+                    <Icon name={acting === c.id ? 'loader' : c.status === 'active' ? 'pause' : 'play'} size={11} />
                   </button>
                 </td>
               </tr>
@@ -177,7 +219,7 @@ function Rules() {
     fetch('/api/rules')
       .then(r => r.json())
       .then(d => setRules(d.data?.rules || []))
-      .catch(() => [])
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
@@ -190,8 +232,15 @@ function Rules() {
     setRules(prev => prev.map(x => x.id === r.id ? { ...x, enabled: !x.enabled } : x));
   };
 
-  const metricLabel = { roas: 'ROI', ctr: '点击率', cvr: '转化率', cpm: 'CPM', gmv: 'GMV', spent_pct: '预算消耗%' };
-  const actionLabel = { pause: '暂停计划', resume: '恢复计划', increase_budget: '提升预算', decrease_budget: '降低预算', alert: '发送告警' };
+  const metricLabel = {
+    store_visits: '到店量', leads: '总线索量', cost_per_lead: '线索成本',
+    ctr: '点击率', cpm: 'CPM', spent_pct: '预算消耗%',
+    roas: 'ROI', cvr: '转化率', gmv: 'GMV',
+  };
+  const actionLabel = {
+    pause: '暂停计划', resume: '恢复计划',
+    increase_budget: '提升预算', decrease_budget: '降低预算', alert: '发送告警',
+  };
 
   if (loading) return <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>加载中…</div>;
 
@@ -199,14 +248,20 @@ function Rules() {
     <div className="card">
       <div className="card-h"><h3>自动调控规则</h3></div>
       <table className="tbl">
-        <thead><tr><th>规则名</th><th>品牌</th><th>触发条件</th><th>动作</th><th>冷却</th><th>最近触发</th><th>状态</th></tr></thead>
+        <thead>
+          <tr><th>规则名</th><th>品牌</th><th>触发条件</th><th>动作</th><th>冷却</th><th>最近触发</th><th>状态</th></tr>
+        </thead>
         <tbody>
           {rules.map(r => (
             <tr key={r.id}>
               <td style={{ fontWeight: 500 }}>{r.name}</td>
-              <td><Chip>{r.brand === 'all' ? '全部品牌' : (TL.brandById(r.brand)?.name || r.brand)}</Chip></td>
-              <td className="mono" style={{ fontSize: 11 }}>{metricLabel[r.metric]} {r.operator} {r.threshold}</td>
-              <td><Chip tone={r.action === 'pause' ? 'warn' : r.action === 'increase_budget' ? 'success' : 'default'}>{actionLabel[r.action]}{r.actionValue ? ` ${r.actionValue}%` : ''}</Chip></td>
+              <td><Chip>{r.brand === 'all' ? '全部品牌' : (TL.brandById?.(r.brand)?.name || r.brand)}</Chip></td>
+              <td className="mono" style={{ fontSize: 11 }}>{metricLabel[r.metric] ?? r.metric} {r.operator} {r.threshold}</td>
+              <td>
+                <Chip tone={r.action === 'pause' ? 'warn' : r.action === 'increase_budget' ? 'success' : 'default'}>
+                  {actionLabel[r.action]}{r.actionValue ? ` ${r.actionValue}%` : ''}
+                </Chip>
+              </td>
               <td className="num muted">{r.cooldownMinutes}min</td>
               <td className="muted" style={{ fontSize: 11 }}>{r.lastTriggeredAt ? new Date(r.lastTriggeredAt).toLocaleString('zh') : '从未'}</td>
               <td>
@@ -231,7 +286,7 @@ function Logs() {
     fetch('/api/logs')
       .then(r => r.json())
       .then(d => setLogs(d.data?.logs || []))
-      .catch(() => [])
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
@@ -240,7 +295,7 @@ function Logs() {
   return (
     <div className="card">
       <div className="card-h"><h3>操作日志</h3></div>
-      {logs.length === 0
+      {!logs.length
         ? <div style={{ padding: '24px 16px', color: 'var(--text-muted)', fontSize: 13 }}>暂无日志</div>
         : (
           <table className="tbl">
@@ -257,8 +312,7 @@ function Logs() {
               ))}
             </tbody>
           </table>
-        )
-      }
+        )}
     </div>
   );
 }

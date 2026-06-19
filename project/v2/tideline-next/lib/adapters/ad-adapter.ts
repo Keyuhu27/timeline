@@ -11,14 +11,22 @@ import type { AdCampaign } from '../../types/index';
 
 export interface CampaignStats {
   externalId: string;
-  roas: number;
-  ctr: number;
-  cvr: number;
-  cpm: number;
+  // 通用指标
   spent: number;
-  gmv: number;
   impressions: number;
   clicks: number;
+  ctr: number;
+  cpm: number;
+  // 本地推核心指标
+  storeVisits: number;    // 到店量
+  phoneCalls: number;     // 电话确认量
+  mapSearches: number;    // 地图搜索量
+  coupons: number;        // 发券量
+  leads: number;          // 总线索 = storeVisits + phoneCalls + coupons
+  // 电商兼容字段（本地推场景置 0）
+  roas: number;
+  cvr: number;
+  gmv: number;
   orders: number;
 }
 
@@ -26,8 +34,7 @@ export interface CreateCampaignParams {
   name: string;
   advertiserId: string;
   budget: number;
-  goal: 'video_sales' | 'live_room' | 'product_card' | 'follow';
-  productIds?: string[];
+  goal: 'store_visit' | 'phone_call' | 'coupon' | 'map_search';
   startDate: string;
 }
 
