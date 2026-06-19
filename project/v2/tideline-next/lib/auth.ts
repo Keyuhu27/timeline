@@ -100,6 +100,10 @@ export function clearSessionCookie(res: ServerResponse): void {
   res.setHeader('Set-Cookie', 'tide_session=; Path=/; Max-Age=0');
 }
 
+export function logout(res: ServerResponse): void {
+  clearSessionCookie(res);
+}
+
 // ─── 演示账号（启动时生成哈希，生产替换为 DB 查询）──────────────────────
 const DEMO_ACCOUNTS: Record<string, { passwordHash: string; profile: Omit<Session, 'iat' | 'exp'> }> = {
   'chen@nanji.cn': {
