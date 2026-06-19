@@ -60,7 +60,8 @@ const ROUTES: Record<string, RouteModule> = {
   '/api/rules':      routeRules,
   '/api/logs':       routeLogs,
   '/api/automation': routeAutomation,
-  '/api/auth':       routeOAuth,
+  '/api/auth':          routeOAuth,
+  '/api/auth/callback': routeOAuth,   // 巨量引擎 OAuth 回调别名
 };
 
 const PUBLIC_ROUTES = new Set(['/api/auth/login', '/api/auth']);

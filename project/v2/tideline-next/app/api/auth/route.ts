@@ -25,14 +25,20 @@ export const GET: RouteHandler = async (req, res) => {
         res.raw.end(); return;
       }
       const { access_token, refresh_token, expires_in, advertiser_ids } = data.data;
+      const expiresAt = Date.now() + expires_in * 1000;
+      // 每个授权广告主都注册同一个 token（MCN 模式：一次授权管所有广告主）
+      const ids: string[] = Array.isArray(advertiser_ids) ? advertiser_ids.map(String) : [];
+      // 同时注册一个以 app_id 为 key 的通用凭证，供 getAnyToken 使用
+      const primaryId = ids[0] ?? APP_ID;
       const cred: PlatformCredential = {
-        id: `cred_${Date.now()}`, accountId: String(advertiser_ids[0] ?? 'unknown'),
+        id: `cred_${Date.now()}`, accountId: primaryId,
         platform: 'oceanengine', accessToken: access_token, refreshToken: refresh_token,
-        expiresAt: Date.now() + expires_in * 1000, advertiserId: String(advertiser_ids[0]),
-        appId: APP_ID, updatedAt: new Date().toISOString(),
+        expiresAt, advertiserId: primaryId, appId: APP_ID, updatedAt: new Date().toISOString(),
       };
       tokenManager.register(cred);
-      console.log(`[OAuth] ✅ 授权成功 advertiser_ids: ${advertiser_ids.join(', ')}`);
+      // 为 APP_ID 也注册一份，确保 getAnyToken 兜底能找到
+      tokenManager.register({ ...cred, id: `cred_app_${Date.now()}`, accountId: APP_ID });
+      console.log(`[OAuth] ✅ 授权成功 advertiser_ids: ${ids.join(', ')}, expires_in: ${expires_in}s`);
       res.raw.writeHead(302, { Location: '/?oauth=success' }); res.raw.end();
     } catch (e) {
       console.error('[OAuth] 失败:', e);
