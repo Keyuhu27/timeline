@@ -3,10 +3,15 @@ import { ok, err } from '../../../lib/api';
 import { tokenManager } from '../../../lib/adapters/index';
 import type { PlatformCredential } from '../../../types/index';
 
-const APP_ID       = process.env.OCEANENGINE_APP_ID     ?? '';
-const APP_SECRET   = process.env.OCEANENGINE_APP_SECRET ?? '';
-const CALLBACK_URL = process.env.OCEANENGINE_CALLBACK_URL ?? '';
-const BASE_URL     = 'https://open.oceanengine.com';
+const BASE_URL = 'https://open.oceanengine.com';
+// 动态读取，避免模块加载时 .env 未就绪
+function getEnv() {
+  return {
+    APP_ID:       process.env.OCEANENGINE_APP_ID     ?? '',
+    APP_SECRET:   process.env.OCEANENGINE_APP_SECRET ?? '',
+    CALLBACK_URL: process.env.OCEANENGINE_CALLBACK_URL ?? '',
+  };
+}
 
 function redirect(res: import('../../../lib/api').TideResponse, location: string) {
   res.writeHead(302, { Location: location });
@@ -14,15 +19,20 @@ function redirect(res: import('../../../lib/api').TideResponse, location: string
 }
 
 export const GET: RouteHandler = async (req, res) => {
+  const { APP_ID, APP_SECRET, CALLBACK_URL } = getEnv();
   const { advertiser_id, auth_code, error_code } = req.query;
+
+  console.log(`[OAuth] callback hit, APP_ID=${APP_ID}, auth_code=${auth_code ? auth_code.slice(0,8)+'...' : 'none'}`);
 
   if (auth_code) {
     if (error_code) { redirect(res, '/?oauth=denied'); return; }
     try {
+      const body = { appid: Number(APP_ID), secret: APP_SECRET, auth_code, grant_type: 'auth_code' };
+      console.log('[OAuth] 发送换 token 请求 appid=', body.appid, 'type=', typeof body.appid);
       const r = await fetch(`${BASE_URL}/open_api/oauth2/access_token/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ appid: Number(APP_ID), secret: APP_SECRET, auth_code, grant_type: 'auth_code' }),
+        body: JSON.stringify(body),
       });
       const data = await r.json() as any;
       if (data.message !== 'OK' || !data.data) {
@@ -56,6 +66,7 @@ export const GET: RouteHandler = async (req, res) => {
 };
 
 export const POST: RouteHandler = (req, res) => {
+  const { APP_ID } = getEnv();
   const body = req.body as Partial<PlatformCredential>;
   if (!body.accountId || !body.accessToken || !body.refreshToken) return err(res, '缺少必填项');
   const cred: PlatformCredential = {
