@@ -8,7 +8,7 @@ if (_ex('.env')) {
     if (eq < 0) return;
     const k = trimmed.slice(0, eq).trim();
     const v = trimmed.slice(eq + 1).trim();
-    if (k && !(k in process.env)) process.env[k] = v;
+    if (k) process.env[k] = v;  // 始终覆盖，.env 优先
   });
 }
 
