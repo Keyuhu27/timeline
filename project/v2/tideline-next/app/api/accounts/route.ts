@@ -106,9 +106,10 @@ export const POST: RouteHandler = async (req, res) => {
       }
       console.log(`[AccountSync] ${account.name}: 同步 ${campList.length} 个计划`);
     } catch (e) {
-      console.warn(`[AccountSync] 拉取计划失败 ${account.name}:`, e);
+      console.error(`[AccountSync] ❌ 拉取计划失败 ${account.name} (${account.externalId}):`, String(e));
     }
   }
 
-  ok(res, { synced, total: advertiserList.length, campaignsSynced, accounts: result }, {});
+  const errors: string[] = [];
+  ok(res, { synced, total: advertiserList.length, campaignsSynced, accounts: result, errors }, {});
 };

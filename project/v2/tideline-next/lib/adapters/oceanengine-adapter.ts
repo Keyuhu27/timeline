@@ -46,6 +46,7 @@ async function oeRequest<T>(
   const json = await res.json() as { code: number; message: string; data: T };
 
   if (json.code !== 0) {
+    console.error(`[OceanEngine] API 错误 ${options.method} ${finalUrl}: code=${json.code} message=${json.message}`);
     throw new Error(`巨量引擎 API [${finalUrl}]: ${json.message} (code=${json.code})`);
   }
 
