@@ -1,14 +1,15 @@
 // 潮线 Tideline · Token 管理器
 // 缓存 Access Token，提前 30 分钟刷新（巨量引擎 token 有效期 2 小时）
-// 拿到真实 API 后：填充 _refreshFromApi() 方法
 
 import type { PlatformCredential } from '../../types/index';
 import { alertService } from './alert-service';
 
+const OCEANENGINE_REFRESH_URL = 'https://open.oceanengine.com/open_api/oauth2/refresh_token/';
+
 // 内存缓存（生产环境可换 Redis）
 const tokenCache = new Map<string, { token: string; expiresAt: number }>();
 
-// Mock 凭证存储（生产替换为 DB）
+// 凭证存储（生产替换为 DB）
 const credentials = new Map<string, PlatformCredential>();
 
 // 提前刷新时间窗口（秒）
@@ -41,10 +42,7 @@ export const tokenManager = {
     // 需要刷新
     const cred = credentials.get(key);
     if (!cred) {
-      // 没有凭证时返回 mock token（开发阶段用）
-      const mockToken = `mock_token_${accountId}_${Date.now()}`;
-      tokenCache.set(key, { token: mockToken, expiresAt: now + 7200 });
-      return mockToken;
+      throw new Error(`[TokenManager] 未找到凭证: ${key}，请先通过 POST /api/auth 注册 Token`);
     }
 
     return this._refresh(key, cred);
@@ -86,39 +84,55 @@ export const tokenManager = {
     }
   },
 
-  /** 真实 API 刷新（目前为 Mock，拿到 API 后填充）*/
+  /** 调用巨量引擎 OAuth2 接口刷新 Token */
   async _refreshFromApi(cred: PlatformCredential): Promise<{
     accessToken: string;
     refreshToken?: string;
     expiresAt: number; // 秒
   }> {
-    // Mock 实现：返回一个假 token，有效期 2 小时
-    console.log(`[TokenManager] Mock 刷新 token: ${cred.accountId} / ${cred.platform}`);
-    await new Promise(r => setTimeout(r, 200));
-    return {
-      accessToken:  `mock_refreshed_${Date.now()}`,
-      refreshToken: cred.refreshToken,
-      expiresAt:    Math.floor(Date.now() / 1000) + 7200,
+    const appId     = cred.appId     ?? process.env.OCEANENGINE_APP_ID;
+    const appSecret = process.env.OCEANENGINE_APP_SECRET;
+
+    if (!appId || !appSecret) {
+      throw new Error('[TokenManager] 缺少 OCEANENGINE_APP_ID 或 OCEANENGINE_APP_SECRET 环境变量');
+    }
+    if (!cred.refreshToken) {
+      throw new Error(`[TokenManager] 账户 ${cred.accountId} 没有 refreshToken，无法刷新`);
+    }
+
+    console.log(`[TokenManager] 正在刷新 Token: accountId=${cred.accountId}`);
+
+    const res = await fetch(OCEANENGINE_REFRESH_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        appid:         appId,
+        secret:        appSecret,
+        grant_type:    'refresh_token',
+        refresh_token: cred.refreshToken,
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`[TokenManager] HTTP ${res.status} 刷新失败`);
+    }
+
+    const data = await res.json() as {
+      message: string;
+      data?: { access_token: string; refresh_token: string; expires_in: number };
     };
 
-    // ── 真实实现（巨量引擎）────────────────────────────────────────────
-    // const res = await fetch('https://open.oceanengine.com/open_api/oauth2/refresh_token/', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({
-    //     appid: cred.appId,
-    //     secret: process.env.OCEANENGINE_APP_SECRET,
-    //     grant_type: 'refresh_token',
-    //     refresh_token: cred.refreshToken,
-    //   }),
-    // });
-    // const data = await res.json();
-    // if (data.message !== 'success') throw new Error(data.message);
-    // return {
-    //   accessToken:  data.data.access_token,
-    //   refreshToken: data.data.refresh_token,
-    //   expiresAt:    Math.floor(Date.now() / 1000) + data.data.expires_in,
-    // };
+    if (data.message !== 'success' || !data.data) {
+      throw new Error(`[TokenManager] 巨量引擎返回错误: ${data.message}`);
+    }
+
+    console.log(`[TokenManager] Token 刷新成功: accountId=${cred.accountId}，有效期 ${data.data.expires_in}s`);
+
+    return {
+      accessToken:  data.data.access_token,
+      refreshToken: data.data.refresh_token,
+      expiresAt:    Math.floor(Date.now() / 1000) + data.data.expires_in,
+    };
   },
 
   /** 检查所有凭证的过期状态（定时任务调用） */
@@ -145,3 +159,33 @@ export const tokenManager = {
     }));
   },
 };
+
+// 服务启动时：若 .env 中有 Token，自动注册为默认凭证，无需手动 curl
+(function bootstrapFromEnv() {
+  const accessToken  = process.env.OCEANENGINE_ACCESS_TOKEN;
+  const refreshToken = process.env.OCEANENGINE_REFRESH_TOKEN;
+  const appId        = process.env.OCEANENGINE_APP_ID;
+
+  if (accessToken && refreshToken && appId) {
+    // 用 appId 作为默认 accountId，也可后续通过 POST /api/auth 覆盖
+    const cred: PlatformCredential = {
+      id:           'env_default',
+      accountId:    appId,
+      platform:     'oceanengine',
+      appId,
+      accessToken,
+      refreshToken,
+      // 假定从环境变量读取时 token 是刚拿到的，剩余约 2 小时
+      expiresAt:    Date.now() + 7200 * 1000,
+      updatedAt:    new Date().toISOString(),
+    };
+    tokenManager.register(cred);
+    // 同时写入缓存，让第一次 getToken 直接命中而不触发刷新
+    const key = `${appId}::oceanengine`;
+    tokenCache.set(key, {
+      token:     accessToken,
+      expiresAt: Math.floor(Date.now() / 1000) + 7200,
+    });
+    console.log(`[TokenManager] 已从环境变量注入 Token: accountId=${appId}`);
+  }
+}());
