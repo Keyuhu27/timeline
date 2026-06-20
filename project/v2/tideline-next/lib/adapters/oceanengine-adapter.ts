@@ -6,17 +6,23 @@ const LOCAL_BASE = 'https://api.oceanengine.com/open_api/v3.0/local/';
 const ADVERTISER_LIST_URL = 'https://open.oceanengine.com/open_api/oauth2/advertiser/get/';
 
 // ─── 本地推指标列表 ───────────────────────────────────────────────────────────
-// 巨量本地推专属指标（非千川电商指标）
+// 巨量本地推数据报表「获取项目数据」支持的指标字段（非千川电商指标）
+// 文档：GET /open_api/v3.0/local/report/project/get/
 const LOCAL_PROMO_METRICS = [
-  'stat_cost',
-  'show_cnt',
-  'click_cnt',
-  'ctr',
-  'cpm_platform',
-  'store_visit_cnt',
-  'phone_confirm_cnt',
-  'map_search_cnt',
-  'coupon_send_cnt',
+  'stat_cost',            // 消耗(元)
+  'show_cnt',             // 展示次数
+  'click_cnt',            // 点击次数
+  'ctr',                  // 点击率
+  'cpm_platform',         // 平均千次展示费用
+  'convert_cnt',          // 转化数
+  'conversion_cost',      // 转化成本
+  'poi_recommend_count',  // 浏览商户人数（到店引流）
+  'phone_confirm_cnt',    // 电话拨打数
+  'form_cnt',             // 表单提交数
+  'clue_pay_order_cnt',   // 团购线索数
+  'oto_pay_order_count',  // 总成交订单数
+  'oto_pay_order_amount', // 总成交金额(元)
+  'oto_pay_order_roi',    // 总支付ROI
 ];
 
 // ─── 大整数安全 JSON 解析 ─────────────────────────────────────────────────────
@@ -74,28 +80,33 @@ async function oeRequest<T>(
 // ─── 行数据映射辅助 ───────────────────────────────────────────────────────────
 
 function mapLocalPromoRow(row: Record<string, unknown>, externalId: string): CampaignStats {
-  const storeVisits   = Number(row.store_visit_cnt   ?? 0);
-  const phoneCalls    = Number(row.phone_confirm_cnt  ?? 0);
-  const mapSearches   = Number(row.map_search_cnt     ?? 0);
-  const coupons       = Number(row.coupon_send_cnt    ?? 0);
-  const leads         = storeVisits + phoneCalls + coupons;
+  const storeVisits   = Number(row.poi_recommend_count ?? 0);  // 浏览商户人数 ≈ 到店量
+  const phoneCalls    = Number(row.phone_confirm_cnt   ?? 0);  // 电话拨打数
+  const forms         = Number(row.form_cnt            ?? 0);  // 表单提交数
+  const coupons       = Number(row.clue_pay_order_cnt  ?? 0);  // 团购线索数
+  // 总线索优先用接口的 convert_cnt（转化数），缺失时回退到各事件之和
+  const convertCnt    = Number(row.convert_cnt ?? 0);
+  const leads         = convertCnt > 0 ? convertCnt : (storeVisits + phoneCalls + forms + coupons);
+
+  const spent  = Number(row.stat_cost ?? 0);
+  const gmv    = Number(row.oto_pay_order_amount ?? 0);
+  const orders = Number(row.oto_pay_order_count ?? 0);
 
   return {
     externalId,
-    spent:       Number(row.stat_cost      ?? 0),
-    impressions: Number(row.show_cnt       ?? 0),
-    clicks:      Number(row.click_cnt      ?? 0),
-    ctr:         Number(row.ctr            ?? 0) / 100,
-    cpm:         Number(row.cpm_platform   ?? 0),
-    // 本地推暂无电商转化字段，置 0 待接口更新后填充
-    gmv:    0,
-    orders: 0,
-    roas:   0,
+    spent,
+    impressions: Number(row.show_cnt     ?? 0),
+    clicks:      Number(row.click_cnt    ?? 0),
+    ctr:         Number(row.ctr          ?? 0) / 100,  // 接口返回百分数，转小数
+    cpm:         Number(row.cpm_platform ?? 0),
+    gmv,
+    orders,
+    roas:   Number(row.oto_pay_order_roi ?? 0),
     cvr:    0,
-    // 本地推专属字段（CampaignStats 接口将补充这些字段）
+    // 本地推专属字段
     storeVisits,
     phoneCalls,
-    mapSearches,
+    mapSearches: 0,
     coupons,
     leads,
   } as CampaignStats;
@@ -223,63 +234,58 @@ export class OceanEngineAdapter implements IAdAdapter {
 
   // ── 统计数据 ────────────────────────────────────────────────────────────────
 
+  /**
+   * 拉取本地推项目维度报表数据。
+   * 文档：GET /open_api/v3.0/local/report/project/get/
+   * 注意：metrics / filtering 等数组/对象参数需 JSON 字符串化后放进 query。
+   * @param localAccountId 本地推账户 ID
+   * @param projectIds 可选，按项目 ID 过滤；为空则拉账户下全部
+   * @param startDate / endDate 查询区间（yyyy-mm-dd），默认近 90 天汇总
+   */
+  async fetchProjectReport(
+    localAccountId: string,
+    projectIds?: string[],
+    startDate?: string,
+    endDate?: string,
+  ): Promise<CampaignStats[]> {
+    const token = await this.getAccessToken(localAccountId);
+    const end   = endDate   ?? new Date().toISOString().slice(0, 10);
+    const start = startDate ?? new Date(Date.now() - 90 * 86400_000).toISOString().slice(0, 10);
+
+    const params: Record<string, string> = {
+      local_account_id: localAccountId,
+      time_granularity: 'TIME_GRANULARITY_TOTAL',
+      start_date: start,
+      end_date: end,
+      metrics: JSON.stringify(LOCAL_PROMO_METRICS),
+      page: '1',
+      page_size: '100',
+    };
+    if (projectIds && projectIds.length > 0) {
+      params.filtering = JSON.stringify({ cdp_project_ids: projectIds.map(Number) });
+    }
+
+    const data = await oeRequest<{
+      project_list?: Array<Record<string, unknown>>;
+      page_info?: { total_number: number };
+    }>(`${LOCAL_BASE}report/project/get/`, token, { method: 'GET', params });
+
+    const rows = data.project_list ?? [];
+    if (rows.length > 0) {
+      console.log(`[OceanEngine] 本地推项目报表首行:`, JSON.stringify(rows[0]).slice(0, 300));
+    }
+    return rows.map(row => mapLocalPromoRow(row, String(row.project_id ?? '')));
+  }
+
   async fetchCampaignStats(externalId: string, advertiserId: string): Promise<CampaignStats> {
-    const token = await this.getAccessToken(advertiserId);
-    const today = new Date().toISOString().slice(0, 10);
-
-    const data = await oeRequest<{ list: Array<Record<string, unknown>> }>(
-      `${BASE}report/integrated/get/`,
-      token,
-      {
-        method: 'POST',
-        body: {
-          advertiser_id: advertiserId,
-          report_type: 'CAMPAIGN',
-          dimensions: ['campaign_id'],
-          metrics: LOCAL_PROMO_METRICS,
-          filters: [{ field: 'campaign_id', type: 'IN', values: [externalId] }],
-          start_date: today,
-          end_date: today,
-          page: 1,
-          page_size: 1,
-        },
-      },
-    );
-
-    const row = data.list?.[0];
-    if (!row) throw new Error(`找不到本地推计划数据: ${externalId}`);
-
-    const id = String(row.campaign_id ?? externalId);
-    return mapLocalPromoRow(row, id);
+    const rows = await this.fetchProjectReport(advertiserId, [externalId]);
+    const row = rows.find(r => r.externalId === externalId) ?? rows[0];
+    if (!row) throw new Error(`找不到本地推项目报表数据: ${externalId}`);
+    return row;
   }
 
   async fetchBatchStats(externalIds: string[], advertiserId: string): Promise<CampaignStats[]> {
-    const token = await this.getAccessToken(advertiserId);
-    const today = new Date().toISOString().slice(0, 10);
-
-    const data = await oeRequest<{ list: Array<Record<string, unknown>> }>(
-      `${BASE}report/integrated/get/`,
-      token,
-      {
-        method: 'POST',
-        body: {
-          advertiser_id: advertiserId,
-          report_type: 'CAMPAIGN',
-          dimensions: ['campaign_id'],
-          metrics: LOCAL_PROMO_METRICS,
-          filters: [{ field: 'campaign_id', type: 'IN', values: externalIds }],
-          start_date: today,
-          end_date: today,
-          page: 1,
-          page_size: externalIds.length,
-        },
-      },
-    );
-
-    return (data.list ?? []).map(row => {
-      const id = String(row.campaign_id ?? '');
-      return mapLocalPromoRow(row, id);
-    });
+    return this.fetchProjectReport(advertiserId, externalIds);
   }
 
   // ── 计划管理 ────────────────────────────────────────────────────────────────

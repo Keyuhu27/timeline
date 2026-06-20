@@ -85,7 +85,8 @@ export const POST: RouteHandler = async (req, res) => {
   for (const account of result) {
     if (!account.externalId) continue;
     try {
-      const campList = await (adAdapter as OceanEngineAdapter).fetchCampaignList(account.externalId);
+      const oe = adAdapter as OceanEngineAdapter;
+      const campList = await oe.fetchCampaignList(account.externalId);
       // 用项目里的门店名（poi_name）回填账户/品牌真实名称
       const poiName = campList.map(c => c.poi_name).find(Boolean);
       if (poiName && account.name.startsWith('本地推账户')) {
@@ -93,9 +94,31 @@ export const POST: RouteHandler = async (req, res) => {
         const b = brands.find(br => br.id === account.brand);
         if (b) { b.name = poiName; b.logo = poiName.slice(0, 1); }
       }
+
+      // 拉项目维度报表（近 90 天汇总），按项目 ID 建索引
+      let statsById = new Map<string, Awaited<ReturnType<typeof oe.fetchProjectReport>>[number]>();
+      try {
+        const stats = await oe.fetchProjectReport(account.externalId);
+        statsById = new Map(stats.map(s => [s.externalId, s]));
+      } catch (e) {
+        console.error(`[AccountSync] ⚠️ 拉取报表失败 ${account.name} (${account.externalId}):`, String(e));
+      }
+
+      const now = Date.now();
       for (const camp of campList) {
+        const st = statsById.get(String(camp.campaign_id));
         const existing = adCampaigns.find(c => c.externalId === String(camp.campaign_id));
-        if (existing) continue;
+        if (existing) {
+          // 已存在则只刷新指标
+          if (st) Object.assign(existing, {
+            spent: st.spent, cpm: st.cpm, ctr: st.ctr, roas: st.roas, gmv: st.gmv,
+            storeVisits: st.storeVisits, phoneCalls: st.phoneCalls,
+            mapSearches: st.mapSearches, coupons: st.coupons, leads: st.leads,
+            costPerLead: st.leads > 0 ? st.spent / st.leads : 0,
+            lastSyncAt: now,
+          });
+          continue;
+        }
         const newCamp: AdCampaign = {
           id:         `c_${camp.campaign_id}`,
           name:       camp.campaign_name,
@@ -103,14 +126,26 @@ export const POST: RouteHandler = async (req, res) => {
           account:    account.id,
           externalId: String(camp.campaign_id),
           budget:     camp.budget ?? 0,
-          spent:      0, roas: 0, cpm: 0, ctr: 0, cvr: 0, gmv: 0,
+          spent:      st?.spent ?? 0,
+          cpm:        st?.cpm   ?? 0,
+          ctr:        st?.ctr   ?? 0,
+          roas:       st?.roas  ?? 0,
+          gmv:        st?.gmv   ?? 0,
+          cvr:        0,
+          storeVisits: st?.storeVisits ?? 0,
+          phoneCalls:  st?.phoneCalls  ?? 0,
+          mapSearches: st?.mapSearches ?? 0,
+          coupons:     st?.coupons     ?? 0,
+          leads:       st?.leads       ?? 0,
+          costPerLead: st && st.leads > 0 ? st.spent / st.leads : 0,
           status:     /DISABLE|DELETE|DONE/i.test(camp.status) ? 'paused' : 'active',
           startDate:  new Date().toISOString().slice(0, 10),
+          lastSyncAt: now,
         };
         adCampaigns.push(newCamp);
         campaignsSynced++;
       }
-      console.log(`[AccountSync] ${account.name}: 同步 ${campList.length} 个计划`);
+      console.log(`[AccountSync] ${account.name}: 同步 ${campList.length} 个计划（含报表）`);
     } catch (e) {
       console.error(`[AccountSync] ❌ 拉取计划失败 ${account.name} (${account.externalId}):`, String(e));
     }
