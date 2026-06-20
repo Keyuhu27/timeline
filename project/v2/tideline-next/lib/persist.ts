@@ -7,7 +7,8 @@ import { mkdirSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import { brands, accounts, adCampaigns } from './db';
-import type { Brand, Account, AdCampaign } from '../types/index';
+import { tokenManager } from './adapters/token-manager';
+import type { Brand, Account, AdCampaign, PlatformCredential } from '../types/index';
 
 const require_ = createRequire(import.meta.url);
 
@@ -45,37 +46,75 @@ function initSqlite(): boolean {
 
 // ─── 读写快照 ─────────────────────────────────────────────────────────────────
 
-function writeSnapshot(snap: Snapshot) {
+function kvPut(key: string, value: string) {
   if (backend === 'sqlite' && sqlite) {
-    const stmt = sqlite.prepare(`INSERT INTO kv(key,value) VALUES(?,?)
-      ON CONFLICT(key) DO UPDATE SET value=excluded.value`);
-    stmt.run('brands',      JSON.stringify(snap.brands));
-    stmt.run('accounts',    JSON.stringify(snap.accounts));
-    stmt.run('adCampaigns', JSON.stringify(snap.adCampaigns));
+    sqlite.prepare(`INSERT INTO kv(key,value) VALUES(?,?)
+      ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run(key, value);
   } else {
-    writeFileSync(JSON_PATH, JSON.stringify(snap, null, 2));
+    const cur = existsSync(JSON_PATH) ? JSON.parse(readFileSync(JSON_PATH, 'utf8')) : {};
+    cur[key] = JSON.parse(value);
+    writeFileSync(JSON_PATH, JSON.stringify(cur, null, 2));
   }
+}
+
+function kvGet(key: string): string | null {
+  if (backend === 'sqlite' && sqlite) {
+    const row = sqlite.prepare(`SELECT value FROM kv WHERE key=?`).all(key) as Array<{ value: string }>;
+    return row[0]?.value ?? null;
+  }
+  if (existsSync(JSON_PATH)) {
+    const cur = JSON.parse(readFileSync(JSON_PATH, 'utf8'));
+    return cur[key] != null ? JSON.stringify(cur[key]) : null;
+  }
+  return null;
+}
+
+function writeSnapshot(snap: Snapshot) {
+  kvPut('brands',      JSON.stringify(snap.brands));
+  kvPut('accounts',    JSON.stringify(snap.accounts));
+  kvPut('adCampaigns', JSON.stringify(snap.adCampaigns));
 }
 
 function readSnapshot(): Snapshot | null {
   try {
-    if (backend === 'sqlite' && sqlite) {
-      const rows = sqlite.prepare(`SELECT key, value FROM kv`).all() as Array<{ key: string; value: string }>;
-      if (!rows.length) return null;
-      const map = new Map(rows.map(r => [r.key, r.value]));
-      return {
-        brands:      JSON.parse(map.get('brands')      ?? '[]'),
-        accounts:    JSON.parse(map.get('accounts')    ?? '[]'),
-        adCampaigns: JSON.parse(map.get('adCampaigns') ?? '[]'),
-      };
-    }
-    if (existsSync(JSON_PATH)) {
-      return JSON.parse(readFileSync(JSON_PATH, 'utf8')) as Snapshot;
-    }
+    const b = kvGet('brands'), a = kvGet('accounts'), c = kvGet('adCampaigns');
+    if (!b && !a && !c) return null;
+    return {
+      brands:      JSON.parse(b ?? '[]'),
+      accounts:    JSON.parse(a ?? '[]'),
+      adCampaigns: JSON.parse(c ?? '[]'),
+    };
   } catch (e) {
     console.error('[Persist] 读取快照失败:', String(e));
   }
   return null;
+}
+
+// ─── OAuth 凭证持久化 ─────────────────────────────────────────────────────────
+// token 不再写入 .env（避免 git pull 冲突），改存数据库；启动时注册回 tokenManager。
+
+/** 把 tokenManager 当前所有凭证写盘 */
+export function saveCredentials(): void {
+  if (!ready) return;
+  try {
+    const creds = tokenManager.getAllCredentials();
+    kvPut('credentials', JSON.stringify(creds));
+    console.log(`[Persist] 🔑 已保存 ${creds.length} 个 OAuth 凭证`);
+  } catch (e) {
+    console.error('[Persist] 保存凭证失败:', String(e));
+  }
+}
+
+function loadCredentials(): void {
+  try {
+    const raw = kvGet('credentials');
+    if (!raw) return;
+    const creds = JSON.parse(raw) as PlatformCredential[];
+    for (const c of creds) tokenManager.register(c);
+    console.log(`[Persist] 🔑 已注册 ${creds.length} 个持久化 OAuth 凭证`);
+  } catch (e) {
+    console.error('[Persist] 加载凭证失败:', String(e));
+  }
 }
 
 // ─── 对外 API ─────────────────────────────────────────────────────────────────
@@ -89,6 +128,11 @@ export function loadPersisted(): void {
   } catch { /* ignore */ }
 
   if (!initSqlite()) backend = 'json';
+  ready = true;
+
+  // 注册持久化的 OAuth 凭证，并挂上「刷新后自动回写」钩子
+  loadCredentials();
+  tokenManager.persistHook = saveCredentials;
 
   const snap = readSnapshot();
   if (snap) {
@@ -99,7 +143,6 @@ export function loadPersisted(): void {
   } else {
     console.log(`[Persist] 后端=${backend}，暂无历史快照`);
   }
-  ready = true;
 }
 
 /** 同步完成后调用：把当前「真实同步数据」写盘 */

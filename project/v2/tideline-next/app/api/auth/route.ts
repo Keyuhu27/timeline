@@ -3,30 +3,10 @@ import { ok, err } from '../../../lib/api';
 import { tokenManager } from '../../../lib/adapters/index';
 import { safeJsonParse } from '../../../lib/adapters/oceanengine-adapter';
 import type { PlatformCredential } from '../../../types/index';
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { saveCredentials } from '../../../lib/persist';
 
 const BASE_URL = 'https://open.oceanengine.com';
 
-// 把最新 token 写回 .env，避免 24h 过期后还要手动改文件
-function persistTokensToEnv(accessToken: string, refreshToken: string) {
-  try {
-    if (!existsSync('.env')) return;
-    const lines = readFileSync('.env', 'utf8').split('\n');
-    const upsert = (key: string, val: string) => {
-      const i = lines.findIndex(l => l.trim().startsWith(`${key}=`));
-      if (i >= 0) lines[i] = `${key}=${val}`;
-      else lines.push(`${key}=${val}`);
-    };
-    upsert('OCEANENGINE_ACCESS_TOKEN', accessToken);
-    if (refreshToken) upsert('OCEANENGINE_REFRESH_TOKEN', refreshToken);
-    writeFileSync('.env', lines.join('\n'));
-    process.env.OCEANENGINE_ACCESS_TOKEN = accessToken;
-    if (refreshToken) process.env.OCEANENGINE_REFRESH_TOKEN = refreshToken;
-    console.log('[OAuth] ✅ 新 token 已写回 .env');
-  } catch (e) {
-    console.error('[OAuth] ⚠️ 写回 .env 失败:', String(e));
-  }
-}
 // 动态读取，避免模块加载时 .env 未就绪
 function getEnv() {
   return {
@@ -74,7 +54,7 @@ export const GET: RouteHandler = async (req, res) => {
       };
       tokenManager.register(cred);
       tokenManager.register({ ...cred, id: `cred_app_${Date.now()}`, accountId: APP_ID });
-      persistTokensToEnv(access_token, refresh_token);
+      saveCredentials();  // token 存数据库，不再写 .env
       console.log(`[OAuth] ✅ 授权成功 advertiser_ids: ${ids.join(', ')}, expires_in: ${expires_in}s`);
       redirect(res, '/?oauth=success');
     } catch (e) {

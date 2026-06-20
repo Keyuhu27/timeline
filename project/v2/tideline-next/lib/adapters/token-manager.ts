@@ -21,6 +21,14 @@ function cacheKey(accountId: string, platform: string): string {
 }
 
 export const tokenManager = {
+  /** 持久化钩子：由 persist 层在启动时挂上，刷新/注册凭证后回写数据库 */
+  persistHook: undefined as (undefined | (() => void)),
+
+  /** 返回所有已注册凭证（供持久化层落盘） */
+  getAllCredentials(): PlatformCredential[] {
+    return Array.from(credentials.values());
+  },
+
   /** 注册凭证（对接 API 后通过 OAuth 回调写入） */
   register(cred: PlatformCredential): void {
     const key = cacheKey(cred.accountId, cred.platform);
@@ -69,6 +77,8 @@ export const tokenManager = {
         updatedAt:    new Date().toISOString(),
       };
       credentials.set(key, updated);
+      // 刷新后回写持久化（token 改存数据库，不再写 .env）
+      try { this.persistHook?.(); } catch { /* ignore */ }
 
       // 检查是否即将过期（剩余不足1小时告警）
       const remainSecs = result.expiresAt - Math.floor(Date.now() / 1000);
