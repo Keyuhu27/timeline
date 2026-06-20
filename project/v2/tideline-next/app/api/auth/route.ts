@@ -1,6 +1,7 @@
 import type { RouteHandler } from '../../../lib/api';
 import { ok, err } from '../../../lib/api';
 import { tokenManager } from '../../../lib/adapters/index';
+import { safeJsonParse } from '../../../lib/adapters/oceanengine-adapter';
 import type { PlatformCredential } from '../../../types/index';
 
 const BASE_URL = 'https://open.oceanengine.com';
@@ -34,7 +35,7 @@ export const GET: RouteHandler = async (req, res) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      const data = await r.json() as any;
+      const data = safeJsonParse<any>(await r.text());
       if (data.message !== 'OK' || !data.data) {
         console.error('[OAuth] 换 token 失败:', data.message, data);
         redirect(res, `/?oauth=error&msg=${encodeURIComponent(data.message ?? 'unknown')}`);

@@ -17,6 +17,15 @@ const LOCAL_PROMO_METRICS = [
   'coupon_send_cnt',
 ];
 
+// ─── 大整数安全 JSON 解析 ─────────────────────────────────────────────────────
+// 巨量引擎 advertiser_id / campaign_id 是 19 位雪花 ID，超过 JS 安全整数上限
+// (Number.MAX_SAFE_INTEGER ≈ 9e15)，直接 JSON.parse 会丢精度（末尾被四舍五入成 0）。
+// 解决：解析前把 16 位以上的裸整数字面量包成字符串，保住完整 ID。
+export function safeJsonParse<T>(text: string): T {
+  const wrapped = text.replace(/([:\[,]\s*)(\d{16,})(?=\s*[,\]}])/g, '$1"$2"');
+  return JSON.parse(wrapped) as T;
+}
+
 // ─── HTTP 辅助函数 ────────────────────────────────────────────────────────────
 
 async function oeRequest<T>(
@@ -46,7 +55,7 @@ async function oeRequest<T>(
   const text = await res.text();
   let json: { code: number; message: string; data: T };
   try {
-    json = JSON.parse(text) as { code: number; message: string; data: T };
+    json = safeJsonParse<{ code: number; message: string; data: T }>(text);
   } catch {
     console.error(`[OceanEngine] 响应非 JSON ${options.method} ${finalUrl} (HTTP ${res.status}): ${text.slice(0, 300)}`);
     throw new Error(`巨量引擎响应解析失败 [${finalUrl}]: ${text.slice(0, 120)}`);
@@ -118,7 +127,8 @@ export class OceanEngineAdapter implements IAdAdapter {
       { method: 'GET', headers: { 'Access-Token': accessToken } },
     );
 
-    const json = await res.json() as {
+    const text = await res.text();
+    const json = safeJsonParse<{
       code: number;
       message: string;
       data: {
@@ -129,7 +139,7 @@ export class OceanEngineAdapter implements IAdAdapter {
           status: string;
         }>;
       };
-    };
+    }>(text);
 
     if (json.code !== 0) {
       throw new Error(`巨量引擎 广告主列表: ${json.message} (code=${json.code})`);
