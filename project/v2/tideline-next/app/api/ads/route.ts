@@ -5,6 +5,7 @@
 import { adCampaigns, brands, accounts } from '../../../lib/db';
 import { ok, err, paginate }             from '../../../lib/api';
 import { adAdapter }                     from '../../../lib/adapters/index';
+import { saveSnapshot }                  from '../../../lib/persist';
 import type { RouteHandler }             from '../../../lib/api';
 import type { AdCampaign }              from '../../../types/index';
 
@@ -113,6 +114,7 @@ export const PATCH: RouteHandler = async (req, res) => {
   }
 
   Object.assign(campaign, body);
+  saveSnapshot();
   ok(res, campaign);
 };
 
@@ -133,5 +135,6 @@ export const DELETE: RouteHandler = async (req, res) => {
   }
 
   campaign.status = 'ended';
+  saveSnapshot();
   ok(res, { id, status: 'ended' });
 };

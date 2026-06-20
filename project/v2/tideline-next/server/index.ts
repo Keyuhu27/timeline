@@ -42,6 +42,10 @@ import * as routeLogs       from '../app/api/logs/route';
 import * as routeAutomation from '../app/api/automation/route';
 import { startScheduler }   from '../lib/scheduler/cron';
 import * as routeOAuth      from '../app/api/auth/route';
+import { loadPersisted }    from '../lib/persist';
+
+// 启动即注水：把上次同步的真实数据从磁盘恢复到内存
+loadPersisted();
 
 type RouteModule = Partial<Record<'GET'|'POST'|'PATCH'|'DELETE', RouteHandler>>;
 

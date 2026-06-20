@@ -5,6 +5,7 @@ import { accounts, brands, adCampaigns } from '../../../lib/db';
 import { ok, err, paginate }             from '../../../lib/api';
 import { OceanEngineAdapter }            from '../../../lib/adapters/oceanengine-adapter';
 import { tokenManager, adAdapter }       from '../../../lib/adapters/index';
+import { saveSnapshot }                  from '../../../lib/persist';
 import type { RouteHandler }             from '../../../lib/api';
 import type { Account, Brand, AdCampaign } from '../../../types/index';
 
@@ -150,6 +151,9 @@ export const POST: RouteHandler = async (req, res) => {
       console.error(`[AccountSync] ❌ 拉取计划失败 ${account.name} (${account.externalId}):`, String(e));
     }
   }
+
+  // 同步后落盘，重启不丢
+  saveSnapshot();
 
   const errors: string[] = [];
   ok(res, { synced, total: localIds.length, campaignsSynced, accounts: result, errors }, {});
