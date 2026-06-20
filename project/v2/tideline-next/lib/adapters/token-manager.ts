@@ -23,9 +23,15 @@ function cacheKey(accountId: string, platform: string): string {
 export const tokenManager = {
   /** 注册凭证（对接 API 后通过 OAuth 回调写入） */
   register(cred: PlatformCredential): void {
-    credentials.set(cacheKey(cred.accountId, cred.platform), cred);
-    // 清除旧缓存，强制下次重新获取
-    tokenCache.delete(cacheKey(cred.accountId, cred.platform));
+    const key = cacheKey(cred.accountId, cred.platform);
+    credentials.set(key, cred);
+    // 同时写入缓存，避免立即触发刷新
+    if (cred.accessToken) {
+      tokenCache.set(key, {
+        token:     cred.accessToken,
+        expiresAt: Math.floor(cred.expiresAt / 1000),
+      });
+    }
   },
 
   /** 获取有效 token，必要时自动刷新 */
@@ -122,7 +128,7 @@ export const tokenManager = {
       data?: { access_token: string; refresh_token: string; expires_in: number };
     };
 
-    if (data.message !== 'success' || !data.data) {
+    if ((data.message !== 'success' && data.message !== 'OK') || !data.data) {
       throw new Error(`[TokenManager] 巨量引擎返回错误: ${data.message}`);
     }
 
