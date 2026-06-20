@@ -153,11 +153,10 @@ export class OceanEngineAdapter implements IAdAdapter {
   // ── 计划列表 ────────────────────────────────────────────────────────────────
 
   /**
-   * 拉取某本地推账户下的所有项目（含数据）。
-   * 本地推用 v3.0/local/report/project/get/，参数为 local_account_id，
-   * metrics 走 JSON 字符串，一次返回「项目 + 指标」。
-   * 注意：本地推账户体系用 local_account_id，OAuth 授权返回的 advertiser_id
-   * 在本地推应用下即为 local_account_id。
+   * 拉取某本地推账户下的所有项目。
+   * 本地推「获取项目列表」：GET v3.0/local/project/list/
+   * 参数名为 local_account_id（不是 advertiser_id）。
+   * 注：oauth2/advertiser/get 返回的本地推商家 ID 即作为 local_account_id。
    */
   async fetchCampaignList(advertiserId: string): Promise<Array<{
     campaign_id: string;
@@ -167,44 +166,35 @@ export class OceanEngineAdapter implements IAdAdapter {
     budget_mode: string;
   }>> {
     const token = await this.getAccessToken(advertiserId);
-    const today = new Date().toISOString().slice(0, 10);
-    const weekAgo = new Date(Date.now() - 7 * 86400 * 1000).toISOString().slice(0, 10);
 
     const data = await oeRequest<{
       list?: Array<Record<string, unknown>>;
-      rows?: Array<Record<string, unknown>>;
       page_info?: { total_number: number; page: number; page_size: number };
-    }>(`${LOCAL_BASE}report/project/get/`, token, {
+    }>(`${LOCAL_BASE}project/list/`, token, {
       method: 'GET',
       params: {
         local_account_id: advertiserId,
-        start_date: weekAgo,
-        end_date: today,
-        metrics: JSON.stringify(LOCAL_PROMO_METRICS),
         page: '1',
         page_size: '100',
       },
     });
 
-    const rows = data.list ?? data.rows ?? [];
+    const rows = data.list ?? [];
     if (rows.length > 0) {
-      console.log(`[OceanEngine] 本地推项目报表首行字段:`, JSON.stringify(rows[0]).slice(0, 400));
+      console.log(`[OceanEngine] 本地推项目列表首行:`, JSON.stringify(rows[0]).slice(0, 400));
     } else {
-      console.log(`[OceanEngine] 本地推账户 ${advertiserId} 报表无数据（近7天）`);
+      console.log(`[OceanEngine] 本地推账户 ${advertiserId} 暂无项目`);
     }
-    // 报表行可能是扁平结构，也可能 dimensions/metrics 分离，做兼容映射
     return rows.map(raw => {
-      const dim = (raw.dimensions as Record<string, unknown>) ?? raw;
-      const projectId =
-        dim.cdp_project_id ?? dim.project_id ?? raw.cdp_project_id ?? raw.project_id ?? '';
-      const projectName =
-        dim.cdp_project_name ?? dim.project_name ?? raw.cdp_project_name ?? raw.project_name ?? String(projectId);
+      const projectId   = raw.project_id ?? raw.cdp_project_id ?? raw.id ?? '';
+      const projectName = raw.name ?? raw.project_name ?? raw.cdp_project_name ?? String(projectId);
+      const status      = String(raw.status ?? raw.opt_status ?? '');
       return {
         campaign_id:   String(projectId),
         campaign_name: String(projectName),
-        status:        'active',
-        budget:        0,
-        budget_mode:   '',
+        status:        status || 'active',
+        budget:        Number(raw.budget ?? 0),
+        budget_mode:   String(raw.budget_mode ?? ''),
       };
     });
   }

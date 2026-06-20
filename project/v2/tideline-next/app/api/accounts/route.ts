@@ -124,7 +124,7 @@ export const POST: RouteHandler = async (req, res) => {
           externalId: String(camp.campaign_id),
           budget:     camp.budget ?? 0,
           spent:      0, roas: 0, cpm: 0, ctr: 0, cvr: 0, gmv: 0,
-          status:     camp.status === 'CAMPAIGN_STATUS_ENABLE' ? 'active' : 'paused',
+          status:     /disable|pause|delete/i.test(camp.status) ? 'paused' : 'active',
           startDate:  new Date().toISOString().slice(0, 10),
         };
         adCampaigns.push(newCamp);
