@@ -54,6 +54,7 @@ const ROUTES: Record<string, RouteModule> = {
   '/api/brands':     routeBrands,
   '/api/tasks':      routeTasks,
   '/api/accounts':   routeAccounts,
+  '/api/accounts/add-local': { POST: routeAccounts.addLocal },
   '/api/lives':      routeLives,
   '/api/products':   routeProducts,
   '/api/finance':    routeFinance,
