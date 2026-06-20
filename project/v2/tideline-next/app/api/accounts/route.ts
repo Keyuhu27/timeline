@@ -82,9 +82,21 @@ export const POST: RouteHandler = async (req, res) => {
   }
 
   // 本地推账户体系用 local_account_id（与巨量广告 advertiser_id 不同）。
-  // 服务商可在 .env 配 OCEANENGINE_LOCAL_ACCOUNT_IDS（逗号分隔）手动指定要拉取的本地推账户。
+  // 来源1：服务商账户 OCEANENGINE_AGENT_ID，调 agent/advertiser/select 查名下账户
+  // 来源2：.env 手动配 OCEANENGINE_LOCAL_ACCOUNT_IDS（逗号分隔）
   const localIds = (process.env.OCEANENGINE_LOCAL_ACCOUNT_IDS ?? '')
     .split(',').map(s => s.trim()).filter(Boolean);
+
+  const agentId = (process.env.OCEANENGINE_AGENT_ID ?? '').trim();
+  if (agentId) {
+    try {
+      const childIds = await OceanEngineAdapter.fetchAgentAccounts(agentId, accessToken);
+      console.log(`[AccountSync] 代理商 ${agentId} 名下账户: ${childIds.length} 个 → ${childIds.join(', ')}`);
+      for (const cid of childIds) if (!localIds.includes(cid)) localIds.push(cid);
+    } catch (e) {
+      console.error(`[AccountSync] ❌ 查询代理商账户列表失败:`, String(e));
+    }
+  }
   for (const lid of localIds) {
     if (accounts.find(a => a.externalId === lid)) {
       const ex = accounts.find(a => a.externalId === lid)!;

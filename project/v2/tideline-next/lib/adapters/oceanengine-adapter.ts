@@ -109,6 +109,23 @@ export class OceanEngineAdapter implements IAdAdapter {
   // ── 账户列表（静态方法，不需要 advertiserId）────────────────────────────────
 
   /**
+   * 查询服务商(代理商)名下的账户列表（本地推 local_account_id 来源）。
+   * 文档：GET https://api.oceanengine.com/open_api/2/agent/advertiser/select/
+   * 参数 advertiser_id = 服务商账户ID；返回 data.list = 名下账户ID数组。
+   */
+  static async fetchAgentAccounts(agentId: string, accessToken: string): Promise<string[]> {
+    const url = `https://api.oceanengine.com/open_api/2/agent/advertiser/select/?advertiser_id=${encodeURIComponent(agentId)}&page=1&page_size=100`;
+    console.log(`[OceanEngine] GET 代理商账户列表 agent=${agentId}`);
+    const res = await fetch(url, { method: 'GET', headers: { 'Access-Token': accessToken } });
+    const text = await res.text();
+    const json = safeJsonParse<{ code: number; message: string; data: { list?: Array<string | number> } }>(text);
+    if (json.code !== 0) {
+      throw new Error(`巨量引擎 代理商账户列表: ${json.message} (code=${json.code})`);
+    }
+    return (json.data.list ?? []).map(String);
+  }
+
+  /**
    * 拉取当前 AppId 下已授权的广告主列表。
    * 文档：GET https://open.oceanengine.com/open_api/oauth2/advertiser/get/
    */
