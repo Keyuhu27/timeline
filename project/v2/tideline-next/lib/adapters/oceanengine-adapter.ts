@@ -43,7 +43,14 @@ async function oeRequest<T>(
   console.log(`[OceanEngine] ${options.method} ${finalUrl}`, options.body ?? options.params ?? '');
 
   const res = await fetch(finalUrl, fetchInit);
-  const json = await res.json() as { code: number; message: string; data: T };
+  const text = await res.text();
+  let json: { code: number; message: string; data: T };
+  try {
+    json = JSON.parse(text) as { code: number; message: string; data: T };
+  } catch {
+    console.error(`[OceanEngine] 响应非 JSON ${options.method} ${finalUrl} (HTTP ${res.status}): ${text.slice(0, 300)}`);
+    throw new Error(`巨量引擎响应解析失败 [${finalUrl}]: ${text.slice(0, 120)}`);
+  }
 
   if (json.code !== 0) {
     console.error(`[OceanEngine] API 错误 ${options.method} ${finalUrl}: code=${json.code} message=${json.message}`);
@@ -135,7 +142,8 @@ export class OceanEngineAdapter implements IAdAdapter {
 
   /**
    * 拉取某广告主下所有广告计划。
-   * 文档：POST https://ad.oceanengine.com/open_api/2/campaign/get/
+   * 文档：GET https://ad.oceanengine.com/open_api/2/campaign/get/
+   * 注意：巨量引擎 campaign/get 是 GET 接口，参数走 query string。
    */
   async fetchCampaignList(advertiserId: string): Promise<Array<{
     campaign_id: string;
@@ -155,11 +163,11 @@ export class OceanEngineAdapter implements IAdAdapter {
       }>;
       page_info: { total_number: number; page: number; page_size: number };
     }>(`${BASE}campaign/get/`, token, {
-      method: 'POST',
-      body: {
+      method: 'GET',
+      params: {
         advertiser_id: advertiserId,
-        page: 1,
-        page_size: 100,
+        page: '1',
+        page_size: '100',
       },
     });
 
