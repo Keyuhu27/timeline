@@ -81,7 +81,33 @@ export const POST: RouteHandler = async (req, res) => {
     console.log(`[AccountSync] 新增广告主: ${advName} (${advId})`);
   }
 
-  // 同步完广告主后，立即拉取各广告主下的计划列表
+  // 本地推账户体系用 local_account_id（与巨量广告 advertiser_id 不同）。
+  // 服务商可在 .env 配 OCEANENGINE_LOCAL_ACCOUNT_IDS（逗号分隔）手动指定要拉取的本地推账户。
+  const localIds = (process.env.OCEANENGINE_LOCAL_ACCOUNT_IDS ?? '')
+    .split(',').map(s => s.trim()).filter(Boolean);
+  for (const lid of localIds) {
+    if (accounts.find(a => a.externalId === lid)) {
+      const ex = accounts.find(a => a.externalId === lid)!;
+      if (!result.includes(ex)) result.push(ex);
+      continue;
+    }
+    const brandId = `b_${lid}`;
+    const accountId = `a_${lid}`;
+    const colorIdx = (accounts.length % 10) + 1;
+    const newBrand: Brand = { id: brandId, name: `本地推账户 ${lid}`, cat: '本地推', logo: '本' };
+    const newAccount: Account = {
+      id: accountId, name: `本地推账户 ${lid}`, externalId: lid,
+      brand: brandId, color: `c${colorIdx}`,
+      followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0,
+    };
+    brands.push(newBrand);
+    accounts.push(newAccount);
+    result.push(newAccount);
+    synced++;
+    console.log(`[AccountSync] 新增本地推账户(手动配置): ${lid}`);
+  }
+
+  // 同步完账户后，立即拉取各账户下的项目列表
   let campaignsSynced = 0;
   for (const account of result) {
     if (!account.externalId) continue;
