@@ -185,7 +185,7 @@ export class OceanEngineAdapter implements IAdAdapter {
     const token = await this.getAccessToken(advertiserId);
 
     const data = await oeRequest<{
-      list?: Array<Record<string, unknown>>;
+      project_list?: Array<Record<string, unknown>>;
       page_info?: { total_number: number; page: number; page_size: number };
     }>(`${LOCAL_BASE}project/list/`, token, {
       method: 'GET',
@@ -196,22 +196,24 @@ export class OceanEngineAdapter implements IAdAdapter {
       },
     });
 
-    const rows = data.list ?? [];
+    const rows = data.project_list ?? [];
     if (rows.length > 0) {
       console.log(`[OceanEngine] 本地推项目列表首行:`, JSON.stringify(rows[0]).slice(0, 400));
     } else {
       console.log(`[OceanEngine] 本地推账户 ${advertiserId} 暂无项目`);
     }
+    // 字段名按官方文档：project_id / name / project_budget / project_status_first
     return rows.map(raw => {
-      const projectId   = raw.project_id ?? raw.cdp_project_id ?? raw.id ?? '';
-      const projectName = raw.name ?? raw.project_name ?? raw.cdp_project_name ?? String(projectId);
-      const status      = String(raw.status ?? raw.opt_status ?? '');
+      const projectId   = raw.project_id ?? '';
+      const projectName = raw.name ?? String(projectId);
+      // 一级状态：PROJECT_STATUS_ENABLE 启用中 / PROJECT_STATUS_DISABLE 未投放 等
+      const status      = String(raw.project_status_first ?? '');
       return {
         campaign_id:   String(projectId),
         campaign_name: String(projectName),
         status:        status || 'active',
-        budget:        Number(raw.budget ?? 0),
-        budget_mode:   String(raw.budget_mode ?? ''),
+        budget:        Number(raw.project_budget ?? 0),
+        budget_mode:   String(raw.project_budget_mode ?? ''),
       };
     });
   }
