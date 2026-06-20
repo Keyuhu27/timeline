@@ -24,6 +24,7 @@ export const GET: RouteHandler = (req, res) => {
 export async function syncLocalAccounts(
   localIds: string[],
   accessToken: string,
+  nameById?: Map<string, string>,
 ): Promise<{ synced: number; campaignsSynced: number; accounts: Account[] }> {
   let synced = 0;
   let campaignsSynced = 0;
@@ -38,9 +39,10 @@ export async function syncLocalAccounts(
     const brandId = `b_${lid}`;
     const accountId = `a_${lid}`;
     const colorIdx = (accounts.length % 10) + 1;
-    const newBrand: Brand = { id: brandId, name: `本地推账户 ${lid}`, cat: '本地推', logo: '本' };
+    const seedName = nameById?.get(lid)?.trim() || `本地推账户 ${lid}`;
+    const newBrand: Brand = { id: brandId, name: seedName, cat: '本地推', logo: seedName.slice(0, 1) };
     const newAccount: Account = {
-      id: accountId, name: `本地推账户 ${lid}`, externalId: lid,
+      id: accountId, name: seedName, externalId: lid,
       brand: brandId, color: `c${colorIdx}`,
       followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0,
     };
@@ -174,6 +176,22 @@ export const POST: RouteHandler = async (req, res) => {
   const localIds = (process.env.OCEANENGINE_LOCAL_ACCOUNT_IDS ?? '')
     .split(',').map(s => s.trim()).filter(Boolean);
 
+  // 来源3：升级版巨量引擎工作台(EBP) —— 配 OCEANENGINE_EBP_ORG_ID 即可一次性发现名下全部本地推账户
+  const nameById = new Map<string, string>();
+  const ebpOrgId = (process.env.OCEANENGINE_EBP_ORG_ID ?? '').trim();
+  if (ebpOrgId) {
+    try {
+      const list = await OceanEngineAdapter.fetchEbpLocalAccounts(ebpOrgId, accessToken);
+      console.log(`[AccountSync] EBP 工作台 ${ebpOrgId} 名下本地推账户: ${list.length} 个`);
+      for (const { id, name } of list) {
+        if (name) nameById.set(id, name);
+        if (!localIds.includes(id)) localIds.push(id);
+      }
+    } catch (e) {
+      console.error(`[AccountSync] ❌ EBP 工作台账户列表失败:`, String(e));
+    }
+  }
+
   const agentId = (process.env.OCEANENGINE_AGENT_ID ?? '').trim();
   if (agentId) {
     try {
@@ -189,6 +207,6 @@ export const POST: RouteHandler = async (req, res) => {
     return err(res, '未配置本地推账户：请在 .env 设置 OCEANENGINE_LOCAL_ACCOUNT_IDS（从本地推后台 URL 的 advid 取得）');
   }
 
-  const r = await syncLocalAccounts(localIds, accessToken);
+  const r = await syncLocalAccounts(localIds, accessToken, nameById);
   ok(res, { synced: r.synced, total: localIds.length, campaignsSynced: r.campaignsSynced, accounts: r.accounts, errors: [] }, {});
 };

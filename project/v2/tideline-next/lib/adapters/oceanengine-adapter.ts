@@ -137,6 +137,56 @@ export class OceanEngineAdapter implements IAdAdapter {
   }
 
   /**
+   * 获取升级版巨量引擎工作台(EBP)下的本地推账户列表 —— 多门店自动发现。
+   * 文档：GET https://api.oceanengine.com/open_api/2/ebp/advertiser/list/
+   * 入参 account_source=LOCAL；返回 data.account_list[].account_id 即 local_account_id。
+   * 自动翻页拉全（page_size 上限 100）。
+   */
+  static async fetchEbpLocalAccounts(
+    orgId: string,
+    accessToken: string,
+  ): Promise<Array<{ id: string; name: string }>> {
+    const out: Array<{ id: string; name: string }> = [];
+    let page = 1;
+    const pageSize = 100;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const args = {
+        enterprise_organization_id: Number(orgId),
+        account_source: 'LOCAL',
+        page,
+        page_size: pageSize,
+      };
+      const qs = Object.entries(args)
+        .map(([k, v]) => `${k}=${encodeURIComponent(typeof v === 'string' ? v : String(v))}`)
+        .join('&');
+      const url = `https://api.oceanengine.com/open_api/2/ebp/advertiser/list/?${qs}`;
+      console.log(`[OceanEngine] GET EBP 本地推账户列表 org=${orgId} page=${page}`);
+      const res = await fetch(url, { method: 'GET', headers: { 'Access-Token': accessToken } });
+      const json = safeJsonParse<{
+        code: number; message: string;
+        data: {
+          account_list?: Array<{ account_id: string | number; account_type: string; account_name: string }>;
+          page_info?: { total_page: number };
+        };
+      }>(await res.text());
+      if (json.code !== 0) {
+        throw new Error(`巨量引擎 EBP 账户列表: ${json.message} (code=${json.code})`);
+      }
+      for (const a of json.data.account_list ?? []) {
+        // account_source=LOCAL 已过滤，account_type 兜底再校验一次
+        if (!a.account_type || /LOCAL/i.test(a.account_type)) {
+          out.push({ id: String(a.account_id), name: a.account_name ?? '' });
+        }
+      }
+      const totalPage = json.data.page_info?.total_page ?? page;
+      if (page >= totalPage) break;
+      page++;
+    }
+    return out;
+  }
+
+  /**
    * 拉取当前 AppId 下已授权的广告主列表。
    * 文档：GET https://open.oceanengine.com/open_api/oauth2/advertiser/get/
    */
