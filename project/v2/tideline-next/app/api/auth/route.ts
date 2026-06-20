@@ -65,8 +65,12 @@ export const GET: RouteHandler = async (req, res) => {
   }
 
   if (!advertiser_id) return err(res, '缺少 advertiser_id');
-  const params = new URLSearchParams({ app_id: APP_ID, redirect_uri: CALLBACK_URL, state: String(advertiser_id) });
-  redirect(res, `${BASE_URL}/open_api/oauth2/authorize/?${params}`);
+  // 正确的授权页是 audit/oauth.html（oauth2/authorize/ 已 404）；material_auth=1 带素材授权
+  const params = new URLSearchParams({
+    app_id: APP_ID, state: String(advertiser_id),
+    material_auth: '1', redirect_uri: CALLBACK_URL,
+  });
+  redirect(res, `${BASE_URL}/audit/oauth.html?${params}`);
 };
 
 export const POST: RouteHandler = (req, res) => {
