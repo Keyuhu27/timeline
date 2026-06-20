@@ -1,6 +1,8 @@
 import type { IAdAdapter, CampaignStats, CreateCampaignParams, UpdateCampaignParams } from './ad-adapter';
 
 const BASE = 'https://ad.oceanengine.com/open_api/2/';
+// 巨量本地推（升级版）走 v3.0 local 接口，账户是"项目/广告"结构，非经典版"计划"
+const LOCAL_BASE = 'https://api.oceanengine.com/open_api/v3.0/local/';
 const ADVERTISER_LIST_URL = 'https://open.oceanengine.com/open_api/oauth2/advertiser/get/';
 
 // ─── 本地推指标列表 ───────────────────────────────────────────────────────────
@@ -163,16 +165,17 @@ export class OceanEngineAdapter implements IAdAdapter {
     budget_mode: string;
   }>> {
     const token = await this.getAccessToken(advertiserId);
+    // 本地推「项目列表」：GET v3.0/local/project/list/
     const data = await oeRequest<{
       list: Array<{
-        campaign_id: string;
-        campaign_name: string;
+        project_id: string;
+        name: string;
         status: string;
         budget: number;
         budget_mode: string;
       }>;
       page_info: { total_number: number; page: number; page_size: number };
-    }>(`${BASE}campaign/get/`, token, {
+    }>(`${LOCAL_BASE}project/list/`, token, {
       method: 'GET',
       params: {
         advertiser_id: advertiserId,
@@ -181,7 +184,14 @@ export class OceanEngineAdapter implements IAdAdapter {
       },
     });
 
-    return data.list ?? [];
+    // 映射本地推项目字段 → 通用计划字段
+    return (data.list ?? []).map(p => ({
+      campaign_id:   String(p.project_id),
+      campaign_name: p.name,
+      status:        p.status,
+      budget:        p.budget,
+      budget_mode:   p.budget_mode,
+    }));
   }
 
   // ── 统计数据 ────────────────────────────────────────────────────────────────
