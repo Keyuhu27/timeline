@@ -32,58 +32,14 @@ export const POST: RouteHandler = async (req, res) => {
     return err(res, `无法获取 Access Token: ${String(e)}`);
   }
 
-  // 从巨量引擎拉所有授权广告主
-  let advertiserList: Array<{ advertiser_id: string; advertiser_name: string; company: string; status: string }>;
-  try {
-    advertiserList = await OceanEngineAdapter.fetchAdvertiserList(appId, appSecret, accessToken);
-  } catch (e) {
-    return err(res, `拉取广告主列表失败: ${String(e)}`);
-  }
-
-  if (!advertiserList.length) {
-    return ok(res, { synced: 0, accounts: [] }, {});
-  }
-
   let synced = 0;
   const result: Account[] = [];
 
-  for (const adv of advertiserList) {
-    const advId = String(adv.advertiser_id);
-    const advName = adv.advertiser_name || adv.company || advId;
-    const logo = advName.slice(0, 1);
-
-    // 检查是否已存在
-    const existing = accounts.find(a => a.externalId === advId);
-    if (existing) {
-      result.push(existing);
-      continue;
-    }
-
-    // 生成新的品牌记录
-    const brandId = `b_${advId}`;
-    const accountId = `a_${advId}`;
-    const colorIdx = (accounts.length % 10) + 1;
-
-    const newBrand: Brand = {
-      id: brandId, name: advName, cat: '本地推', logo,
-    };
-    const newAccount: Account = {
-      id: accountId, name: advName, externalId: advId,
-      brand: brandId, color: `c${colorIdx}`,
-      followers: 0, growth7d: 0, gmv7d: 0,
-      live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0,
-    };
-
-    brands.push(newBrand);
-    accounts.push(newAccount);
-    result.push(newAccount);
-    synced++;
-    console.log(`[AccountSync] 新增广告主: ${advName} (${advId})`);
-  }
-
-  // 本地推账户体系用 local_account_id（与巨量广告 advertiser_id 不同）。
-  // 来源1：服务商账户 OCEANENGINE_AGENT_ID，调 agent/advertiser/select 查名下账户
-  // 来源2：.env 手动配 OCEANENGINE_LOCAL_ACCOUNT_IDS（逗号分隔）
+  // 本地推账户体系用 local_account_id（16 位，从本地推后台 URL 的 advid 取得），
+  // 与 oauth2/advertiser/get 返回的 19 位巨量广告 advertiser_id 是两套编号——
+  // 后者对本地推接口会 40002，因此这里只同步 local_account_id，不再拉广告主列表。
+  // 来源1：.env 手动配 OCEANENGINE_LOCAL_ACCOUNT_IDS（逗号分隔）
+  // 来源2：服务商账户 OCEANENGINE_AGENT_ID（agent/advertiser/select，待权限放通后启用）
   const localIds = (process.env.OCEANENGINE_LOCAL_ACCOUNT_IDS ?? '')
     .split(',').map(s => s.trim()).filter(Boolean);
 
@@ -97,6 +53,11 @@ export const POST: RouteHandler = async (req, res) => {
       console.error(`[AccountSync] ❌ 查询代理商账户列表失败:`, String(e));
     }
   }
+
+  if (!localIds.length) {
+    return err(res, '未配置本地推账户：请在 .env 设置 OCEANENGINE_LOCAL_ACCOUNT_IDS（从本地推后台 URL 的 advid 取得）');
+  }
+
   for (const lid of localIds) {
     if (accounts.find(a => a.externalId === lid)) {
       const ex = accounts.find(a => a.externalId === lid)!;
@@ -125,6 +86,13 @@ export const POST: RouteHandler = async (req, res) => {
     if (!account.externalId) continue;
     try {
       const campList = await (adAdapter as OceanEngineAdapter).fetchCampaignList(account.externalId);
+      // 用项目里的门店名（poi_name）回填账户/品牌真实名称
+      const poiName = campList.map(c => c.poi_name).find(Boolean);
+      if (poiName && account.name.startsWith('本地推账户')) {
+        account.name = poiName;
+        const b = brands.find(br => br.id === account.brand);
+        if (b) { b.name = poiName; b.logo = poiName.slice(0, 1); }
+      }
       for (const camp of campList) {
         const existing = adCampaigns.find(c => c.externalId === String(camp.campaign_id));
         if (existing) continue;
@@ -149,5 +117,5 @@ export const POST: RouteHandler = async (req, res) => {
   }
 
   const errors: string[] = [];
-  ok(res, { synced, total: advertiserList.length, campaignsSynced, accounts: result, errors }, {});
+  ok(res, { synced, total: localIds.length, campaignsSynced, accounts: result, errors }, {});
 };

@@ -181,6 +181,7 @@ export class OceanEngineAdapter implements IAdAdapter {
     status: string;
     budget: number;
     budget_mode: string;
+    poi_name: string;
   }>> {
     const token = await this.getAccessToken(advertiserId);
 
@@ -208,12 +209,14 @@ export class OceanEngineAdapter implements IAdAdapter {
       const projectName = raw.name ?? String(projectId);
       // 一级状态：PROJECT_STATUS_ENABLE 启用中 / PROJECT_STATUS_DISABLE 未投放 等
       const status      = String(raw.project_status_first ?? '');
+      const poi = (raw.poi_info ?? {}) as Record<string, unknown>;
       return {
         campaign_id:   String(projectId),
         campaign_name: String(projectName),
         status:        status || 'active',
         budget:        Number(raw.project_budget ?? 0),
         budget_mode:   String(raw.project_budget_mode ?? ''),
+        poi_name:      String(poi.poi_name ?? ''),
       };
     });
   }
