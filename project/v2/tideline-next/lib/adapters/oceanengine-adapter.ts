@@ -328,7 +328,10 @@ export class OceanEngineAdapter implements IAdAdapter {
       page_size: '100',
     };
     if (projectIds && projectIds.length > 0) {
-      params.filtering = JSON.stringify({ cdp_project_ids: projectIds.map(Number) });
+      // 项目ID 是 19 位大整数，经 Number() 会精度丢失（…266→…000）。
+      // 手动拼 JSON，让 ID 以原始数字字面量输出，绕开 JS 大整数精度问题。
+      const idLiterals = projectIds.map(id => String(id).replace(/[^0-9]/g, '')).filter(Boolean);
+      params.filtering = `{"cdp_project_ids":[${idLiterals.join(',')}]}`;
     }
 
     const data = await oeRequest<{

@@ -4,7 +4,7 @@
 import type { AutoRule, AdCampaign, OperationLog } from '../../types/index';
 import type { CampaignStats }                       from '../adapters/ad-adapter';
 import { adAdapter, alertService }                  from '../adapters/index';
-import { autoRules, adCampaigns, operationLogs }   from '../db';
+import { autoRules, adCampaigns, operationLogs, accounts } from '../db';
 
 // ─── 运算符比较 ───────────────────────────────────────────────────────────
 function compare(value: number, operator: AutoRule['operator'], threshold: number): boolean {
@@ -173,9 +173,11 @@ export async function runRulesOnce(): Promise<{
     // 拉取实时数据
     let stats: CampaignStats;
     try {
+      // 本地推报表用 local_account_id（账户 externalId），不是内部 a_ 前缀ID
+      const acct = accounts.find(a => a.id === campaign.account);
       stats = await adAdapter.fetchCampaignStats(
         campaign.externalId ?? campaign.id,
-        campaign.account,
+        acct?.externalId ?? campaign.account,
       );
       // 同步到内存 DB
       campaign.roas  = stats.roas;
