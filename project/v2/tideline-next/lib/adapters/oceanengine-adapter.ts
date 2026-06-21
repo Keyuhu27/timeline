@@ -141,9 +141,10 @@ export class OceanEngineAdapter implements IAdAdapter {
    * 文档：GET https://api.oceanengine.com/open_api/2/ebp/level/get/
    * 返回原始 JSON（结构含组织ID/名称），供运维 curl 后读取 org id。
    */
-  static async fetchEbpLevel(accessToken: string): Promise<unknown> {
-    const url = `https://api.oceanengine.com/open_api/2/ebp/level/get/`;
-    console.log(`[OceanEngine] GET EBP 工作台层级关系`);
+  static async fetchEbpLevel(accessToken: string, advertiserId: string): Promise<unknown> {
+    const aid = String(advertiserId).replace(/[^0-9]/g, '');
+    const url = `https://api.oceanengine.com/open_api/2/ebp/level/get/?advertiser_id=${aid}`;
+    console.log(`[OceanEngine] GET EBP 工作台层级关系 advertiser_id=${aid}`);
     const res = await fetch(url, { method: 'GET', headers: { 'Access-Token': accessToken } });
     const json = safeJsonParse<{ code: number; message: string; data: unknown }>(await res.text());
     if (json.code !== 0) {

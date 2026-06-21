@@ -124,16 +124,33 @@ export async function syncLocalAccounts(
   return { synced, campaignsSynced, accounts: result };
 }
 
-// GET /api/accounts/ebp-orgs — 诊断：拉工作台层级关系，从返回里读 enterprise_organization_id
-export const ebpOrgs: RouteHandler = async (_req, res) => {
+// GET /api/accounts/ebp-orgs[?advertiser_id=XXX]
+// 诊断：拉工作台层级关系，从返回里读 enterprise_organization_id。
+// /2/ebp/level/get/ 需要 advertiser_id；不传时列出 OAuth 已授权的候选ID供挑选。
+export const ebpOrgs: RouteHandler = async (req, res) => {
   let accessToken: string;
   try {
     accessToken = await tokenManager.getAnyToken('oceanengine');
   } catch (e) {
     return err(res, `无法获取 Access Token: ${String(e)}`);
   }
+
+  const advertiserId = (req.query.advertiser_id ?? '').trim();
+  if (!advertiserId) {
+    // 列出已授权账户ID，让用户挑一个再带 ?advertiser_id= 重试
+    const candidates = Array.from(new Set(
+      tokenManager.getAllCredentials()
+        .flatMap(c => [c.advertiserId, c.accountId])
+        .filter((x): x is string => !!x),
+    ));
+    return ok(res, {
+      hint: '请带上 ?advertiser_id=<下面某个ID> 重试，例如 /api/accounts/ebp-orgs?advertiser_id=' + (candidates[0] ?? 'XXX'),
+      candidates,
+    }, {});
+  }
+
   try {
-    const data = await OceanEngineAdapter.fetchEbpLevel(accessToken);
+    const data = await OceanEngineAdapter.fetchEbpLevel(accessToken, advertiserId);
     ok(res, data, {});
   } catch (e) {
     err(res, `获取工作台层级失败: ${String(e)}`);
