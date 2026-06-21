@@ -55,6 +55,7 @@ const ROUTES: Record<string, RouteModule> = {
   '/api/tasks':      routeTasks,
   '/api/accounts':   routeAccounts,
   '/api/accounts/add-local': { POST: routeAccounts.addLocal },
+  '/api/accounts/ebp-orgs':  { GET: routeAccounts.ebpOrgs },
   '/api/lives':      routeLives,
   '/api/products':   routeProducts,
   '/api/finance':    routeFinance,

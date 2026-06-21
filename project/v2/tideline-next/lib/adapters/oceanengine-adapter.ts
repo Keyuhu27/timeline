@@ -137,6 +137,22 @@ export class OceanEngineAdapter implements IAdAdapter {
   }
 
   /**
+   * 拉取升级版巨量引擎工作台/团队层级关系 —— 用来发现 enterprise_organization_id。
+   * 文档：GET https://api.oceanengine.com/open_api/2/ebp/level/get/
+   * 返回原始 JSON（结构含组织ID/名称），供运维 curl 后读取 org id。
+   */
+  static async fetchEbpLevel(accessToken: string): Promise<unknown> {
+    const url = `https://api.oceanengine.com/open_api/2/ebp/level/get/`;
+    console.log(`[OceanEngine] GET EBP 工作台层级关系`);
+    const res = await fetch(url, { method: 'GET', headers: { 'Access-Token': accessToken } });
+    const json = safeJsonParse<{ code: number; message: string; data: unknown }>(await res.text());
+    if (json.code !== 0) {
+      throw new Error(`巨量引擎 EBP 层级关系: ${json.message} (code=${json.code})`);
+    }
+    return json.data;
+  }
+
+  /**
    * 获取升级版巨量引擎工作台(EBP)下的本地推账户列表 —— 多门店自动发现。
    * 文档：GET https://api.oceanengine.com/open_api/2/ebp/advertiser/list/
    * 入参 account_source=LOCAL；返回 data.account_list[].account_id 即 local_account_id。

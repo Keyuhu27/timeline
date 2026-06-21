@@ -124,6 +124,22 @@ export async function syncLocalAccounts(
   return { synced, campaignsSynced, accounts: result };
 }
 
+// GET /api/accounts/ebp-orgs — 诊断：拉工作台层级关系，从返回里读 enterprise_organization_id
+export const ebpOrgs: RouteHandler = async (_req, res) => {
+  let accessToken: string;
+  try {
+    accessToken = await tokenManager.getAnyToken('oceanengine');
+  } catch (e) {
+    return err(res, `无法获取 Access Token: ${String(e)}`);
+  }
+  try {
+    const data = await OceanEngineAdapter.fetchEbpLevel(accessToken);
+    ok(res, data, {});
+  } catch (e) {
+    err(res, `获取工作台层级失败: ${String(e)}`);
+  }
+};
+
 // POST /api/accounts/add-local  { local_account_id: "..." } 或 { local_account_ids: ["...","..."] }
 // 运行时新增本地推账户，无需改 .env / rebuild；落 SQLite，重启不丢。
 export const addLocal: RouteHandler = async (req, res) => {
