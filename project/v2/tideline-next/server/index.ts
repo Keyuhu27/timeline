@@ -47,6 +47,7 @@ import * as routeAiAnalyze   from '../app/api/ai/analyze/route';
 import * as routeAiDecisions from '../app/api/ai/decisions/route';
 import * as routeAiCreative  from '../app/api/ai/creative/route';
 import * as routeAiWorkflow  from '../app/api/ai/workflow/route';
+import * as routeDebugOE     from '../app/api/debug/oe/route';
 
 // 启动即注水：把上次同步的真实数据从磁盘恢复到内存
 loadPersisted();
@@ -81,6 +82,9 @@ const ROUTES: Record<string, RouteModule> = {
   '/api/ai/decisions': routeAiDecisions,
   '/api/ai/creative':  routeAiCreative,
   '/api/ai/workflow':  routeAiWorkflow,
+  '/api/debug/oe/account-report':   { GET: routeDebugOE.accountReport },
+  '/api/debug/oe/project-report':   { GET: routeDebugOE.projectReport },
+  '/api/debug/oe/promotion-report': { GET: routeDebugOE.promotionReport },
 };
 
 const PUBLIC_ROUTES = new Set(['/api/auth/login', '/api/auth', '/api/auth/callback']);
