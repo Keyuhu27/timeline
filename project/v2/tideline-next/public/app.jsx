@@ -8,9 +8,8 @@ const NAV_GROUPS = [
     id: 'workflow',
     label: '工作流',
     items: [
-      { id: 'home',     label: '工作流首页', icon: 'workflow', badge: 7 },
+      { id: 'home',     label: '工作流首页', icon: 'workflow' },
       { id: 'data',     label: '数据分析',   icon: 'chart' },
-      { id: 'schedule', label: '排期与发布', icon: 'calendar' },
     ],
   },
   {
@@ -46,15 +45,16 @@ const NAV_BY_ID = NAV_GROUPS.flatMap(g => g.items).reduce((m, it) => (m[it.id] =
 // 显示所有品牌（动态从 TL.brands 读取）
 const PINNED_BRANDS = null; // null = 显示全部
 
-const DEFAULT_MODULE_ORDER = ['today', 'kanban', 'aiDecisions', 'activity', 'brands', 'schedule'];
+const DEFAULT_MODULE_ORDER = ['today', 'campaigns', 'activityLogs', 'aiDecisions'];
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
-  "homeOrder": ["today", "kanban", "aiDecisions", "activity", "brands", "schedule"]
+  "homeOrder": ["today", "campaigns", "activityLogs", "aiDecisions"]
 }/*EDITMODE-END*/;
 
 function App() {
   const [view, setView] = useState('home');
   const [dataSubView, setDataSubView] = useState('overview');
+  const [brandId, setBrandId] = useState(null);
   const [task, setTask] = useState(null);
   const [live, setLive] = useState(null);
   // 直播大屏：独立全屏覆盖层，不占用工作区版心
@@ -84,7 +84,7 @@ function App() {
     data: ['工作流', '数据分析', { overview: '总览', accounts: '账号分析', lives: '直播数据', content: '内容数据', traffic: '流量来源' }[dataSubView]],
     aiVideo: ['内容 & 投放', 'AI 视频工作台', '会话 · #4128'],
     aiCopy: ['内容 & 投放', 'AI 文案/标题', '基础模板'],
-    schedule: ['工作流', '排期与发布', '2026 / 05'],
+    brandDetail: ['工作流', '在管品牌', TL.displayBrandName(TL.brandById && TL.brandById(brandId), (TL.accounts || []).find(a => a.brand === brandId))],
   }[view] || baseCrumb;
 
   return (
@@ -97,10 +97,10 @@ function App() {
           <span className="sb-brand-sub">v3.2</span>
         </div>
         <div className="sb-org">
-          <div className="sb-org-logo">N</div>
+          <div className="sb-org-logo">潮</div>
           <div className="col tight grow">
-            <span style={{ fontSize: 12.5, fontWeight: 500 }}>南极星 MCN</span>
-            <span className="muted" style={{ fontSize: 10.5 }}>5 品牌 · 12 账号</span>
+            <span style={{ fontSize: 12.5, fontWeight: 500 }}>潮线本地推</span>
+            <span className="muted" style={{ fontSize: 10.5 }}>{brands.length} 品牌 · {(TL.accounts || []).length} 账户</span>
           </div>
           <Icon name="chevD" size={12} className="muted" />
         </div>
@@ -121,12 +121,17 @@ function App() {
         ))}
 
         <div className="sb-section-title">在管品牌</div>
-        {brands.map(b => (
-          <div key={b.id} className="sb-item" onClick={() => setView('data')} style={{ cursor: 'pointer' }}>
-            <span style={{ width: 15, height: 15, borderRadius: 4, background: 'var(--bg-subtle)', border: '1px solid var(--border)', display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 600 }}>{b.logo}</span>
-            <span>{b.name}</span>
-          </div>
-        ))}
+        {brands.map(b => {
+          const acc = (TL.accounts || []).find(a => a.brand === b.id);
+          const name = TL.displayBrandName(b, acc);
+          return (
+            <div key={b.id} className={`sb-item ${view === 'brandDetail' && brandId === b.id ? 'active' : ''}`}
+                 onClick={() => { setBrandId(b.id); setView('brandDetail'); }} style={{ cursor: 'pointer' }}>
+              <span style={{ width: 15, height: 15, borderRadius: 4, background: 'var(--bg-subtle)', border: '1px solid var(--border)', display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 600 }}>{b.logo || name.slice(0, 1)}</span>
+              <span>{name}</span>
+            </div>
+          );
+        })}
         <div className="sb-item muted">
           <Icon name="plus" size={15} className="sb-item-icon" />
           <span>添加品牌</span>
@@ -179,6 +184,7 @@ function App() {
         {view === 'home' && <Home moduleOrder={tweaks.homeOrder || DEFAULT_MODULE_ORDER} openTask={setTask} />}
 
         {view === 'data' && <Data subView={dataSubView} setSubView={setDataSubView} openLive={setLive} />}
+        {view === 'brandDetail' && <BrandDetail brandId={brandId} onBack={() => setView('home')} />}
         {view === 'aiVideo' && <AiVideo />}
         {view === 'aiCopy' && <AiCopy />}
         {view === 'library' && <Library />}
@@ -246,11 +252,9 @@ function LiveScreenOverlay({ onClose }) {
 function HomeTweaks({ tweaks, setTweak }) {
   const MOD_LABEL = {
     today: '今日数据卡',
-    kanban: '工作流看板',
-    activity: '团队动态 + 提醒',
-    quickAi: 'AI 工作台入口',
-    brands: '在管品牌',
-    schedule: '本周排期速览',
+    campaigns: '本地推计划表',
+    activityLogs: '规则引擎动态',
+    aiDecisions: 'AI 决策',
   };
   const order = tweaks.homeOrder || DEFAULT_MODULE_ORDER;
   const move = (idx, dir) => {

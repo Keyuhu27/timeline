@@ -138,6 +138,7 @@ function renderShell(session: { name: string; role: string }): string {
 <script type="text/babel" src="/tweaks-panel.jsx"></script>
 <script type="text/babel" src="/views/home.jsx"></script>
 <script type="text/babel" src="/views/data.jsx"></script>
+<script type="text/babel" src="/views/brand-detail.jsx"></script>
 <script type="text/babel" src="/views/ai-video.jsx"></script>
 <script type="text/babel" src="/views/ai-copy.jsx"></script>
 <script type="text/babel" src="/views/library.jsx"></script>

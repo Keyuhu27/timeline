@@ -192,3 +192,44 @@ TL.fmtCount = (n) => {
 TL.brandById = (id) => TL.brands.find(b => b.id === id);
 TL.userById  = (id) => TL.team.find(u => u.id === id);
 TL.accountById = (id) => TL.accounts.find(a => a.id === id);
+
+// ── 展示层 helper：UI 默认只显示业务名称，过滤内部编码（a_/b_/c_/Localad-）──
+const INTERNAL_ID_RE = /^(a_|b_|c_|Localad-)/i;
+TL._isInternalName = (s) => !s || INTERNAL_ID_RE.test(String(s));
+
+// 品牌名优先级：brand.name → account.name → 本地推账户 ${externalId}
+TL.displayBrandName = (brand, account) =>
+  (brand && !TL._isInternalName(brand.name) && brand.name) ||
+  (account && !TL._isInternalName(account.name) && account.name) ||
+  (account && account.externalId ? `本地推账户 ${account.externalId}` : '未命名品牌');
+
+// 账户名优先级：account.name → brand.name → 本地推账户 ${externalId}
+TL.displayAccountName = (account, brand) =>
+  (account && !TL._isInternalName(account.name) && account.name) ||
+  (brand && !TL._isInternalName(brand.name) && brand.name) ||
+  (account && account.externalId ? `本地推账户 ${account.externalId}` : '未命名账户');
+
+// 计划名优先级：campaign.name → 未命名项目 ${externalId}
+TL.displayCampaignName = (c) =>
+  (c && c.name && !TL._isInternalName(c.name) && c.name) ||
+  (c && c.externalId ? `未命名项目 ${c.externalId}` : '未命名项目');
+
+// 状态归一：巨量/内部多种取值 → active/paused/deleted/unknown
+TL._normStatus = (s) => {
+  const v = String(s || '').toUpperCase();
+  if (/PAUSE|DISABLE/.test(v)) return 'paused';
+  if (/DELETE/.test(v))        return 'deleted';
+  if (/ENABLE|ACTIVE/.test(v) || v === 'ACTIVE') return 'active';
+  if (v === 'ENDED' || v === 'DONE') return 'ended';
+  return v ? 'unknown' : 'active';
+};
+TL.statusLabel = (s) => ({
+  active: '投放中', paused: '已暂停', deleted: '已删除', ended: '已结束', unknown: '未知',
+}[TL._normStatus(s)] || '未知');
+TL.statusTone = (s) => ({ active: 'success', paused: 'warn', deleted: 'danger' }[TL._normStatus(s)] || '');
+
+// 重新拉取账户/品牌，并广播给侧栏与各页面刷新
+TL._refresh = async function() {
+  await TL._loadFromApi();
+  window.dispatchEvent(new CustomEvent('tl:brands-updated'));
+};

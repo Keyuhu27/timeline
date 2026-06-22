@@ -17,6 +17,14 @@ export const GET: RouteHandler = (req, res) => {
   ok(res, items, { total, page, pageSize });
 };
 
+// 巨量项目状态 → 内部 status。支持 ENABLE/PAUSED/DISABLE/DELETE/DONE 等多种取值。
+function normalizeProjectStatus(raw: unknown): AdCampaign['status'] {
+  const v = String(raw ?? '').toUpperCase();
+  if (/DELETE/.test(v))             return 'deleted';
+  if (/PAUSE|DISABLE|DONE/.test(v)) return 'paused';
+  return 'active';
+}
+
 /**
  * 把一批本地推 local_account_id 同步进内存（账户/品牌 upsert），
  * 再逐账户拉项目列表 + 项目报表，最后落盘。供 sync 与 add-local 复用。
@@ -82,8 +90,11 @@ export async function syncLocalAccounts(
         const st = statsById.get(String(camp.campaign_id));
         const existing = adCampaigns.find(c => c.externalId === String(camp.campaign_id));
         if (existing) {
+          existing.status = normalizeProjectStatus(camp.status);
+          existing.lastSyncAt = now;
           if (st) Object.assign(existing, {
             spent: st.spent, cpm: st.cpm, ctr: st.ctr, roas: st.roas, gmv: st.gmv,
+            impressions: st.impressions, clicks: st.clicks,
             storeVisits: st.storeVisits, phoneCalls: st.phoneCalls,
             mapSearches: st.mapSearches, coupons: st.coupons, leads: st.leads,
             costPerLead: st.leads > 0 ? st.spent / st.leads : 0,
@@ -101,6 +112,8 @@ export async function syncLocalAccounts(
           spent:      st?.spent ?? 0,
           cpm:        st?.cpm   ?? 0,
           ctr:        st?.ctr   ?? 0,
+          impressions: st?.impressions ?? 0,
+          clicks:      st?.clicks      ?? 0,
           roas:       st?.roas  ?? 0,
           gmv:        st?.gmv   ?? 0,
           cvr:        0,
@@ -110,7 +123,7 @@ export async function syncLocalAccounts(
           coupons:     st?.coupons     ?? 0,
           leads:       st?.leads       ?? 0,
           costPerLead: st && st.leads > 0 ? st.spent / st.leads : 0,
-          status:     /DISABLE|DELETE|DONE/i.test(camp.status) ? 'paused' : 'active',
+          status:     normalizeProjectStatus(camp.status),
           startDate:  new Date().toISOString().slice(0, 10),
           lastSyncAt: now,
         };

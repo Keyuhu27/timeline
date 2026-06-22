@@ -107,11 +107,13 @@ export interface AdCampaign {
   coupons: number;      // 发券量
   leads: number;        // 总线索量
   costPerLead: number;  // 线索成本
+  impressions?: number;
+  clicks?: number;
   // 兼容旧字段
   roas: number;
   cvr: number;
   gmv: number;
-  status: 'active' | 'paused' | 'ended';
+  status: 'active' | 'paused' | 'ended' | 'deleted';
   startDate: string;
   externalId?: string;
   lastSyncAt?: number;
