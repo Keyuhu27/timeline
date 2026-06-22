@@ -23,44 +23,16 @@ const Monitor = function Monitor() {
 
         {tab === 'competitors' && (
           <div className="card">
-            <table className="tbl">
-              <thead>
-                <tr>
-                  <th>账号</th>
-                  <th>品类</th>
-                  <th className="num">粉丝</th>
-                  <th className="num">30日 GMV</th>
-                  <th className="num">环比</th>
-                  <th>最近爆款打法</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {TL.competitors.map((c, i) => (
-                  <tr key={i}>
-                    <td>
-                      <div className="row tight">
-                        <span className={`av sm av-c${(i%6)+1}`}>{c.name[0]}</span>
-                        <span style={{ fontWeight: 500 }}>{c.name}</span>
-                      </div>
-                    </td>
-                    <td><Chip>{c.cat}</Chip></td>
-                    <td className="num mono">{TL.fmtCount(c.followers)}</td>
-                    <td className="num mono"><b>¥ {TL.fmtMoney(c.gmv30d)}</b></td>
-                    <td className="num mono">
-                      <span style={{ color: c.delta >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                        {TL.fmtPct(c.delta)}
-                      </span>
-                    </td>
-                    <td style={{ fontSize: 12 }} className="muted">{c.hot}</td>
-                    <td className="row tight">
-                      <button className="btn ghost icon sm"><Icon name="eye" size={12} /></button>
-                      <button className="btn ghost icon sm"><Icon name="bell" size={12} /></button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div style={{ padding: '64px 24px', textAlign: 'center' }}>
+              <Icon name="radar" size={32} className="muted" />
+              <div style={{ marginTop: 12, fontWeight: 500, fontSize: 14 }}>竞品监控待接入</div>
+              <div className="muted" style={{ marginTop: 6, fontSize: 12.5, maxWidth: 320, margin: '6px auto 0' }}>
+                请通过"添加监控"绑定竞品账号后，系统将每 6 小时自动同步粉丝、GMV 及爆款内容数据。
+              </div>
+              <button className="btn primary" style={{ marginTop: 16 }}>
+                <Icon name="plus" size={13} /> 添加竞品账号
+              </button>
+            </div>
           </div>
         )}
 

@@ -48,16 +48,36 @@ const Data = function Data({ subView, setSubView, openLive }) {
 
 // ---- Overview --------------------------------------------------------------
 function OverviewTab() {
-  const totalGmv = TL.accounts.reduce((s, a) => s + a.gmv7d, 0);
+  const [adData, setAdData] = React.useState(null);
+  React.useEffect(() => {
+    fetch('/api/ads').then(r => r.json()).then(d => {
+      if (d.data) setAdData(d.data);
+    }).catch(() => {});
+  }, []);
+
+  const campaigns = adData?.campaigns || [];
+  const totalSpent = campaigns.reduce((s, c) => s + (c.spent || 0), 0);
+  const totalGmv = campaigns.reduce((s, c) => s + (c.gmv || 0), 0);
+  const totalLeads = campaigns.reduce((s, c) => s + (c.leads || c.storeVisits || 0), 0);
   const totalFans = TL.accounts.reduce((s, a) => s + a.followers, 0);
   const labels = Array.from({ length: 14 }, (_, i) => `${4 + Math.floor((i+27)/30)}/${((i+27)%30)+1}`);
+
+  // Brand GMV breakdown using real brand names
+  const colors = ['var(--c1)', 'var(--c2)', 'var(--c3)', 'var(--c4)', 'var(--c5)'];
+  const brandRows = TL.brands.slice(0, 5).map((b, i) => {
+    const bCampaigns = campaigns.filter(c => c.brand === b.id);
+    const bGmv = bCampaigns.reduce((s, c) => s + (c.gmv || 0), 0);
+    return { id: b.id, name: b.name, gmv: bGmv, color: colors[i] };
+  });
+  const totalBrandGmv = brandRows.reduce((s, r) => s + r.gmv, 0) || 1;
+
   return (
     <>
       <div className="stat-row">
-        <Stat label="7日 GMV 合计" value={`¥ ${TL.fmtMoney(totalGmv)}`} delta="+12.6%" sub="vs 上周" />
+        <Stat label="7日投放花费" value={totalSpent > 0 ? `¥ ${TL.fmtMoney(totalSpent)}` : '—'} sub={campaigns.length > 0 ? `${campaigns.length} 个活跃计划` : '暂无同步数据'} />
+        <Stat label="GMV 合计" value={totalGmv > 0 ? `¥ ${TL.fmtMoney(totalGmv)}` : '—'} sub="投放带货" />
         <Stat label="累计粉丝" value={TL.fmtCount(totalFans)} delta="+5.4%" sub="净增 6.8万" />
-        <Stat label="本周直播场次" value={38} delta="+4 场" sub="平均时长 3.4h" />
-        <Stat label="本周视频" value={73} delta="+18" sub="完播率 32.8%" />
+        <Stat label="总线索 / 到店" value={totalLeads > 0 ? TL.fmtCount(totalLeads) : '—'} sub="本地推汇总" />
       </div>
 
       <div className="g2 mt-md">
@@ -84,87 +104,85 @@ function OverviewTab() {
 
         <div className="card">
           <div className="card-h">
-            <h3>品类 GMV 占比</h3>
-            <div className="actions"><span className="chip">5 个品牌</span></div>
+            <h3>品牌 GMV 占比</h3>
+            <div className="actions"><span className="chip">{TL.brands.length} 个品牌</span></div>
           </div>
           <div className="card-b row" style={{ gap: 24 }}>
-            <Donut
-              size={160}
-              thickness={22}
-              data={[
-                { value: 2087, color: 'var(--c1)' },
-                { value: 1284, color: 'var(--c2)' },
-                { value: 826,  color: 'var(--c3)' },
-                { value: 412,  color: 'var(--c4)' },
-                { value: 184,  color: 'var(--c5)' },
-              ]}
-            />
-            <div className="grow col" style={{ gap: 8 }}>
-              {[
-                { c: 'var(--c1)', n: '云杉运动', v: '¥208.7万', p: '43.5%' },
-                { c: 'var(--c2)', n: '青朴自然', v: '¥128.5万', p: '26.8%' },
-                { c: 'var(--c3)', n: '林野鲜食', v: '¥82.6万', p: '17.2%' },
-                { c: 'var(--c4)', n: '小鹿家居', v: '¥41.3万', p: '8.6%' },
-                { c: 'var(--c5)', n: '北麓数码', v: '¥18.5万', p: '3.9%' },
-              ].map((r, i) => (
-                <div key={i} className="row" style={{ fontSize: 12.5 }}>
-                  <span className="dot" style={{ background: r.c, width: 8, height: 8 }} />
-                  <span>{r.n}</span>
-                  <span className="muted mono" style={{ marginLeft: 'auto' }}>{r.v}</span>
-                  <span className="mono" style={{ width: 50, textAlign: 'right' }}>{r.p}</span>
+            {brandRows.every(r => r.gmv === 0) ? (
+              <div style={{ width: '100%', textAlign: 'center', padding: '24px 0' }}>
+                <div className="muted" style={{ fontSize: 12.5 }}>同步广告数据后显示各品牌 GMV 分布</div>
+              </div>
+            ) : (
+              <>
+                <Donut
+                  size={160}
+                  thickness={22}
+                  data={brandRows.map(r => ({ value: r.gmv || 1, color: r.color }))}
+                />
+                <div className="grow col" style={{ gap: 8 }}>
+                  {brandRows.map((r, i) => (
+                    <div key={i} className="row" style={{ fontSize: 12.5 }}>
+                      <span className="dot" style={{ background: r.color, width: 8, height: 8 }} />
+                      <span>{r.name}</span>
+                      <span className="muted mono" style={{ marginLeft: 'auto' }}>¥ {TL.fmtMoney(r.gmv)}</span>
+                      <span className="mono" style={{ width: 50, textAlign: 'right' }}>{((r.gmv / totalBrandGmv) * 100).toFixed(1)}%</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </>
+            )}
           </div>
         </div>
       </div>
 
       <div className="card mt-md">
         <div className="card-h">
-          <h3>关键指标矩阵</h3>
-          <div className="actions"><span className="muted" style={{ fontSize: 11 }}>账号 × 指标</span></div>
+          <h3>投放计划 · 关键指标</h3>
+          <div className="actions"><span className="muted" style={{ fontSize: 11 }}>计划 × 指标 · 实时同步</span></div>
         </div>
-        <table className="tbl">
-          <thead>
-            <tr>
-              <th>账号</th>
-              <th className="num">粉丝</th>
-              <th className="num">7日增粉</th>
-              <th className="num">GMV (7d)</th>
-              <th className="num">视频数</th>
-              <th className="num">直播</th>
-              <th className="num">平均 VV</th>
-              <th className="num">CTR</th>
-              <th className="num">CVR</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {TL.accounts.map(a => (
-              <tr key={a.id}>
-                <td>
-                  <div className="row tight">
-                    <span className={`av sm av-${a.color}`}>{a.name[0]}</span>
-                    <span style={{ fontWeight: 500 }}>{a.name}</span>
-                  </div>
-                </td>
-                <td className="num mono">{TL.fmtCount(a.followers)}</td>
-                <td className="num mono">
-                  <span style={{ color: a.growth7d >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                    {TL.fmtPct(a.growth7d)}
-                  </span>
-                </td>
-                <td className="num mono">¥ {TL.fmtMoney(a.gmv7d)}</td>
-                <td className="num mono">{a.video7d}</td>
-                <td className="num mono">{a.live7d}</td>
-                <td className="num mono">{TL.fmtCount(a.avgVV)}</td>
-                <td className="num mono">{(a.ctr*100).toFixed(1)}%</td>
-                <td className="num mono">{(a.cvr*100).toFixed(1)}%</td>
-                <td><button className="btn ghost icon sm"><Icon name="chevR" size={12} /></button></td>
+        {campaigns.length === 0 ? (
+          <div style={{ padding: '32px 24px', textAlign: 'center' }}>
+            <div className="muted" style={{ fontSize: 12.5 }}>
+              暂无同步数据 · 请前往<b>千川投流</b>页面绑定广告账户并同步计划
+            </div>
+          </div>
+        ) : (
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>计划名称</th>
+                <th className="num">花费</th>
+                <th className="num">GMV</th>
+                <th className="num">线索</th>
+                <th className="num">CTR</th>
+                <th className="num">CVR</th>
+                <th className="num">ROAS</th>
+                <th className="num">CPL</th>
+                <th></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {campaigns.slice(0, 20).map(c => (
+                <tr key={c.id}>
+                  <td>
+                    <div className="col tight">
+                      <span style={{ fontWeight: 500 }}>{c.name}</span>
+                      <span className="muted" style={{ fontSize: 11 }}>{c.status === 'active' ? '投放中' : c.status === 'paused' ? '已暂停' : c.status}</span>
+                    </div>
+                  </td>
+                  <td className="num mono">¥ {TL.fmtMoney(c.spent || 0)}</td>
+                  <td className="num mono">¥ {TL.fmtMoney(c.gmv || 0)}</td>
+                  <td className="num mono">{c.leads || c.storeVisits || 0}</td>
+                  <td className="num mono">{c.ctr != null ? (c.ctr * 100).toFixed(1) + '%' : '—'}</td>
+                  <td className="num mono">{c.cvr != null ? (c.cvr * 100).toFixed(1) + '%' : '—'}</td>
+                  <td className="num mono">{c.roas != null ? c.roas.toFixed(2) : '—'}</td>
+                  <td className="num mono">{c.costPerLead > 0 ? '¥' + c.costPerLead.toFixed(0) : '—'}</td>
+                  <td><button className="btn ghost icon sm"><Icon name="chevR" size={12} /></button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </>
   );

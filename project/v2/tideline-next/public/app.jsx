@@ -46,10 +46,10 @@ const NAV_BY_ID = NAV_GROUPS.flatMap(g => g.items).reduce((m, it) => (m[it.id] =
 // 显示所有品牌（动态从 TL.brands 读取）
 const PINNED_BRANDS = null; // null = 显示全部
 
-const DEFAULT_MODULE_ORDER = ['today', 'kanban', 'activity', 'quickAi', 'brands', 'schedule'];
+const DEFAULT_MODULE_ORDER = ['today', 'kanban', 'aiDecisions', 'activity', 'brands', 'schedule'];
 
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
-  "homeOrder": ["today", "kanban", "activity", "quickAi", "brands", "schedule"]
+  "homeOrder": ["today", "kanban", "aiDecisions", "activity", "brands", "schedule"]
 }/*EDITMODE-END*/;
 
 function App() {
@@ -122,7 +122,7 @@ function App() {
 
         <div className="sb-section-title">在管品牌</div>
         {brands.map(b => (
-          <div key={b.id} className="sb-item">
+          <div key={b.id} className="sb-item" onClick={() => setView('data')} style={{ cursor: 'pointer' }}>
             <span style={{ width: 15, height: 15, borderRadius: 4, background: 'var(--bg-subtle)', border: '1px solid var(--border)', display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 600 }}>{b.logo}</span>
             <span>{b.name}</span>
           </div>
