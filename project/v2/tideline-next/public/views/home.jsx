@@ -1,16 +1,16 @@
-// 潮线 Tideline · 首页 — 任务/工作流
-// Modules can be reordered via Tweaks.
+// 潮线 Tideline · 首页 — 工作流 + 真实巨量数据 + AI 决策面板
 
 window.TL = window.TL || {};
+const { useState, useEffect, useCallback } = React;
 
 const Home = function Home({ moduleOrder, openTask }) {
   const modules = {
-    today:    <TodayBlock key="today" />,
-    kanban:   <KanbanBlock key="kanban" openTask={openTask} />,
-    activity: <ActivityBlock key="activity" />,
-    quickAi:  <QuickAiBlock key="quickAi" />,
-    brands:   <BrandsBlock key="brands" />,
-    schedule: <SchedulePeek key="schedule" />,
+    today:       <TodayBlock key="today" />,
+    kanban:      <KanbanBlock key="kanban" openTask={openTask} />,
+    aiDecisions: <AiDecisionsBlock key="aiDecisions" />,
+    activity:    <ActivityBlock key="activity" />,
+    brands:      <BrandsBlock key="brands" />,
+    schedule:    <SchedulePeek key="schedule" />,
   };
   return (
     <div className="page">
@@ -26,19 +26,59 @@ const Home = function Home({ moduleOrder, openTask }) {
           </div>
         </div>
 
-        {moduleOrder.map(key => modules[key]).filter(Boolean)}
+        {(moduleOrder ?? ['today','kanban','aiDecisions','activity','brands','schedule']).map(key => modules[key]).filter(Boolean)}
       </div>
     </div>
   );
 };
 
+// ── 今日概览 — 接真实巨量数据 ────────────────────────────────────────────
 function TodayBlock() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/ai/workflow')
+      .then(r => r.json())
+      .then(d => setData(d.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const fmt = n => n >= 10000 ? (n / 10000).toFixed(1) + '万' : (n || 0).toLocaleString();
+  const cs = data?.campaignSummary;
+
   const stats = [
-    { label: '今日待办', value: 7, sub: '其中 3 项截止于今天', icon: 'inbox', delta: null },
-    { label: '本周已发布', value: 18, sub: '视频 12 · 图文 4 · 直播 2', icon: 'check', delta: '+24%' },
-    { label: '本周 GMV', value: '¥ 28.4 万', sub: '5 个账号合计', icon: 'cart', delta: '+12.6%' },
-    { label: '生成中的视频', value: 4, sub: 'AI 工作台运行中', icon: 'sparkle', delta: null },
+    {
+      label: '今日待办',
+      value: 7,
+      sub: '其中 3 项截止于今天',
+      icon: 'inbox',
+      delta: null,
+    },
+    {
+      label: '本周已发布',
+      value: 18,
+      sub: '视频 12 · 图文 4 · 直播 2',
+      icon: 'check',
+      delta: '+24%',
+    },
+    {
+      label: '投流花费',
+      value: loading ? '—' : (cs ? `¥ ${fmt(cs.totalSpent)}` : '未同步'),
+      sub: loading ? '' : (cs ? `预算 ¥${fmt(cs.totalBudget)} · ${cs.activeCnt} 个活跃计划` : '请先同步广告主'),
+      icon: 'cart',
+      delta: null,
+    },
+    {
+      label: '总线索量',
+      value: loading ? '—' : (cs ? fmt(cs.totalLeads) : '—'),
+      sub: loading ? '' : (cs && cs.totalLeads > 0 ? `CPL ¥${cs.avgCostPerLead}` : '到店 + 电话 + 发券'),
+      icon: 'sparkle',
+      delta: null,
+    },
   ];
+
   return (
     <section style={{ marginBottom: 20 }}>
       <div className="stat-row">
@@ -56,6 +96,7 @@ function TodayBlock() {
   );
 }
 
+// ── 工作流看板 ────────────────────────────────────────────────────────────
 function KanbanBlock({ openTask }) {
   const stages = TL.stages;
   const grouped = stages.map(s => ({ ...s, tasks: TL.tasks.filter(t => t.stage === s.id) }));
@@ -114,7 +155,195 @@ function KanbanCard({ task, onClick }) {
   );
 }
 
+// ── AI 待确认决策面板 ─────────────────────────────────────────────────────
+const ACTION_LABEL = {
+  pause: '暂停计划', resume: '恢复计划',
+  increase_budget: '提升预算', decrease_budget: '降低预算',
+  change_creative: '更换素材', manual_review: '人工复审', hold: '维持观察',
+};
+const RISK_TONE = { low: 'success', medium: 'warn', high: 'danger' };
+const STATUS_TONE = { good: 'success', warning: 'warn', bad: 'danger', unknown: 'default' };
+
+function AiDecisionsBlock() {
+  const [decisions, setDecisions] = useState([]);
+  const [aiStatus, setAiStatus] = useState(null);
+  const [acting, setActing] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(() => {
+    fetch('/api/ai/workflow')
+      .then(r => r.json())
+      .then(d => {
+        if (d.data) {
+          setDecisions(d.data.pendingDecisions || []);
+          setAiStatus(d.data.aiStatus);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(load, [load]);
+
+  const decide = async (decisionId, action) => {
+    setActing(decisionId + action);
+    try {
+      await fetch('/api/ai/decisions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: decisionId, action, approvedBy: 'admin' }),
+      });
+      load();
+    } catch {}
+    setActing(null);
+  };
+
+  const hasPending = decisions.length > 0;
+
+  return (
+    <section style={{ marginBottom: 24 }}>
+      <div style={{
+        background: hasPending
+          ? 'linear-gradient(135deg, oklch(0.97 0.02 30), oklch(0.97 0.015 50))'
+          : 'linear-gradient(135deg, oklch(0.97 0.02 258), oklch(0.97 0.02 200))',
+        border: `1px solid ${hasPending ? 'var(--warning-border, oklch(0.85 0.08 60))' : 'var(--accent-border)'}`,
+        borderRadius: 'var(--r-xl)',
+        padding: '18px 20px',
+      }}>
+        <div className="row between" style={{ marginBottom: hasPending ? 14 : 0 }}>
+          <div className="row tight">
+            <Icon name="sparkle" size={14} style={{ color: hasPending ? 'var(--warning)' : 'var(--accent)' }} />
+            <span className="chip accent">AI · 投流优化</span>
+            {aiStatus && (
+              <span className="muted" style={{ fontSize: 11 }}>
+                今日分析 {aiStatus.decisionsToday} 个 · 已执行 {aiStatus.executedToday} 个
+              </span>
+            )}
+          </div>
+          <div className="row tight">
+            {hasPending && (
+              <span className="chip" style={{ background: 'var(--warning-subtle)', color: 'var(--warning)', border: '1px solid var(--warning-border)' }}>
+                {decisions.length} 条待确认
+              </span>
+            )}
+            <button className="btn ghost sm" onClick={load}><Icon name="refresh" size={12} /></button>
+          </div>
+        </div>
+
+        {loading && <div className="muted" style={{ fontSize: 12.5 }}>加载中…</div>}
+
+        {!loading && !hasPending && (
+          <div className="row tight" style={{ color: 'var(--text-muted)', fontSize: 12.5 }}>
+            <Icon name="check" size={13} />
+            <span>暂无待审批的 AI 建议 · {aiStatus?.lastRunAt ? `上次分析 ${new Date(aiStatus.lastRunAt).toLocaleTimeString('zh')}` : '尚未运行分析'}</span>
+          </div>
+        )}
+
+        {!loading && hasPending && (
+          <div className="col" style={{ gap: 10 }}>
+            {decisions.map(d => {
+              const topRec = d.recommendations?.[0];
+              if (!topRec) return null;
+              const isActing = acting && acting.startsWith(d.id);
+              return (
+                <div key={d.id} style={{
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--r-md)',
+                  padding: '12px 14px',
+                }}>
+                  <div className="row between" style={{ marginBottom: 8 }}>
+                    <div className="row tight">
+                      <Chip tone={STATUS_TONE[d.analysis?.performanceStatus] || 'default'} dot>
+                        {d.analysis?.performanceStatus === 'bad' ? '表现差' :
+                         d.analysis?.performanceStatus === 'warning' ? '需关注' :
+                         d.analysis?.performanceStatus === 'good' ? '表现好' : '待判断'}
+                      </Chip>
+                      <span style={{ fontSize: 13, fontWeight: 500 }}>{d.campaignName}</span>
+                    </div>
+                    <div className="row tight">
+                      <Chip tone={RISK_TONE[topRec.riskLevel]}>
+                        {topRec.riskLevel === 'high' ? '高风险' : topRec.riskLevel === 'medium' ? '中风险' : '低风险'}
+                      </Chip>
+                      <Chip tone="accent">{ACTION_LABEL[topRec.action] || topRec.action}</Chip>
+                      {topRec.suggestedValue && (
+                        <span className="muted mono" style={{ fontSize: 11 }}>±{topRec.suggestedValue}%</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {d.analysis?.summary && (
+                    <div className="muted" style={{ fontSize: 12, marginBottom: 6, lineHeight: 1.5 }}>
+                      {d.analysis.summary}
+                    </div>
+                  )}
+
+                  {d.analysis?.problems?.length > 0 && (
+                    <div className="row tight" style={{ marginBottom: 8, flexWrap: 'wrap', gap: 4 }}>
+                      {d.analysis.problems.slice(0, 3).map((p, i) => (
+                        <span key={i} className="chip" style={{
+                          fontSize: 10.5,
+                          color: p.severity === 'high' ? 'var(--danger)' : p.severity === 'medium' ? 'var(--warning)' : 'var(--text-muted)',
+                          background: p.severity === 'high' ? 'var(--danger-subtle)' : 'var(--bg-subtle)',
+                        }}>
+                          {p.type.replace(/_/g, ' ')}
+                        </span>
+                      ))}
+                      {d.creative && <span className="chip accent" style={{ fontSize: 10.5 }}>· 创意已生成</span>}
+                    </div>
+                  )}
+
+                  <div className="row tight" style={{ fontSize: 11.5, color: 'var(--text-muted)', marginBottom: 10, lineHeight: 1.5 }}>
+                    <Icon name="zap" size={11} />
+                    <span>{topRec.reason}</span>
+                  </div>
+
+                  <div className="row tight">
+                    <button
+                      className="btn sm primary"
+                      disabled={isActing}
+                      onClick={() => decide(d.id, 'approve')}
+                    >
+                      <Icon name={isActing ? 'loader' : 'check'} size={12} />
+                      {isActing ? '执行中…' : '确认执行'}
+                    </button>
+                    <button
+                      className="btn sm ghost"
+                      disabled={isActing}
+                      onClick={() => decide(d.id, 'reject')}
+                    >
+                      忽略
+                    </button>
+                    {d.recommendations?.length > 1 && (
+                      <span className="muted" style={{ fontSize: 11 }}>+{d.recommendations.length - 1} 条备选建议</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+// ── 团队动态 + 节点提醒 ───────────────────────────────────────────────────
 function ActivityBlock() {
+  const [logs, setLogs] = useState([]);
+
+  useEffect(() => {
+    fetch('/api/ai/workflow')
+      .then(r => r.json())
+      .then(d => setLogs(d.data?.recentLogs || []))
+      .catch(() => {});
+  }, []);
+
+  const sourceLabel = {
+    auto_rule: '规则引擎', manual: '手动', scheduler: '调度器',
+    system: '系统', ai_analysis: 'AI诊断', ai_creative: 'AI创意', ai_agent: 'AI决策',
+  };
+
   return (
     <section style={{ marginBottom: 24 }}>
       <div className="g2">
@@ -125,18 +354,45 @@ function ActivityBlock() {
             <div className="actions"><button className="btn ghost sm">全部</button></div>
           </div>
           <div className="card-b" style={{ padding: 0 }}>
-            {TL.activity.map((a, i) => {
-              const u = TL.userById(a.who);
-              return (
-                <div key={i} className="row" style={{ padding: '10px 16px', borderBottom: i < TL.activity.length-1 ? '1px solid var(--divider)' : 'none' }}>
-                  <Avatar user={u} size="sm" />
-                  <div style={{ fontSize: 12.5, flex: 1 }}>
-                    <b style={{ fontWeight: 500 }}>{u.name}</b> <span className="muted">{a.what}</span> <span>{a.obj}</span>
+            {logs.length === 0 ? (
+              // 无日志时显示 TL 静态数据兜底
+              TL.activity.map((a, i) => {
+                const u = TL.userById(a.who);
+                return (
+                  <div key={i} className="row" style={{ padding: '10px 16px', borderBottom: i < TL.activity.length-1 ? '1px solid var(--divider)' : 'none' }}>
+                    <Avatar user={u} size="sm" />
+                    <div style={{ fontSize: 12.5, flex: 1 }}>
+                      <b style={{ fontWeight: 500 }}>{u.name}</b> <span className="muted">{a.what}</span> <span>{a.obj}</span>
+                    </div>
+                    <span className="muted mono" style={{ fontSize: 11 }}>{a.when}</span>
                   </div>
-                  <span className="muted mono" style={{ fontSize: 11 }}>{a.when}</span>
-                </div>
-              );
-            })}
+                );
+              })
+            ) : (
+              logs.map((l, i) => {
+                const isAi = l.source.startsWith('ai');
+                return (
+                  <div key={l.id} className="row" style={{ padding: '10px 16px', borderBottom: i < logs.length-1 ? '1px solid var(--divider)' : 'none' }}>
+                    <div style={{
+                      width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+                      background: isAi ? 'var(--accent-subtle)' : 'var(--bg-subtle)',
+                      border: '1px solid var(--border)',
+                      display: 'grid', placeItems: 'center',
+                      fontSize: 11, color: isAi ? 'var(--accent)' : 'var(--text-muted)',
+                    }}>
+                      <Icon name={isAi ? 'sparkle' : 'zap'} size={12} />
+                    </div>
+                    <div style={{ fontSize: 12.5, flex: 1, lineHeight: 1.4 }}>
+                      <Chip>{sourceLabel[l.source] || l.source}</Chip>{' '}
+                      <span className="muted">{l.action}</span>
+                    </div>
+                    <span className="muted mono" style={{ fontSize: 11 }}>
+                      {new Date(l.createdAt).toLocaleTimeString('zh', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
         <div className="card">
@@ -175,48 +431,7 @@ function ReminderList() {
   );
 }
 
-function QuickAiBlock() {
-  return (
-    <section style={{ marginBottom: 24 }}>
-      <div style={{
-        background: 'linear-gradient(135deg, oklch(0.97 0.02 258), oklch(0.97 0.02 200))',
-        border: '1px solid var(--accent-border)',
-        borderRadius: 'var(--r-xl)',
-        padding: '18px 20px',
-        display: 'grid',
-        gridTemplateColumns: '1fr auto',
-        gap: 16,
-        alignItems: 'center',
-      }}>
-        <div>
-          <div className="row tight" style={{ marginBottom: 6 }}>
-            <Icon name="sparkle" size={14} style={{ color: 'var(--accent)' }} />
-            <span className="chip accent">AI · 工作台</span>
-            <span className="muted" style={{ fontSize: 11 }}>Beta · 模型 Tide-1.6</span>
-          </div>
-          <div style={{ fontSize: 16, fontWeight: 600, letterSpacing: '-0.01em' }}>
-            一句话生成可用素材
-          </div>
-          <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
-            输入商品链接 / 卖点 / 目标人群，AI 会自动产出脚本、分镜、标题与可投放视频。
-          </div>
-          <div className="row" style={{ marginTop: 12, flexWrap: 'wrap', gap: 6 }}>
-            {TL.aiSuggest.slice(0, 3).map((s, i) => (
-              <button key={i} className="chip" style={{ cursor: 'pointer' }}>
-                <Icon name="zap" size={10} /> {s.length > 28 ? s.slice(0, 28) + '…' : s}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="row tight">
-          <button className="btn outline"><Icon name="library" size={13} /> 模板</button>
-          <button className="btn primary"><Icon name="sparkle" size={13} /> 打开工作台</button>
-        </div>
-      </div>
-    </section>
-  );
-}
-
+// ── 在管品牌 ──────────────────────────────────────────────────────────────
 function BrandsBlock() {
   return (
     <section style={{ marginBottom: 24 }}>
@@ -234,8 +449,7 @@ function BrandsBlock() {
               <div className="row" style={{ marginBottom: 10 }}>
                 <div style={{
                   width: 32, height: 32, borderRadius: 8,
-                  background: 'var(--bg-subtle)',
-                  border: '1px solid var(--border)',
+                  background: 'var(--bg-subtle)', border: '1px solid var(--border)',
                   display: 'grid', placeItems: 'center',
                   fontWeight: 600, color: 'var(--text-secondary)'
                 }}>{b.logo}</div>
@@ -264,9 +478,10 @@ function BrandsBlock() {
   );
 }
 
+// ── 本周排期速览 ──────────────────────────────────────────────────────────
 function SchedulePeek() {
   const days = ['一','二','三','四','五','六','日'];
-  const today = 11; // visualize as today
+  const today = 11;
   return (
     <section style={{ marginBottom: 24 }}>
       <SectionTitle
@@ -283,8 +498,7 @@ function SchedulePeek() {
             return (
               <div key={i} style={{
                 borderRight: i < 6 ? '1px solid var(--divider)' : 'none',
-                padding: '10px 12px',
-                minHeight: 130,
+                padding: '10px 12px', minHeight: 130,
                 background: isToday ? 'var(--accent-subtle)' : 'transparent'
               }}>
                 <div className="row between" style={{ marginBottom: 8 }}>

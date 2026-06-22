@@ -212,5 +212,15 @@ export async function runRulesOnce(): Promise<{
   }
 
   console.log(`[RuleEngine] 巡检完成: 触发 ${triggered}，错误 ${errors}`);
+
+  // 硬边界规则跑完后，非阻塞触发 AI 软优化（生成 pending 决策供人工审批）
+  if (process.env.ANTHROPIC_API_KEY && process.env.AI_OPTIMIZATION_ENABLED === 'true') {
+    import('../ai/ai-orchestrator').then(({ runAiBatchOptimization }) => {
+      runAiBatchOptimization()
+        .then(n => n > 0 && console.log(`[AiAgent] 批量分析完成，生成 ${n} 条待审批决策`))
+        .catch(e => console.error('[AiAgent] 批量分析失败:', e));
+    });
+  }
+
   return { checked: activeCampaigns.length, triggered, errors };
 }

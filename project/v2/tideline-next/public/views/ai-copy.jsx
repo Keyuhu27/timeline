@@ -25,16 +25,23 @@ const AiCopy = function AiCopy() {
       });
       const d = await r.json();
       if (d.data) {
-        const { titles, body, livestreamScript, tags } = d.data;
+        const { titles = [], bodies = [], videoScript, sellingPoints = [], tags = [] } = d.data;
         const mapped = [
-          ...titles.map((t, i) => ({
-            kind: '标题', tone: 'accent', fr: t.predictedCtr ?? null, lr: null,
-            title: t.text, tags: i === 0 ? tags : undefined,
+          ...titles.slice(0, parseInt(count) || 4).map((t, i) => ({
+            kind: '标题', tone: 'accent', fr: t.predictedCtr ? Math.round(t.predictedCtr * 10) / 10 : null, lr: null,
+            title: t.text, tags: i === 0 ? tags.slice(0, 4) : undefined,
           })),
-          { kind: '正文文案', tone: 'default', fr: null, lr: null, title: body.slice(0, 40) + '…', body },
-          { kind: '直播话术', tone: 'warn', fr: null, lr: null, title: '直播开场话术', body: livestreamScript },
-        ];
-        setResults(mapped);
+          ...bodies.map(b => ({
+            kind: '正文文案', tone: 'default', fr: null, lr: null,
+            title: b.slice(0, 40) + (b.length > 40 ? '…' : ''), body: b,
+            tags: sellingPoints.slice(0, 3),
+          })),
+          ...(videoScript ? [{
+            kind: '视频脚本', tone: 'warn', fr: null, lr: null,
+            title: '视频脚本 · 分镜版', body: videoScript,
+          }] : []),
+        ].slice(0, (parseInt(count) || 4) + 2);
+        setResults(mapped.length > 0 ? mapped : defaultResults);
       } else {
         setError(d.error || '生成失败');
         setResults(defaultResults);

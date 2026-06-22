@@ -189,34 +189,79 @@ export interface OperationLog {
   createdAt: string;
 }
 
-// ─── AI 决策 ─────────────────────────────────────────────────────────────
-export type AiDecisionAction = 'pause' | 'resume' | 'increase_budget' | 'decrease_budget' | 'alert' | 'hold';
-export type AiDecisionStatus = 'pending' | 'approved' | 'rejected' | 'executed' | 'failed';
+// ─── AI 4层架构类型 ────────────────────────────────────────────────────────
 
+// Layer 1: Performance Analyzer 输出
+export type ProblemType = 'low_ctr' | 'low_cvr' | 'high_cost' | 'low_volume' | 'budget_limited' | 'budget_depleted' | 'data_insufficient';
+
+export interface PerformanceProblem {
+  type: ProblemType;
+  description: string;
+  evidence: string;        // 具体数据依据，如 "CTR 0.8% < 基准 1.5%"
+  severity: 'high' | 'medium' | 'low';
+}
+
+export interface PerformanceAnalysis {
+  summary: string;
+  performanceStatus: 'good' | 'warning' | 'bad' | 'unknown';
+  problems: PerformanceProblem[];
+  rootCauses: string[];
+  confidence: number;      // 0–1
+}
+
+// Layer 2: Optimization Recommender 输出
+export type AiAction = 'hold' | 'pause' | 'increase_budget' | 'decrease_budget' | 'change_creative' | 'manual_review';
+
+export interface AiRecommendation {
+  priority: 'high' | 'medium' | 'low';
+  action: AiAction;
+  suggestedValue?: number;
+  reason: string;
+  riskLevel: 'low' | 'medium' | 'high';
+  requiresApproval: boolean;
+  triggerCreative?: boolean;
+  creativeContext?: 'low_ctr' | 'low_cvr' | 'standalone';
+}
+
+// Layer 3: Creative Generator 输出
+export interface CreativeResult {
+  titles: Array<{ text: string; predictedCtr: number }>;
+  bodies: string[];
+  sellingPoints: string[];
+  videoScript: string;
+  imageDirections: string[];
+  tags: string[];
+  rationale: string;
+  trigger?: string;
+}
+
+// Layer 4 统一决策记录（替换旧 AiDecision）
 export interface AiDecision {
   id: string;
   campaignId: string;
   campaignName: string;
-  action: AiDecisionAction;
-  value?: number;          // budget delta pct when action=increase/decrease_budget
-  reason: string;          // LLM explanation
-  metrics: Record<string, number>;  // snapshot at decision time
-  status: AiDecisionStatus;
+  accountId: string;
+  status: 'pending' | 'approved' | 'rejected' | 'executed' | 'failed';
+  // Layer 1 输出
+  analysis: PerformanceAnalysis;
+  // Layer 2 输出
+  recommendations: AiRecommendation[];
+  selectedRecommendation?: AiRecommendation;
+  // Layer 3 输出（如果触发了创意）
+  creative?: CreativeResult;
+  // 触发时的指标快照
+  metricsSnapshot: {
+    spent: number; budget: number; ctr: number; leads: number;
+    costPerLead: number; roas: number; storeVisits: number; phoneCalls: number;
+  };
   approvedBy?: string;
+  approvedAt?: string;
+  rejectedBy?: string;
+  rejectedAt?: string;
   executedAt?: string;
+  executionResult?: { success: boolean; errorMsg?: string; before?: Record<string, unknown>; after?: Record<string, unknown> };
   errorMsg?: string;
   createdAt: string;
-}
-
-// ─── AI 分析结果 ───────────────────────────────────────────────────────────
-export interface AiAnalysisResult {
-  campaignId: string;
-  campaignName: string;
-  diagnosis: string;        // plain-text summary
-  issues: Array<{ severity: 'high' | 'medium' | 'low'; desc: string }>;
-  recommendations: Array<{ priority: number; action: string; reason: string }>;
-  decision?: AiDecision;
-  analysedAt: string;
 }
 
 // ─── 平台凭证 ─────────────────────────────────────────────────────────────

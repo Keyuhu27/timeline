@@ -46,6 +46,7 @@ import { loadPersisted }    from '../lib/persist';
 import * as routeAiAnalyze   from '../app/api/ai/analyze/route';
 import * as routeAiDecisions from '../app/api/ai/decisions/route';
 import * as routeAiCreative  from '../app/api/ai/creative/route';
+import * as routeAiWorkflow  from '../app/api/ai/workflow/route';
 
 // 启动即注水：把上次同步的真实数据从磁盘恢复到内存
 loadPersisted();
@@ -75,6 +76,7 @@ const ROUTES: Record<string, RouteModule> = {
   '/api/ai/analyze':   routeAiAnalyze,
   '/api/ai/decisions': routeAiDecisions,
   '/api/ai/creative':  routeAiCreative,
+  '/api/ai/workflow':  routeAiWorkflow,
 };
 
 const PUBLIC_ROUTES = new Set(['/api/auth/login', '/api/auth', '/api/auth/callback']);
