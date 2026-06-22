@@ -398,8 +398,12 @@ export class OceanEngineAdapter implements IAdAdapter {
     localAccountId = normalizeOceanEngineAccountId(localAccountId);
     console.log(`[OE] fetchProjectReport rawLocalAccountId=${rawLocalAccountId} normalizedLocalAccountId=${localAccountId}`);
     const token = await this.getAccessToken(localAccountId);
-    const end   = endDate   ?? new Date().toISOString().slice(0, 10);
-    const start = startDate ?? new Date(Date.now() - 90 * 86400_000).toISOString().slice(0, 10);
+    // 默认只取「今日」数据（start=end=今天），与巨量后台「今日消耗」口径一致。
+    // 之前默认取近 90 天累计，导致 UI 标注「今日」却显示 90 天总和，数据对不上后台。
+    // 用北京时间（UTC+8）算「今天」，避免凌晨用 UTC 算成昨天。
+    const today = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
+    const end   = endDate   ?? today;
+    const start = startDate ?? today;
 
     const params: Record<string, string> = {
       local_account_id: localAccountId,

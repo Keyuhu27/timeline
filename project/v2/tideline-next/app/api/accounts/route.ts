@@ -120,10 +120,11 @@ export async function syncLocalAccounts(
         const st = statsById.get(String(camp.campaign_id));
         let normalizedStatus = normalizeProjectStatus(camp.status);
 
-        // 花费安全网：如果今日已有实际花费/展现/线索，且状态识别为 paused/unknown/ended，
-        // 说明状态字段可能解析有误——强制覆盖为 active 并打印警告供排查。
+        // 花费安全网：仅当状态「无法识别」(unknown) 且今日有实际花费时，才兜底为 active。
+        // 注意：opt_status=0 给出的 paused 是权威信号（项目可能中午被暂停、今日仍有花费），
+        // 不能用花费覆盖确定的 paused，否则会把已暂停项目错误显示为投放中。
         const todaySpent = st?.spent ?? 0;
-        if (todaySpent > 0 && (normalizedStatus === 'paused' || normalizedStatus === 'unknown' || normalizedStatus === 'ended')) {
+        if (todaySpent > 0 && normalizedStatus === 'unknown') {
           console.warn(
             `[AccountSync] ⚠️ 花费安全网触发 ${camp.campaign_name}:` +
             ` status="${normalizedStatus}" 但今日花费 ¥${todaySpent}，强制设为 active。` +
@@ -521,9 +522,9 @@ export const syncStatus: RouteHandler = async (req, res) => {
         const st = statsById.get(String(camp.campaign_id));
         let normalizedStatus = normalizeProjectStatus(camp.status);
 
-        // 花费安全网（同 syncLocalAccounts）
+        // 花费安全网（同 syncLocalAccounts）：仅兜底 unknown，不覆盖权威的 paused
         const todaySpent = st?.spent ?? 0;
-        if (todaySpent > 0 && (normalizedStatus === 'paused' || normalizedStatus === 'unknown' || normalizedStatus === 'ended')) {
+        if (todaySpent > 0 && normalizedStatus === 'unknown') {
           console.warn(
             `[SyncStatus] ⚠️ 花费安全网触发 ${camp.campaign_name}:` +
             ` status="${normalizedStatus}" 但今日花费 ¥${todaySpent}，强制设为 active。` +
