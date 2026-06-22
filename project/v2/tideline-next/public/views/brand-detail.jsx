@@ -74,7 +74,8 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
   const campIds = new Set(campaigns.map(c => c.id));
   const brandLogs = logs.filter(l => l.campaignId && campIds.has(l.campaignId));
 
-  const hasData = campaigns.length > 0 && (agg.spent > 0 || agg.leads > 0 || agg.impressions > 0);
+  // 只要有项目就展示列表+状态（即便今日消耗为 0，例如全域投放品牌）；仅当完全没有项目时才显示空态
+  const hasData = campaigns.length > 0;
 
   const overview = [
     { label: '今日消耗', value: `¥ ${TL.fmtMoney(agg.spent)}` },
