@@ -446,13 +446,15 @@ export class OceanEngineAdapter implements IAdAdapter {
   ): Promise<boolean> {
     const body = {
       local_account_id: localAccountId,
-      data: {
-        project_ids: [projectId],
-        opt_status: status === 'enable' ? 'ENABLE' : 'DISABLE',
-      },
+      data: [
+        {
+          project_id: projectId,
+          opt_status: status === 'enable' ? 'ENABLE' : 'DISABLE',
+        },
+      ],
     };
-    const rawBody = stringifyWithRawInts(body, ['local_account_id', 'project_ids']);
-    console.log(`[OE] project/status/update body=${rawBody} typeof local_account_id=integer typeof project_ids[0]=integer`);
+    const rawBody = stringifyWithRawInts(body, ['local_account_id', 'project_id']);
+    console.log(`[OE] project/status/update body=${rawBody} typeof local_account_id=integer typeof project_id=integer`);
     await oeRequest(`${LOCAL_BASE}project/status/update/`, token, { method: 'POST', rawBody });
     return true;
   }
