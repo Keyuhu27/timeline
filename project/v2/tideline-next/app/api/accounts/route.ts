@@ -151,6 +151,12 @@ export async function syncLocalAccounts(
             costPerLead: st.leads > 0 ? st.spent / st.leads : 0,
             lastSyncAt: now,
           });
+          else Object.assign(existing, {
+            // 今日报表无此项目 → 今日无消耗，清零今日指标（防止保留历史累计值）
+            spent: 0, cpm: 0, ctr: 0, roas: 0, gmv: 0, impressions: 0, clicks: 0,
+            storeVisits: 0, phoneCalls: 0, mapSearches: 0, coupons: 0, leads: 0,
+            costPerLead: 0, lastSyncAt: now,
+          });
           continue;
         }
         const newCamp: AdCampaign = {
@@ -551,6 +557,12 @@ export const syncStatus: RouteHandler = async (req, res) => {
             mapSearches: st.mapSearches, coupons: st.coupons, leads: st.leads,
             costPerLead: st.leads > 0 ? st.spent / st.leads : 0,
             lastSyncAt: now,
+          });
+          else Object.assign(existing, {
+            // 今日报表无此项目 → 今日无消耗，清零今日指标（防止保留历史累计值）
+            spent: 0, cpm: 0, ctr: 0, roas: 0, gmv: 0, impressions: 0, clicks: 0,
+            storeVisits: 0, phoneCalls: 0, mapSearches: 0, coupons: 0, leads: 0,
+            costPerLead: 0, lastSyncAt: now,
           });
         } else {
           // 新项目：直接加入
