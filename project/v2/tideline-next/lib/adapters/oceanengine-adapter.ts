@@ -412,11 +412,11 @@ export class OceanEngineAdapter implements IAdAdapter {
     return true;
   }
 
-  // 本地推项目改状态：v3.0/local/project/update/status/
+  // 本地推项目改状态：v3.0/local/project/status/update/
   private async _updateProjectStatus(
     projectId: string, localAccountId: string, status: 'enable' | 'disable', token: string,
   ): Promise<boolean> {
-    await oeRequest(`${LOCAL_BASE}project/update/status/`, token, {
+    await oeRequest(`${LOCAL_BASE}project/status/update/`, token, {
       method: 'POST',
       body: {
         local_account_id: localAccountId,
@@ -427,11 +427,11 @@ export class OceanEngineAdapter implements IAdAdapter {
     return true;
   }
 
-  // 本地推项目改预算：v3.0/local/project/update/budget/
+  // 本地推项目改预算：v3.0/local/project/update/（通用更新）
   private async _updateProjectBudget(
     projectId: string, localAccountId: string, budget: number, token: string,
   ): Promise<boolean> {
-    await oeRequest(`${LOCAL_BASE}project/update/budget/`, token, {
+    await oeRequest(`${LOCAL_BASE}project/update/`, token, {
       method: 'POST',
       body: {
         local_account_id: localAccountId,
