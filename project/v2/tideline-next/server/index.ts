@@ -43,6 +43,9 @@ import * as routeAutomation from '../app/api/automation/route';
 import { startScheduler }   from '../lib/scheduler/cron';
 import * as routeOAuth      from '../app/api/auth/route';
 import { loadPersisted }    from '../lib/persist';
+import * as routeAiAnalyze   from '../app/api/ai/analyze/route';
+import * as routeAiDecisions from '../app/api/ai/decisions/route';
+import * as routeAiCreative  from '../app/api/ai/creative/route';
 
 // 启动即注水：把上次同步的真实数据从磁盘恢复到内存
 loadPersisted();
@@ -69,6 +72,9 @@ const ROUTES: Record<string, RouteModule> = {
   '/api/automation': routeAutomation,
   '/api/auth':          routeOAuth,
   '/api/auth/callback': routeOAuth,   // 巨量引擎 OAuth 回调别名
+  '/api/ai/analyze':   routeAiAnalyze,
+  '/api/ai/decisions': routeAiDecisions,
+  '/api/ai/creative':  routeAiCreative,
 };
 
 const PUBLIC_ROUTES = new Set(['/api/auth/login', '/api/auth', '/api/auth/callback']);

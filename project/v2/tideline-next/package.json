@@ -4,9 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev":       "node dist/server.mjs",
-    "build":     "esbuild server/index.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/server.mjs",
+    "dev": "node dist/server.mjs",
+    "build": "esbuild server/index.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/server.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.build.json"
   },
-  "engines": { "node": ">=18.0.0" }
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.105.0"
+  }
 }

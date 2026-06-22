@@ -78,11 +78,15 @@ const Ads = function Ads() {
           <div className={`tab ${tab === 'campaigns' ? 'active' : ''}`} onClick={() => setTab('campaigns')}>投放计划</div>
           <div className={`tab ${tab === 'rules'     ? 'active' : ''}`} onClick={() => setTab('rules')}>自动规则</div>
           <div className={`tab ${tab === 'logs'      ? 'active' : ''}`} onClick={() => setTab('logs')}>操作日志</div>
+          <div className={`tab ${tab === 'ai'        ? 'active' : ''}`} onClick={() => setTab('ai')}>
+            <Icon name="sparkle" size={12} /> AI 决策
+          </div>
         </div>
 
         {tab === 'campaigns' && <Campaigns />}
         {tab === 'rules'     && <Rules />}
         {tab === 'logs'      && <Logs />}
+        {tab === 'ai'        && <AiDecisions />}
       </div>
     </div>
   );
@@ -201,6 +205,7 @@ function Campaigns() {
                   <button className="btn ghost icon sm" disabled={acting === c.id} onClick={() => toggle(c)}>
                     <Icon name={acting === c.id ? 'loader' : c.status === 'active' ? 'pause' : 'play'} size={11} />
                   </button>
+                  <AiDiagnoseButton campaign={c} onDone={() => {}} />
                 </td>
               </tr>
             );
@@ -314,6 +319,206 @@ function Logs() {
             </tbody>
           </table>
         )}
+    </div>
+  );
+}
+
+// ── AI 诊断按钮（内嵌在计划行中）────────────────────────────────────────
+function AiDiagnoseButton({ campaign, onDone }) {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [open, setOpen] = useState(false);
+
+  const diagnose = async (e) => {
+    e.stopPropagation();
+    setLoading(true);
+    try {
+      const r = await fetch('/api/ai/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaignId: campaign.id }),
+      });
+      const d = await r.json();
+      if (d.data) { setResult(d.data); setOpen(true); }
+      else alert('AI 分析失败: ' + (d.error || '未知错误'));
+    } catch (e) { alert('请求失败: ' + e.message); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <>
+      <button className="btn ghost icon sm" title="AI 诊断" disabled={loading} onClick={diagnose}>
+        <Icon name={loading ? 'loader' : 'sparkle'} size={11} />
+      </button>
+      {open && result && (
+        <AiDiagnosisModal result={result} onClose={() => { setOpen(false); onDone(); }} />
+      )}
+    </>
+  );
+}
+
+function AiDiagnosisModal({ result, onClose }) {
+  const { diagnosis, decision } = result;
+  const [approving, setApproving] = useState(false);
+
+  const approve = async () => {
+    if (!decision) return;
+    setApproving(true);
+    try {
+      const r = await fetch('/api/ai/decisions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: decision.id, action: 'approve', approvedBy: '当前用户' }),
+      });
+      const d = await r.json();
+      if (d.data) { alert('执行成功'); onClose(); }
+      else alert('执行失败: ' + (d.error || '未知'));
+    } catch (e) { alert('请求失败: ' + e.message); }
+    finally { setApproving(false); }
+  };
+
+  const reject = async () => {
+    if (!decision) return;
+    await fetch('/api/ai/decisions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: decision.id, action: 'reject', approvedBy: '当前用户' }),
+    });
+    onClose();
+  };
+
+  const severityColor = { high: 'var(--danger)', medium: 'var(--warning)', low: 'var(--text-muted)' };
+  const actionLabel = { pause: '暂停计划', resume: '恢复计划', increase_budget: '提升预算', decrease_budget: '降低预算', alert: '发送告警' };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={onClose}>
+      <div style={{ background: 'var(--bg-elevated)', borderRadius: 12, padding: 24, width: 560, maxHeight: '80vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
+        onClick={e => e.stopPropagation()}>
+        <div className="row between" style={{ marginBottom: 16 }}>
+          <div className="row tight">
+            <Icon name="sparkle" size={16} />
+            <h3 style={{ margin: 0 }}>AI 诊断报告 · {result.campaignName}</h3>
+          </div>
+          <button className="btn ghost icon sm" onClick={onClose}><Icon name="x" size={14} /></button>
+        </div>
+
+        <div style={{ background: 'var(--surface)', borderRadius: 8, padding: 12, marginBottom: 14, fontSize: 13, lineHeight: 1.6 }}>
+          {diagnosis.summary}
+        </div>
+
+        {diagnosis.issues?.length > 0 && (
+          <div style={{ marginBottom: 14 }}>
+            <div className="muted" style={{ fontSize: 11, fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>发现问题</div>
+            {diagnosis.issues.map((issue, i) => (
+              <div key={i} className="row tight" style={{ marginBottom: 5, fontSize: 12.5 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: severityColor[issue.severity], flexShrink: 0, marginTop: 5 }} />
+                <span style={{ color: issue.severity === 'high' ? 'var(--danger)' : undefined }}>{issue.desc}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {diagnosis.recommendations?.length > 0 && (
+          <div style={{ marginBottom: 14 }}>
+            <div className="muted" style={{ fontSize: 11, fontWeight: 600, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>优化建议</div>
+            {diagnosis.recommendations.map((rec, i) => (
+              <div key={i} style={{ padding: '8px 10px', background: 'var(--accent-subtle)', borderRadius: 6, marginBottom: 6, fontSize: 12.5 }}>
+                <div style={{ fontWeight: 500, marginBottom: 2 }}>{i + 1}. {rec.action}</div>
+                <div className="muted" style={{ fontSize: 11.5 }}>{rec.reason}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {decision && (
+          <div style={{ borderTop: '1px solid var(--divider)', paddingTop: 14, marginTop: 4 }}>
+            <div className="muted" style={{ fontSize: 11, fontWeight: 600, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>AI 建议操作</div>
+            <div style={{ padding: '10px 14px', background: 'var(--bg)', borderRadius: 8, border: '1px solid var(--border)', marginBottom: 12 }}>
+              <div className="row tight" style={{ marginBottom: 4 }}>
+                <Chip tone={decision.action === 'pause' ? 'warn' : decision.action.includes('increase') ? 'success' : 'default'}>
+                  {actionLabel[decision.action] ?? decision.action}{decision.value ? ` ${decision.value}%` : ''}
+                </Chip>
+                <span className="muted" style={{ fontSize: 11 }}>置信度：{diagnosis.confidence}</span>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{decision.reason}</div>
+            </div>
+            <div className="row" style={{ gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn ghost sm" onClick={reject}>忽略建议</button>
+              <button className="btn primary sm" disabled={approving} onClick={approve}>
+                {approving ? '执行中…' : '确认执行'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── AI 决策列表（Tab）────────────────────────────────────────────────────
+function AiDecisions() {
+  const [decisions, setDecisions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('pending');
+
+  const load = () => {
+    setLoading(true);
+    fetch(`/api/ai/decisions?status=${filter}`)
+      .then(r => r.json())
+      .then(d => setDecisions(d.data?.decisions || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(load, [filter]);
+
+  const statusLabel = { pending: '待审批', approved: '已批准', rejected: '已拒绝', executed: '已执行', failed: '失败' };
+  const actionLabel = { pause: '暂停', resume: '恢复', increase_budget: '提升预算', decrease_budget: '降低预算', alert: '告警', hold: '维持' };
+
+  if (loading) return <div className="card" style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>加载中…</div>;
+
+  return (
+    <div className="card">
+      <div className="card-h">
+        <h3>AI 决策记录</h3>
+        <div className="actions row tight">
+          {['pending', 'executed', 'rejected'].map(s => (
+            <button key={s} className={`btn ghost sm ${filter === s ? 'active' : ''}`} onClick={() => setFilter(s)}>
+              {statusLabel[s]}
+            </button>
+          ))}
+        </div>
+      </div>
+      {!decisions.length ? (
+        <div style={{ padding: '24px 16px', color: 'var(--text-muted)', fontSize: 13 }}>
+          {filter === 'pending' ? '暂无待审批决策，可在计划列表点击「AI诊断」生成' : '暂无记录'}
+        </div>
+      ) : (
+        <table className="tbl">
+          <thead><tr><th>时间</th><th>计划</th><th>AI 建议</th><th>原因摘要</th><th>状态</th></tr></thead>
+          <tbody>
+            {decisions.map(d => (
+              <tr key={d.id}>
+                <td className="muted mono" style={{ fontSize: 11 }}>{new Date(d.createdAt).toLocaleString('zh')}</td>
+                <td style={{ fontSize: 12 }}>{d.campaignName}</td>
+                <td>
+                  <Chip tone={d.action === 'pause' ? 'warn' : d.action.includes('increase') ? 'success' : 'default'}>
+                    {actionLabel[d.action] ?? d.action}{d.value ? ` ${d.value}%` : ''}
+                  </Chip>
+                </td>
+                <td style={{ fontSize: 11.5, color: 'var(--text-secondary)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.reason}</td>
+                <td>
+                  {d.status === 'pending'  && <Chip tone="warn" dot>待审批</Chip>}
+                  {d.status === 'executed' && <Chip tone="success">已执行</Chip>}
+                  {d.status === 'rejected' && <Chip>已拒绝</Chip>}
+                  {d.status === 'failed'   && <Chip tone="danger">失败</Chip>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

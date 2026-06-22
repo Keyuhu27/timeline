@@ -167,7 +167,7 @@ export interface AutoRule {
 }
 
 // ─── 操作日志 ─────────────────────────────────────────────────────────────
-export type LogSource = 'auto_rule' | 'manual' | 'scheduler' | 'system';
+export type LogSource = 'auto_rule' | 'manual' | 'scheduler' | 'system' | 'ai_analysis' | 'ai_creative' | 'ai_agent';
 export type LogLevel  = 'info' | 'warn' | 'error' | 'success';
 
 export interface OperationLog {
@@ -184,7 +184,39 @@ export interface OperationLog {
   success: boolean;
   errorMsg?: string;
   operatorId?: string;
+  aiReason?: string;
+  approvedBy?: string;
   createdAt: string;
+}
+
+// ─── AI 决策 ─────────────────────────────────────────────────────────────
+export type AiDecisionAction = 'pause' | 'resume' | 'increase_budget' | 'decrease_budget' | 'alert' | 'hold';
+export type AiDecisionStatus = 'pending' | 'approved' | 'rejected' | 'executed' | 'failed';
+
+export interface AiDecision {
+  id: string;
+  campaignId: string;
+  campaignName: string;
+  action: AiDecisionAction;
+  value?: number;          // budget delta pct when action=increase/decrease_budget
+  reason: string;          // LLM explanation
+  metrics: Record<string, number>;  // snapshot at decision time
+  status: AiDecisionStatus;
+  approvedBy?: string;
+  executedAt?: string;
+  errorMsg?: string;
+  createdAt: string;
+}
+
+// ─── AI 分析结果 ───────────────────────────────────────────────────────────
+export interface AiAnalysisResult {
+  campaignId: string;
+  campaignName: string;
+  diagnosis: string;        // plain-text summary
+  issues: Array<{ severity: 'high' | 'medium' | 'low'; desc: string }>;
+  recommendations: Array<{ priority: number; action: string; reason: string }>;
+  decision?: AiDecision;
+  analysedAt: string;
 }
 
 // ─── 平台凭证 ─────────────────────────────────────────────────────────────

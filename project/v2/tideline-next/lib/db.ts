@@ -4,7 +4,7 @@
 
 import type {
   Brand, TeamMember, Task, Account, LiveSession,
-  Product, FinanceRecord, AdCampaign, ScheduleItem, Competitor,
+  Product, FinanceRecord, AdCampaign, ScheduleItem, Competitor, AiDecision,
 } from '../types/index';
 
 // ─── Brands ────────────────────────────────────────────────────────────────
@@ -238,3 +238,6 @@ export const operationLogs: OperationLog[] = [
     createdAt: '2026-05-12T08:00:00Z',
   },
 ];
+
+// ─── AI 决策 ─────────────────────────────────────────────────────────────
+export const aiDecisions: AiDecision[] = [];

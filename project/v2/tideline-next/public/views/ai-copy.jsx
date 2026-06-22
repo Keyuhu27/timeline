@@ -1,13 +1,50 @@
 // 潮线 Tideline · AI 文案/标题生成
 
+const { useState: _useState, useRef: _useRef } = React;
+
 const AiCopy = function AiCopy() {
-  const [picked, setPicked] = React.useState('c1');
-  const [input, setInput] = React.useState('青朴山茶花修护精华液 · 30ml · 大促价 ¥298 · 28-35 都市白领');
-  const [results, setResults] = React.useState(defaultResults);
-  const [gen, setGen] = React.useState(false);
-  const regen = () => {
+  const [picked, setPicked] = _useState('c1');
+  const [input, setInput] = _useState('青朴山茶花修护精华液 · 30ml · 大促价 ¥298 · 28-35 都市白领');
+  const [audience, setAudience] = _useState('28-35 都市白领 · 中性肌');
+  const [tone, setTone] = _useState('专业理性');
+  const [count, setCount] = _useState('4');
+  const [results, setResults] = _useState(defaultResults);
+  const [gen, setGen] = _useState(false);
+  const [error, setError] = _useState('');
+
+  const regen = async () => {
     setGen(true);
-    setTimeout(() => { setGen(false); setResults(defaultResults.slice().reverse()); }, 800);
+    setError('');
+    try {
+      const template = TL.copyTemplates?.find(c => c.id === picked);
+      const storeName = template?.name ?? '品牌门店';
+      const r = await fetch('/api/ai/creative', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storeName, product: input, audience, tone, count: parseInt(count) }),
+      });
+      const d = await r.json();
+      if (d.data) {
+        const { titles, body, livestreamScript, tags } = d.data;
+        const mapped = [
+          ...titles.map((t, i) => ({
+            kind: '标题', tone: 'accent', fr: t.predictedCtr ?? null, lr: null,
+            title: t.text, tags: i === 0 ? tags : undefined,
+          })),
+          { kind: '正文文案', tone: 'default', fr: null, lr: null, title: body.slice(0, 40) + '…', body },
+          { kind: '直播话术', tone: 'warn', fr: null, lr: null, title: '直播开场话术', body: livestreamScript },
+        ];
+        setResults(mapped);
+      } else {
+        setError(d.error || '生成失败');
+        setResults(defaultResults);
+      }
+    } catch (e) {
+      setError('请求失败: ' + e.message);
+      setResults(defaultResults);
+    } finally {
+      setGen(false);
+    }
   };
   return (
     <div className="page">
@@ -57,17 +94,22 @@ const AiCopy = function AiCopy() {
                 <div className="row" style={{ gap: 12 }}>
                   <div className="grow">
                     <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>目标人群</div>
-                    <input className="input" defaultValue="28-35 都市白领 · 中性肌" />
+                    <input className="input" value={audience} onChange={e => setAudience(e.target.value)} />
                   </div>
                   <div className="grow">
                     <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>情绪基调</div>
-                    <select className="select"><option>专业理性</option><option>种草分享</option><option>反差冲突</option><option>幽默轻松</option></select>
+                    <select className="select" value={tone} onChange={e => setTone(e.target.value)}>
+                      <option>专业理性</option><option>种草分享</option><option>反差冲突</option><option>幽默轻松</option>
+                    </select>
                   </div>
                   <div style={{ width: 100 }}>
                     <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>生成数量</div>
-                    <select className="select"><option>4</option><option>6</option><option>8</option></select>
+                    <select className="select" value={count} onChange={e => setCount(e.target.value)}>
+                      <option>4</option><option>6</option><option>8</option>
+                    </select>
                   </div>
                 </div>
+                {error && <div style={{ color: 'var(--danger)', fontSize: 12, padding: '4px 0' }}>{error}</div>}
                 <div className="row between">
                   <div className="row tight">
                     <Chip dot>标题</Chip>
@@ -94,7 +136,9 @@ const AiCopy = function AiCopy() {
                     <div className="row between">
                       <div className="row tight">
                         <Chip tone={r.tone}>{r.kind}</Chip>
-                        <span className="muted mono" style={{ fontSize: 11 }}>预估完播 {r.fr}% · 点赞率 {r.lr}%</span>
+                        {(r.fr !== null || r.lr !== null) && <span className="muted mono" style={{ fontSize: 11 }}>
+                        {r.fr !== null ? `预估完播 ${r.fr}%` : ''}{r.fr !== null && r.lr !== null ? ' · ' : ''}{r.lr !== null ? `点赞率 ${r.lr}%` : ''}
+                      </span>}
                       </div>
                       <div className="row tight">
                         <button className="btn ghost icon sm"><Icon name="heart" size={12} /></button>
