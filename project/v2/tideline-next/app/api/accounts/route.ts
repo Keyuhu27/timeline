@@ -17,12 +17,33 @@ export const GET: RouteHandler = (req, res) => {
   ok(res, items, { total, page, pageSize });
 };
 
-// 巨量项目状态 → 内部 status。支持 ENABLE/PAUSED/DISABLE/DELETE/DONE 等多种取值。
-function normalizeProjectStatus(raw: unknown): AdCampaign['status'] {
-  const v = String(raw ?? '').toUpperCase();
-  if (/DELETE/.test(v))             return 'deleted';
-  if (/PAUSE|DISABLE|DONE/.test(v)) return 'paused';
-  return 'active';
+/**
+ * 巨量引擎项目状态 → 内部统一 status
+ * 覆盖所有已知状态枚举：中文/英文/带前缀的完整字符串
+ */
+export function normalizeProjectStatus(raw: unknown): AdCampaign['status'] {
+  const v = String(raw ?? '').toUpperCase().trim();
+  if (!v) return 'active';   // 空值 → 默认投放中（不要变成 unknown 导致全显暂停）
+
+  // 已删除
+  if (/DELETE/.test(v) || v.includes('已删除')) return 'deleted';
+
+  // 已结束（注意：DONE 是"结束"而非"暂停"，不能混淆）
+  if (/\bDONE\b|FINISH|ENDED|EXPIR|COMPLET/.test(v) ||
+      v.includes('已完成') || v.includes('已结束')) return 'ended';
+
+  // 已暂停 / 未投放 / 被禁用
+  if (/PAUSE|DISABLE/.test(v) || v.includes('暂停') || v.includes('未投放') || v.includes('已禁用'))
+    return 'paused';
+
+  // 投放中 / 已启用
+  if (/ENABLE|ACTIVE|RUNNING|START/.test(v) ||
+      v.includes('投放中') || v.includes('已启用') || v.includes('启用'))
+    return 'active';
+
+  // 未知：打日志，不默认成 paused，避免把投放中的项目误标为已暂停
+  console.warn(`[normalizeProjectStatus] ⚠️ 未知状态枚举: "${raw}" — 暂标为 unknown，建议检查 sync-diagnosis`);
+  return 'unknown';
 }
 
 /**
@@ -88,10 +109,16 @@ export async function syncLocalAccounts(
       const now = Date.now();
       for (const camp of campList) {
         const st = statsById.get(String(camp.campaign_id));
+        const normalizedStatus = normalizeProjectStatus(camp.status);
         const existing = adCampaigns.find(c => c.externalId === String(camp.campaign_id));
         if (existing) {
-          existing.status = normalizeProjectStatus(camp.status);
+          const prevStatus = existing.status;
+          existing.status    = normalizedStatus;
+          existing.rawStatus = camp.rawStatus || camp.status;
           existing.lastSyncAt = now;
+          if (prevStatus !== normalizedStatus) {
+            console.log(`[AccountSync] 状态变更 ${camp.campaign_name}: ${prevStatus} → ${normalizedStatus} (raw="${camp.rawStatus}")`);
+          }
           if (st) Object.assign(existing, {
             spent: st.spent, cpm: st.cpm, ctr: st.ctr, roas: st.roas, gmv: st.gmv,
             impressions: st.impressions, clicks: st.clicks,
@@ -108,6 +135,7 @@ export async function syncLocalAccounts(
           brand:      account.brand,
           account:    account.id,
           externalId: String(camp.campaign_id),
+          rawStatus:  camp.rawStatus || camp.status,
           budget:     camp.budget ?? 0,
           spent:      st?.spent ?? 0,
           cpm:        st?.cpm   ?? 0,
@@ -123,12 +151,13 @@ export async function syncLocalAccounts(
           coupons:     st?.coupons     ?? 0,
           leads:       st?.leads       ?? 0,
           costPerLead: st && st.leads > 0 ? st.spent / st.leads : 0,
-          status:     normalizeProjectStatus(camp.status),
+          status:     normalizedStatus,
           startDate:  new Date().toISOString().slice(0, 10),
           lastSyncAt: now,
         };
         adCampaigns.push(newCamp);
         campaignsSynced++;
+        console.log(`[AccountSync] 新增项目: ${camp.campaign_name} status=${normalizedStatus} (raw="${camp.rawStatus}")`);
       }
       console.log(`[AccountSync] ${account.name}: 同步 ${campList.length} 个计划（含报表）`);
     } catch (e) {
@@ -306,4 +335,208 @@ export const testFetch: RouteHandler = async (req, res) => {
   } catch (e) {
     err(res, String(e));
   }
+};
+
+// ── GET /api/accounts/sync-diagnosis ─────────────────────────────────────────
+// 实时对比「本地状态」vs「巨量官方项目状态」，输出完整诊断报告。
+// 对每个有效 local_account_id 调用项目列表接口，逐条比对。
+export const syncDiagnosis: RouteHandler = async (req, res) => {
+  let accessToken: string;
+  try {
+    accessToken = await tokenManager.getAnyToken('oceanengine');
+    void accessToken; // suppress unused warning; used inside oe calls
+  } catch (e) {
+    return err(res, `无法获取 Access Token: ${String(e)}`);
+  }
+
+  const oe = adAdapter as OceanEngineAdapter;
+  const validAccounts = accounts.filter(a => a.externalId && /^\d{10,}$/.test(a.externalId));
+
+  const diagAccounts = await Promise.all(validAccounts.map(async account => {
+    const localCampaigns = adCampaigns.filter(c => c.account === account.id);
+
+    let officialProjects: Awaited<ReturnType<typeof oe.fetchCampaignList>> = [];
+    let fetchError: string | null = null;
+    try {
+      officialProjects = await oe.fetchCampaignList(account.externalId!);
+    } catch (e) {
+      fetchError = String(e);
+    }
+
+    const officialById = new Map(officialProjects.map(p => [p.campaign_id, p]));
+    const localById    = new Map(localCampaigns.map(c => [c.externalId ?? '', c]));
+
+    const campaigns: Array<Record<string, unknown>> = [];
+    let mismatch = 0;
+
+    for (const [pid, official] of officialById) {
+      const local = localById.get(pid);
+      const officialNorm = normalizeProjectStatus(official.status);
+      if (!local) {
+        campaigns.push({ project_id: pid, name: official.campaign_name, official_status: official.status, official_norm: officialNorm, local_status: null, local_raw: null, consistent: false, issue: 'local_missing' });
+        mismatch++;
+      } else if (local.status !== officialNorm) {
+        campaigns.push({ project_id: pid, name: official.campaign_name, official_status: official.status, official_norm: officialNorm, local_status: local.status, local_raw: local.rawStatus ?? null, consistent: false, issue: 'status_mismatch' });
+        mismatch++;
+      } else {
+        campaigns.push({ project_id: pid, name: official.campaign_name, official_status: official.status, official_norm: officialNorm, local_status: local.status, local_raw: local.rawStatus ?? null, consistent: true, issue: null });
+      }
+    }
+
+    // 本地有但官方查不到的
+    let officialMissing = 0;
+    for (const [eid] of localById) {
+      if (eid && !officialById.has(eid)) officialMissing++;
+    }
+
+    return {
+      account_id:          account.id,
+      account_name:        account.name,
+      local_account_id:    account.externalId,
+      brand_id:            account.brand,
+      has_token:           true,
+      last_sync_at:        localCampaigns.reduce((m, c) => Math.max(m, c.lastSyncAt ?? 0), 0) || null,
+      local_campaigns:     localCampaigns.length,
+      official_campaigns:  officialProjects.length,
+      mismatch_count:      mismatch,
+      official_missing:    officialMissing,
+      fetch_error:         fetchError,
+      campaigns,
+    };
+  }));
+
+  const totalMismatch      = diagAccounts.reduce((s, a) => s + a.mismatch_count, 0);
+  const totalOfficialMiss  = diagAccounts.reduce((s, a) => s + a.official_missing, 0);
+  const errAccounts        = diagAccounts.filter(a => a.fetch_error).length;
+
+  ok(res, {
+    generated_at:           new Date().toISOString(),
+    total_accounts:         validAccounts.length,
+    accounts_with_error:    errAccounts,
+    total_mismatch:         totalMismatch,
+    total_official_missing: totalOfficialMiss,
+    summary: diagAccounts.map(a => ({
+      account: a.account_name,
+      local_account_id: a.local_account_id,
+      local: a.local_campaigns,
+      official: a.official_campaigns,
+      mismatch: a.mismatch_count,
+      error: a.fetch_error ?? null,
+    })),
+    accounts: diagAccounts,
+  }, {});
+};
+
+// ── POST /api/accounts/sync-status ───────────────────────────────────────────
+// 仅同步状态+报表数据，跳过账户发现阶段，比完整 POST /api/accounts 更快。
+// 前端「刷新数据」按钮调用此接口。
+export const syncStatus: RouteHandler = async (req, res) => {
+  const validAccounts = accounts.filter(a => a.externalId && /^\d{10,}$/.test(a.externalId));
+  if (!validAccounts.length) {
+    return err(res, '内存中没有有效账户，请先执行「同步广告主」（POST /api/accounts）');
+  }
+
+  let accessToken: string;
+  try {
+    accessToken = await tokenManager.getAnyToken('oceanengine');
+    void accessToken;
+  } catch (e) {
+    return err(res, `无法获取 Access Token: ${String(e)}`);
+  }
+
+  const oe = adAdapter as OceanEngineAdapter;
+  let totalUpdated = 0;
+  let totalAdded   = 0;
+  const errors: string[] = [];
+  const syncSummary: Array<Record<string, unknown>> = [];
+
+  for (const account of validAccounts) {
+    let updatedInAcc = 0;
+    let addedInAcc   = 0;
+    try {
+      const campList = await oe.fetchCampaignList(account.externalId!);
+
+      // 回填门店真实名称
+      const poiName = campList.map(c => c.poi_name).find(Boolean);
+      if (poiName && account.name.startsWith('本地推账户')) {
+        account.name = poiName;
+        const b = brands.find(br => br.id === account.brand);
+        if (b) { b.name = poiName; b.logo = poiName.slice(0, 1); }
+      }
+
+      let statsById = new Map<string, Awaited<ReturnType<typeof oe.fetchProjectReport>>[number]>();
+      try {
+        const stats = await oe.fetchProjectReport(account.externalId!);
+        statsById = new Map(stats.map(s => [s.externalId, s]));
+      } catch (e) {
+        errors.push(`报表拉取失败 ${account.name}: ${String(e)}`);
+      }
+
+      const now = Date.now();
+      for (const camp of campList) {
+        const st = statsById.get(String(camp.campaign_id));
+        const normalizedStatus = normalizeProjectStatus(camp.status);
+        const existing = adCampaigns.find(c => c.externalId === String(camp.campaign_id));
+        if (existing) {
+          const prev = existing.status;
+          existing.status    = normalizedStatus;
+          existing.rawStatus = camp.rawStatus || camp.status;
+          existing.lastSyncAt = now;
+          if (prev !== normalizedStatus) {
+            updatedInAcc++;
+            console.log(`[SyncStatus] 状态变更 ${camp.campaign_name}: ${prev} → ${normalizedStatus} (raw="${camp.rawStatus}")`);
+          }
+          if (st) Object.assign(existing, {
+            spent: st.spent, cpm: st.cpm, ctr: st.ctr, roas: st.roas, gmv: st.gmv,
+            impressions: st.impressions, clicks: st.clicks,
+            storeVisits: st.storeVisits, phoneCalls: st.phoneCalls,
+            mapSearches: st.mapSearches, coupons: st.coupons, leads: st.leads,
+            costPerLead: st.leads > 0 ? st.spent / st.leads : 0,
+            lastSyncAt: now,
+          });
+        } else {
+          // 新项目：直接加入
+          const newCamp: AdCampaign = {
+            id: `c_${camp.campaign_id}`,
+            name: camp.campaign_name,
+            brand: account.brand,
+            account: account.id,
+            externalId: String(camp.campaign_id),
+            rawStatus: camp.rawStatus || camp.status,
+            budget: camp.budget ?? 0,
+            spent: st?.spent ?? 0, cpm: st?.cpm ?? 0, ctr: st?.ctr ?? 0,
+            impressions: st?.impressions ?? 0, clicks: st?.clicks ?? 0,
+            roas: st?.roas ?? 0, gmv: st?.gmv ?? 0, cvr: 0,
+            storeVisits: st?.storeVisits ?? 0, phoneCalls: st?.phoneCalls ?? 0,
+            mapSearches: st?.mapSearches ?? 0, coupons: st?.coupons ?? 0,
+            leads: st?.leads ?? 0,
+            costPerLead: st && st.leads > 0 ? st.spent / st.leads : 0,
+            status: normalizedStatus,
+            startDate: new Date().toISOString().slice(0, 10),
+            lastSyncAt: now,
+          };
+          adCampaigns.push(newCamp);
+          addedInAcc++;
+        }
+      }
+      totalUpdated += updatedInAcc;
+      totalAdded   += addedInAcc;
+      syncSummary.push({ account: account.name, campaigns: campList.length, updated: updatedInAcc, added: addedInAcc });
+    } catch (e) {
+      const msg = `${account.name}: ${String(e)}`;
+      errors.push(msg);
+      syncSummary.push({ account: account.name, error: msg });
+    }
+  }
+
+  saveSnapshot();
+  ok(res, {
+    synced_accounts: validAccounts.length,
+    total_campaigns: adCampaigns.length,
+    status_updated:  totalUpdated,
+    new_campaigns:   totalAdded,
+    failed_accounts: errors.length,
+    errors,
+    summary: syncSummary,
+  }, {});
 };

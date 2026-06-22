@@ -284,6 +284,7 @@ export class OceanEngineAdapter implements IAdAdapter {
     campaign_id: string;
     campaign_name: string;
     status: string;
+    rawStatus: string;
     budget: number;
     budget_mode: string;
     poi_name: string;
@@ -309,17 +310,28 @@ export class OceanEngineAdapter implements IAdAdapter {
     } else {
       console.log(`[OceanEngine] 本地推账户 ${advertiserId} 暂无项目`);
     }
-    // 字段名按官方文档：project_id / name / project_budget / project_status_first
+    // 字段名按官方文档，同时兼容多个可能的字段名（不同版本 API 返回名可能不同）
     return rows.map(raw => {
       const projectId   = raw.project_id ?? '';
       const projectName = raw.name ?? String(projectId);
-      // 一级状态：PROJECT_STATUS_ENABLE 启用中 / PROJECT_STATUS_DISABLE 未投放 等
-      const status      = String(raw.project_status_first ?? '');
+      // 按优先级依次尝试多个状态字段名：
+      // project_status（主字段）> project_status_first > status > opt_status
+      const rawStatus = String(
+        raw.project_status ??
+        raw.project_status_first ??
+        raw.status ??
+        raw.opt_status ??
+        ''
+      );
+      if (!rawStatus) {
+        console.warn(`[OceanEngine] 项目 ${projectId}（${projectName}）状态字段为空，原始 keys: ${Object.keys(raw).join(',')}`);
+      }
       const poi = (raw.poi_info ?? {}) as Record<string, unknown>;
       return {
         campaign_id:   String(projectId),
         campaign_name: String(projectName),
-        status:        status || 'active',
+        status:        rawStatus,   // 原始值，交给 normalizeProjectStatus 处理
+        rawStatus,
         budget:        Number(raw.project_budget ?? 0),
         budget_mode:   String(raw.project_budget_mode ?? ''),
         poi_name:      String(poi.poi_name ?? ''),

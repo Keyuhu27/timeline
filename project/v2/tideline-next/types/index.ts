@@ -113,7 +113,8 @@ export interface AdCampaign {
   roas: number;
   cvr: number;
   gmv: number;
-  status: 'active' | 'paused' | 'ended' | 'deleted';
+  status: 'active' | 'paused' | 'ended' | 'deleted' | 'unknown';
+  rawStatus?: string;     // 巨量引擎原始状态字符串，用于调试和诊断
   startDate: string;
   externalId?: string;
   lastSyncAt?: number;

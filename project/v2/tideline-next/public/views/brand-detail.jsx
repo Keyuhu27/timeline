@@ -111,7 +111,13 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
             )}
           </div>
           <div className="page-actions">
-            <button className="btn sm" onClick={load} disabled={loading}><Icon name="refresh" size={12} /> 刷新数据</button>
+            <button className="btn sm" onClick={async () => {
+              setLoading(true);
+              try {
+                await fetch('/api/accounts/sync-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+              } catch {}
+              load();
+            }} disabled={loading}><Icon name="refresh" size={12} /> 同步状态</button>
           </div>
         </div>
 

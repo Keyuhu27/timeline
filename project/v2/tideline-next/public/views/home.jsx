@@ -47,12 +47,15 @@ function TodayBlock() {
   useEffect(load, [load]);
 
   const syncAccounts = async () => {
-    setSyncing(true); setMsg('正在同步广告主…');
+    setSyncing(true); setMsg('正在同步广告主（含项目列表）…');
     try {
       const r = await fetch('/api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       const d = await r.json();
       const errs = d.data?.errors || [];
-      setMsg(errs.length ? `同步完成，但有提示：${errs[0]}` : '同步成功');
+      const cnt  = d.data?.campaignsSynced ?? 0;
+      setMsg(errs.length
+        ? `同步完成，同步 ${cnt} 个项目，有错误：${errs[0]}`
+        : `同步完成：${d.data?.synced ?? 0} 个账户，${cnt} 个项目`);
       await TL._refresh();
       load();
     } catch (e) { setMsg('同步失败：' + e.message); }
@@ -60,10 +63,20 @@ function TodayBlock() {
   };
 
   const refresh = async () => {
-    setMsg('正在刷新数据…');
-    await TL._refresh();
-    load();
-    setMsg('已刷新');
+    setSyncing(true); setMsg('正在从巨量同步状态和报表数据…');
+    try {
+      const r = await fetch('/api/accounts/sync-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const d = await r.json();
+      if (d.error) {
+        setMsg('刷新失败：' + d.error);
+      } else {
+        const { synced_accounts, status_updated, new_campaigns, failed_accounts } = d.data || {};
+        setMsg(`刷新完成：${synced_accounts} 个账户 · ${status_updated} 个状态已更新 · ${new_campaigns} 个新项目${failed_accounts ? ` · ${failed_accounts} 个账户失败` : ''}`);
+      }
+      await TL._refresh();
+      load();
+    } catch (e) { setMsg('刷新失败：' + e.message); }
+    setSyncing(false);
   };
 
   const fmt = n => n >= 10000 ? (n / 10000).toFixed(1) + '万' : (Math.round(n || 0)).toLocaleString();
@@ -90,7 +103,7 @@ function TodayBlock() {
           {msg && <span className="muted" style={{ fontSize: 11.5 }}>{msg}</span>}
         </div>
         <div className="row tight">
-          <button className="btn ghost sm" onClick={refresh} disabled={loading || syncing}><Icon name="refresh" size={12} /> 刷新数据</button>
+          <button className="btn ghost sm" onClick={refresh} disabled={syncing}><Icon name={syncing ? 'loader' : 'refresh'} size={12} /> {syncing ? '同步中…' : '刷新数据'}</button>
           <button className="btn primary sm" onClick={syncAccounts} disabled={syncing}><Icon name={syncing ? 'loader' : 'download'} size={12} /> {syncing ? '同步中…' : '同步广告主'}</button>
         </div>
       </div>

@@ -214,19 +214,29 @@ TL.displayCampaignName = (c) =>
   (c && c.name && !TL._isInternalName(c.name) && c.name) ||
   (c && c.externalId ? `未命名项目 ${c.externalId}` : '未命名项目');
 
-// 状态归一：巨量/内部多种取值 → active/paused/deleted/unknown
+// 状态归一：后端已归一的 status 字段直接显示；若传入原始巨量枚举也能正确映射
 TL._normStatus = (s) => {
-  const v = String(s || '').toUpperCase();
-  if (/PAUSE|DISABLE/.test(v)) return 'paused';
-  if (/DELETE/.test(v))        return 'deleted';
-  if (/ENABLE|ACTIVE/.test(v) || v === 'ACTIVE') return 'active';
-  if (v === 'ENDED' || v === 'DONE') return 'ended';
-  return v ? 'unknown' : 'active';
+  const v = String(s || '').toUpperCase().trim();
+  if (!v) return 'active';
+  // 已归一化值直接通过
+  if (v === 'ACTIVE')  return 'active';
+  if (v === 'PAUSED')  return 'paused';
+  if (v === 'DELETED') return 'deleted';
+  if (v === 'ENDED')   return 'ended';
+  if (v === 'UNKNOWN') return 'unknown';
+  // 兼容原始巨量枚举（万一 rawStatus 直接传进来）
+  if (/DELETE/.test(v) || v.includes('已删除'))                   return 'deleted';
+  if (/DONE|FINISH|ENDED|EXPIR|COMPLET/.test(v) || v.includes('已完成') || v.includes('已结束')) return 'ended';
+  if (/PAUSE|DISABLE/.test(v) || v.includes('暂停') || v.includes('未投放')) return 'paused';
+  if (/ENABLE|RUNNING|START/.test(v) || v.includes('投放中') || v.includes('已启用')) return 'active';
+  return 'unknown';
 };
 TL.statusLabel = (s) => ({
-  active: '投放中', paused: '已暂停', deleted: '已删除', ended: '已结束', unknown: '未知',
-}[TL._normStatus(s)] || '未知');
-TL.statusTone = (s) => ({ active: 'success', paused: 'warn', deleted: 'danger' }[TL._normStatus(s)] || '');
+  active: '投放中', paused: '已暂停', deleted: '已删除', ended: '已结束', unknown: '未知状态',
+}[TL._normStatus(s)] || '未知状态');
+TL.statusTone = (s) => ({
+  active: 'success', paused: 'warn', deleted: 'danger', ended: '', unknown: 'warn',
+}[TL._normStatus(s)] || '');
 
 // 重新拉取账户/品牌，并广播给侧栏与各页面刷新
 TL._refresh = async function() {
