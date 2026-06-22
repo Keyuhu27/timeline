@@ -35,12 +35,31 @@ export function safeJsonParse<T>(text: string): T {
   return JSON.parse(wrapped) as T;
 }
 
+// 把指定字段的纯数字（字符串或字符串数组）序列化成 JSON 里的「原始整数」——
+// 不加引号、不丢精度。用于巨量本地推写接口要求 integer 而 ID 又超过 JS 安全整数
+// （>9e15）的场景：直接 Number() 会丢精度暂停错项目，必须按原始字面量发送。
+const RAW_INT = '@@RAWINT@@';
+function stringifyWithRawInts(obj: Record<string, unknown>, rawKeys: string[]): string {
+  const clone: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (rawKeys.includes(k) && v != null) {
+      clone[k] = Array.isArray(v)
+        ? v.map(x => `${RAW_INT}${x}${RAW_INT}`)
+        : `${RAW_INT}${v}${RAW_INT}`;
+    } else {
+      clone[k] = v;
+    }
+  }
+  return JSON.stringify(clone)
+    .replace(new RegExp(`"${RAW_INT}(\\d+)${RAW_INT}"`, 'g'), '$1');
+}
+
 // ─── HTTP 辅助函数 ────────────────────────────────────────────────────────────
 
 async function oeRequest<T>(
   url: string,
   token: string,
-  options: { method: 'GET' | 'POST'; body?: Record<string, unknown>; params?: Record<string, string> },
+  options: { method: 'GET' | 'POST'; body?: Record<string, unknown>; rawBody?: string; params?: Record<string, string> },
 ): Promise<T> {
   let finalUrl = url;
   const headers: Record<string, string> = { 'Access-Token': token };
@@ -55,7 +74,7 @@ async function oeRequest<T>(
     fetchInit = { method: 'GET', headers };
   } else {
     headers['Content-Type'] = 'application/json';
-    fetchInit = { method: 'POST', headers, body: JSON.stringify(options.body ?? {}) };
+    fetchInit = { method: 'POST', headers, body: options.rawBody ?? JSON.stringify(options.body ?? {}) };
   }
 
   console.log(`[OceanEngine] ${options.method} ${finalUrl}`, options.body ?? options.params ?? '');
@@ -413,17 +432,19 @@ export class OceanEngineAdapter implements IAdAdapter {
   }
 
   // 本地推项目改状态：v3.0/local/project/status/update/
+  // 接口要求 local_account_id / project_ids 为 integer，且 project_id 超过 JS 安全整数，
+  // 故用 stringifyWithRawInts 发送原始整数字面量（不加引号、不丢精度）。
   private async _updateProjectStatus(
     projectId: string, localAccountId: string, status: 'enable' | 'disable', token: string,
   ): Promise<boolean> {
-    await oeRequest(`${LOCAL_BASE}project/status/update/`, token, {
-      method: 'POST',
-      body: {
-        local_account_id: localAccountId,
-        project_ids: [projectId],
-        opt_status: status === 'enable' ? 'ENABLE' : 'DISABLE',
-      },
-    });
+    const body = {
+      local_account_id: localAccountId,
+      project_ids: [projectId],
+      opt_status: status === 'enable' ? 'ENABLE' : 'DISABLE',
+    };
+    const rawBody = stringifyWithRawInts(body, ['local_account_id', 'project_ids']);
+    console.log(`[OE] project/status/update body=${rawBody} typeof local_account_id=integer typeof project_ids[0]=integer`);
+    await oeRequest(`${LOCAL_BASE}project/status/update/`, token, { method: 'POST', rawBody });
     return true;
   }
 
@@ -431,15 +452,15 @@ export class OceanEngineAdapter implements IAdAdapter {
   private async _updateProjectBudget(
     projectId: string, localAccountId: string, budget: number, token: string,
   ): Promise<boolean> {
-    await oeRequest(`${LOCAL_BASE}project/update/`, token, {
-      method: 'POST',
-      body: {
-        local_account_id: localAccountId,
-        project_id: projectId,
-        budget,
-        budget_mode: 'BUDGET_MODE_DAY',
-      },
-    });
+    const body = {
+      local_account_id: localAccountId,
+      project_id: projectId,
+      budget,
+      budget_mode: 'BUDGET_MODE_DAY',
+    };
+    const rawBody = stringifyWithRawInts(body, ['local_account_id', 'project_id']);
+    console.log(`[OE] project/update body=${rawBody}`);
+    await oeRequest(`${LOCAL_BASE}project/update/`, token, { method: 'POST', rawBody });
     return true;
   }
 
