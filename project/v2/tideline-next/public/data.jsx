@@ -226,9 +226,9 @@ TL._normStatus = (s) => {
   if (v === 'UNKNOWN') return 'unknown';
   // 兼容原始巨量枚举（万一 rawStatus 直接传进来）
   if (/DELETE/.test(v) || v.includes('已删除'))                   return 'deleted';
+  if (/ENABLE|RUNNING|START|ACTIVE/.test(v) || v.includes('投放中') || v.includes('已启用')) return 'active';
   if (/DONE|FINISH|ENDED|EXPIR|COMPLET/.test(v) || v.includes('已完成') || v.includes('已结束')) return 'ended';
   if (/PAUSE|DISABLE/.test(v) || v.includes('暂停') || v.includes('未投放')) return 'paused';
-  if (/ENABLE|RUNNING|START/.test(v) || v.includes('投放中') || v.includes('已启用')) return 'active';
   return 'unknown';
 };
 TL.statusLabel = (s) => ({

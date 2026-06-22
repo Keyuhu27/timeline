@@ -314,15 +314,17 @@ export class OceanEngineAdapter implements IAdAdapter {
     return rows.map(raw => {
       const projectId   = raw.project_id ?? '';
       const projectName = raw.name ?? String(projectId);
-      // 按优先级依次尝试多个状态字段名：
-      // project_status（主字段）> project_status_first > status > opt_status
-      const rawStatus = String(
-        raw.project_status ??
-        raw.project_status_first ??
-        raw.status ??
-        raw.opt_status ??
-        ''
-      );
+      // ── 状态字段说明（关键）──────────────────────────────────────────────
+      // 巨量本地推项目有两类状态：
+      //   • opt_status     —— 用户开关状态（ENABLE/PAUSED/DELETE），即“是否在投”的真实开关，
+      //                       和暂停/恢复写接口用的是同一个字段，是判断 投放中/已暂停 的权威依据。
+      //   • project_status —— 投放生命周期的“计算态”（PROJECT_STATUS_DONE/未达投放时间/超预算…），
+      //                       即使开关 ENABLE 且今日有花费，也可能返回 DONE，不能用它判断暂停。
+      // 因此优先用 opt_status；缺失时才回退到 project_status。
+      const optStatus     = String(raw.opt_status ?? '').trim();
+      const projectStatus = String(raw.project_status ?? raw.project_status_first ?? raw.status ?? '').trim();
+      const rawStatus     = optStatus || projectStatus;
+      console.log(`[OceanEngine] 项目 ${projectId}（${projectName}）opt_status="${optStatus}" project_status="${projectStatus}"`);
       if (!rawStatus) {
         console.warn(`[OceanEngine] 项目 ${projectId}（${projectName}）状态字段为空，原始 keys: ${Object.keys(raw).join(',')}`);
       }

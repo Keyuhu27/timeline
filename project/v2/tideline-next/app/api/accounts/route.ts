@@ -28,18 +28,19 @@ export function normalizeProjectStatus(raw: unknown): AdCampaign['status'] {
   // 已删除
   if (/DELETE/.test(v) || v.includes('已删除')) return 'deleted';
 
-  // 已结束（注意：DONE 是"结束"而非"暂停"，不能混淆）
-  if (/\bDONE\b|FINISH|ENDED|EXPIR|COMPLET/.test(v) ||
+  // 投放中 / 已启用 —— 优先判断（opt_status=ENABLE 即用户开关打开，即便 project_status=DONE 也算在投）
+  if (/ENABLE|ACTIVE|RUNNING|START/.test(v) ||
+      v.includes('投放中') || v.includes('已启用') || v.includes('启用'))
+    return 'active';
+
+  // 已结束（注意：DONE 是"结束/已完成"而非"暂停"；不能用 \bDONE\b——下划线是单词字符，
+  // PROJECT_STATUS_DONE 中 _DONE 无单词边界会漏判，故用普通子串匹配）
+  if (/DONE|FINISH|ENDED|EXPIR|COMPLET/.test(v) ||
       v.includes('已完成') || v.includes('已结束')) return 'ended';
 
   // 已暂停 / 未投放 / 被禁用
   if (/PAUSE|DISABLE/.test(v) || v.includes('暂停') || v.includes('未投放') || v.includes('已禁用'))
     return 'paused';
-
-  // 投放中 / 已启用
-  if (/ENABLE|ACTIVE|RUNNING|START/.test(v) ||
-      v.includes('投放中') || v.includes('已启用') || v.includes('启用'))
-    return 'active';
 
   // 未知：打日志，不默认成 paused，避免把投放中的项目误标为已暂停
   console.warn(`[normalizeProjectStatus] ⚠️ 未知状态枚举: "${raw}" — 暂标为 unknown，建议检查 sync-diagnosis`);
