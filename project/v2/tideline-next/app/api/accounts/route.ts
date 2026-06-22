@@ -23,18 +23,26 @@ export const GET: RouteHandler = (req, res) => {
  */
 export function normalizeProjectStatus(raw: unknown): AdCampaign['status'] {
   const v = String(raw ?? '').toUpperCase().trim();
-  if (!v) return 'active';   // 空值 → 默认投放中（不要变成 unknown 导致全显暂停）
+  if (!v) return 'active';   // 空值 → 默认投放中
+
+  // ── 数字型 opt_status（巨量本地推项目列表返回整数而非枚举字符串）────────
+  // 经实测（对比今日有花费的在投项目与刚被 PAUSED 的项目），规律为：
+  //   1  →  ENABLE（开启/投放中）
+  //   0  →  PAUSED（暂停）
+  // 注意：2 可能代表 DELETE，但未确认，先归 unknown。
+  if (v === '1') { console.log(`[normalizeProjectStatus] 数字 opt_status=1 → active`); return 'active'; }
+  if (v === '0') { console.log(`[normalizeProjectStatus] 数字 opt_status=0 → paused`); return 'paused'; }
+  if (v === '2') { console.log(`[normalizeProjectStatus] 数字 opt_status=2 → deleted`); return 'deleted'; }
 
   // 已删除
   if (/DELETE/.test(v) || v.includes('已删除')) return 'deleted';
 
-  // 投放中 / 已启用 —— 优先判断（opt_status=ENABLE 即用户开关打开，即便 project_status=DONE 也算在投）
+  // 投放中 / 已启用 —— 优先于 DONE/ended（opt_status=ENABLE 即开关打开，即便 project_status=DONE 也是在投）
   if (/ENABLE|ACTIVE|RUNNING|START/.test(v) ||
       v.includes('投放中') || v.includes('已启用') || v.includes('启用'))
     return 'active';
 
-  // 已结束（注意：DONE 是"结束/已完成"而非"暂停"；不能用 \bDONE\b——下划线是单词字符，
-  // PROJECT_STATUS_DONE 中 _DONE 无单词边界会漏判，故用普通子串匹配）
+  // 已结束（DONE = 今日完成/已结束，非暂停；用普通子串匹配，不用 \b 以覆盖 PROJECT_STATUS_DONE）
   if (/DONE|FINISH|ENDED|EXPIR|COMPLET/.test(v) ||
       v.includes('已完成') || v.includes('已结束')) return 'ended';
 
@@ -42,8 +50,8 @@ export function normalizeProjectStatus(raw: unknown): AdCampaign['status'] {
   if (/PAUSE|DISABLE/.test(v) || v.includes('暂停') || v.includes('未投放') || v.includes('已禁用'))
     return 'paused';
 
-  // 未知：打日志，不默认成 paused，避免把投放中的项目误标为已暂停
-  console.warn(`[normalizeProjectStatus] ⚠️ 未知状态枚举: "${raw}" — 暂标为 unknown，建议检查 sync-diagnosis`);
+  // 未知：不默认成 paused，避免把投放中的项目误标为已暂停
+  console.warn(`[normalizeProjectStatus] ⚠️ 未知状态枚举: "${raw}" — 暂标为 unknown`);
   return 'unknown';
 }
 
@@ -110,7 +118,21 @@ export async function syncLocalAccounts(
       const now = Date.now();
       for (const camp of campList) {
         const st = statsById.get(String(camp.campaign_id));
-        const normalizedStatus = normalizeProjectStatus(camp.status);
+        let normalizedStatus = normalizeProjectStatus(camp.status);
+
+        // 花费安全网：如果今日已有实际花费/展现/线索，且状态识别为 paused/unknown/ended，
+        // 说明状态字段可能解析有误——强制覆盖为 active 并打印警告供排查。
+        const todaySpent = st?.spent ?? 0;
+        if (todaySpent > 0 && (normalizedStatus === 'paused' || normalizedStatus === 'unknown' || normalizedStatus === 'ended')) {
+          console.warn(
+            `[AccountSync] ⚠️ 花费安全网触发 ${camp.campaign_name}:` +
+            ` status="${normalizedStatus}" 但今日花费 ¥${todaySpent}，强制设为 active。` +
+            ` rawOptStatus="${camp.rawOptStatus}" rawProjectStatus="${camp.rawProjectStatus}"` +
+            ` selectedField="${camp.selectedField}"`
+          );
+          normalizedStatus = 'active';
+        }
+
         const existing = adCampaigns.find(c => c.externalId === String(camp.campaign_id));
         if (existing) {
           const prevStatus = existing.status;
@@ -373,15 +395,36 @@ export const syncDiagnosis: RouteHandler = async (req, res) => {
     for (const [pid, official] of officialById) {
       const local = localById.get(pid);
       const officialNorm = normalizeProjectStatus(official.status);
+      const todaySpent = local?.spent ?? 0;
+      const hasSpendToday = todaySpent > 0;
+      const entry: Record<string, unknown> = {
+        project_id:           pid,
+        name:                 official.campaign_name,
+        // 状态字段原始值（用于人工核对映射规则）
+        raw_opt_status:       official.rawOptStatus,
+        raw_project_status:   official.rawProjectStatus,
+        selected_field:       official.selectedField,
+        selected_value:       official.status,
+        all_status_fields:    official.allStatusFields,
+        // 归一化结果
+        official_norm:        officialNorm,
+        local_status:         local?.status ?? null,
+        local_raw:            local?.rawStatus ?? null,
+        // 报表数据（用于花费安全网验证）
+        today_spent:          todaySpent,
+        has_spend_today:      hasSpendToday,
+        today_impressions:    local?.impressions ?? 0,
+        today_clicks:         local?.clicks ?? 0,
+        today_leads:          local?.leads ?? 0,
+      };
       if (!local) {
-        campaigns.push({ project_id: pid, name: official.campaign_name, official_status: official.status, official_norm: officialNorm, local_status: null, local_raw: null, consistent: false, issue: 'local_missing' });
-        mismatch++;
+        entry.consistent = false; entry.issue = 'local_missing'; mismatch++;
       } else if (local.status !== officialNorm) {
-        campaigns.push({ project_id: pid, name: official.campaign_name, official_status: official.status, official_norm: officialNorm, local_status: local.status, local_raw: local.rawStatus ?? null, consistent: false, issue: 'status_mismatch' });
-        mismatch++;
+        entry.consistent = false; entry.issue = 'status_mismatch'; mismatch++;
       } else {
-        campaigns.push({ project_id: pid, name: official.campaign_name, official_status: official.status, official_norm: officialNorm, local_status: local.status, local_raw: local.rawStatus ?? null, consistent: true, issue: null });
+        entry.consistent = true; entry.issue = null;
       }
+      campaigns.push(entry);
     }
 
     // 本地有但官方查不到的
@@ -476,7 +519,20 @@ export const syncStatus: RouteHandler = async (req, res) => {
       const now = Date.now();
       for (const camp of campList) {
         const st = statsById.get(String(camp.campaign_id));
-        const normalizedStatus = normalizeProjectStatus(camp.status);
+        let normalizedStatus = normalizeProjectStatus(camp.status);
+
+        // 花费安全网（同 syncLocalAccounts）
+        const todaySpent = st?.spent ?? 0;
+        if (todaySpent > 0 && (normalizedStatus === 'paused' || normalizedStatus === 'unknown' || normalizedStatus === 'ended')) {
+          console.warn(
+            `[SyncStatus] ⚠️ 花费安全网触发 ${camp.campaign_name}:` +
+            ` status="${normalizedStatus}" 但今日花费 ¥${todaySpent}，强制设为 active。` +
+            ` rawOptStatus="${camp.rawOptStatus}" rawProjectStatus="${camp.rawProjectStatus}"` +
+            ` selectedField="${camp.selectedField}"`
+          );
+          normalizedStatus = 'active';
+        }
+
         const existing = adCampaigns.find(c => c.externalId === String(camp.campaign_id));
         if (existing) {
           const prev = existing.status;

@@ -283,8 +283,12 @@ export class OceanEngineAdapter implements IAdAdapter {
   async fetchCampaignList(advertiserId: string): Promise<Array<{
     campaign_id: string;
     campaign_name: string;
-    status: string;
-    rawStatus: string;
+    status: string;          // 选中的状态值（已交给 normalizeProjectStatus）
+    rawStatus: string;       // 同上，冗余保留供调试
+    rawOptStatus: string;    // 原始 opt_status 字段值
+    rawProjectStatus: string;// 原始 project_status 字段值
+    selectedField: string;   // 最终选用的字段名
+    allStatusFields: Record<string, unknown>; // 全部候选字段原始值
     budget: number;
     budget_mode: string;
     poi_name: string;
@@ -306,37 +310,70 @@ export class OceanEngineAdapter implements IAdAdapter {
 
     const rows = data.project_list ?? [];
     if (rows.length > 0) {
-      console.log(`[OceanEngine] 本地推项目列表首行:`, JSON.stringify(rows[0]).slice(0, 400));
+      // 完整打印第一条原始数据，不截断，方便确认字段结构
+      console.log(`[OceanEngine] 本地推项目列表首行 (账户 ${advertiserId}):`, JSON.stringify(rows[0]));
     } else {
       console.log(`[OceanEngine] 本地推账户 ${advertiserId} 暂无项目`);
     }
-    // 字段名按官方文档，同时兼容多个可能的字段名（不同版本 API 返回名可能不同）
     return rows.map(raw => {
       const projectId   = raw.project_id ?? '';
       const projectName = raw.name ?? String(projectId);
-      // ── 状态字段说明（关键）──────────────────────────────────────────────
-      // 巨量本地推项目有两类状态：
-      //   • opt_status     —— 用户开关状态（ENABLE/PAUSED/DELETE），即“是否在投”的真实开关，
-      //                       和暂停/恢复写接口用的是同一个字段，是判断 投放中/已暂停 的权威依据。
-      //   • project_status —— 投放生命周期的“计算态”（PROJECT_STATUS_DONE/未达投放时间/超预算…），
-      //                       即使开关 ENABLE 且今日有花费，也可能返回 DONE，不能用它判断暂停。
-      // 因此优先用 opt_status；缺失时才回退到 project_status。
-      const optStatus     = String(raw.opt_status ?? '').trim();
-      const projectStatus = String(raw.project_status ?? raw.project_status_first ?? raw.status ?? '').trim();
-      const rawStatus     = optStatus || projectStatus;
-      console.log(`[OceanEngine] 项目 ${projectId}（${projectName}）opt_status="${optStatus}" project_status="${projectStatus}"`);
-      if (!rawStatus) {
-        console.warn(`[OceanEngine] 项目 ${projectId}（${projectName}）状态字段为空，原始 keys: ${Object.keys(raw).join(',')}`);
+
+      // 收集全部候选状态字段（便于诊断）
+      const allStatusFields: Record<string, unknown> = {
+        opt_status:       raw.opt_status,
+        project_status:   raw.project_status,
+        project_status_first: raw.project_status_first,
+        status:           raw.status,
+        delivery_status:  raw.delivery_status,
+        marketing_status: raw.marketing_status,
+        audit_status:     raw.audit_status,
+        enable_status:    raw.enable_status,
+        operation_status: raw.operation_status,
+      };
+
+      // opt_status 是用户主动开关（ENABLE/PAUSED/DELETE），与暂停写接口同字段，是最权威的开关状态。
+      // project_status 是投放生命周期计算态（DONE/未达投放时间/超预算），即使今日有花费也可能是 DONE，
+      // 不能用它判断开关状态。
+      const rawOptStatus     = String(raw.opt_status      ?? '').trim();
+      const rawProjectStatus = String(raw.project_status  ?? raw.project_status_first ?? raw.status ?? '').trim();
+
+      let selectedField: string;
+      let rawStatus: string;
+      if (rawOptStatus !== '') {
+        selectedField = 'opt_status';
+        rawStatus     = rawOptStatus;
+      } else if (rawProjectStatus !== '') {
+        selectedField = 'project_status';
+        rawStatus     = rawProjectStatus;
+      } else {
+        selectedField = '(none)';
+        rawStatus     = '';
       }
+
+      console.log(
+        `[StatusDebug] project_id=${projectId} name=”${projectName}”` +
+        ` selected=${selectedField} value=”${rawStatus}”` +
+        ` keys=[${Object.keys(raw).join(',')}]` +
+        ` allStatus=${JSON.stringify(allStatusFields)}`
+      );
+      if (!rawStatus) {
+        console.warn(`[OceanEngine] ⚠️ 项目 ${projectId}（${projectName}）所有状态字段为空，原始 keys: ${Object.keys(raw).join(',')}`);
+      }
+
       const poi = (raw.poi_info ?? {}) as Record<string, unknown>;
       return {
-        campaign_id:   String(projectId),
-        campaign_name: String(projectName),
-        status:        rawStatus,   // 原始值，交给 normalizeProjectStatus 处理
+        campaign_id:      String(projectId),
+        campaign_name:    String(projectName),
+        status:           rawStatus,
         rawStatus,
-        budget:        Number(raw.project_budget ?? 0),
-        budget_mode:   String(raw.project_budget_mode ?? ''),
-        poi_name:      String(poi.poi_name ?? ''),
+        rawOptStatus,
+        rawProjectStatus,
+        selectedField,
+        allStatusFields,
+        budget:           Number(raw.project_budget ?? 0),
+        budget_mode:      String(raw.project_budget_mode ?? ''),
+        poi_name:         String(poi.poi_name ?? ''),
       };
     });
   }
