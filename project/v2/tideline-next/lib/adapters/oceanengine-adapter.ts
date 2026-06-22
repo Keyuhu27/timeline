@@ -396,20 +396,50 @@ export class OceanEngineAdapter implements IAdAdapter {
 
   async updateCampaign(params: UpdateCampaignParams): Promise<boolean> {
     const token = await this.getAccessToken(params.advertiserId);
-    const body: Record<string, unknown> = {
-      advertiser_id: params.advertiserId,
-      campaign_id: params.externalId,
-    };
 
-    if (params.budget !== undefined) {
-      body.budget = params.budget;
-      body.budget_mode = 'BUDGET_MODE_DAY';
+    if (params.status !== undefined && params.budget !== undefined) {
+      // 同时改状态和预算时分两步
+      await this._updateProjectStatus(params.externalId, params.advertiserId, params.status, token);
+      await this._updateProjectBudget(params.externalId, params.advertiserId, params.budget, token);
+      return true;
     }
     if (params.status !== undefined) {
-      body.opt_status = params.status === 'enable' ? 'ENABLE' : 'DISABLE';
+      return this._updateProjectStatus(params.externalId, params.advertiserId, params.status, token);
     }
+    if (params.budget !== undefined) {
+      return this._updateProjectBudget(params.externalId, params.advertiserId, params.budget, token);
+    }
+    return true;
+  }
 
-    await oeRequest(`${BASE}campaign/update/`, token, { method: 'POST', body });
+  // 本地推项目改状态：v3.0/local/project/update/status/
+  private async _updateProjectStatus(
+    projectId: string, localAccountId: string, status: 'enable' | 'disable', token: string,
+  ): Promise<boolean> {
+    await oeRequest(`${LOCAL_BASE}project/update/status/`, token, {
+      method: 'POST',
+      body: {
+        local_account_id: localAccountId,
+        project_ids: [projectId],
+        opt_status: status === 'enable' ? 'ENABLE' : 'DISABLE',
+      },
+    });
+    return true;
+  }
+
+  // 本地推项目改预算：v3.0/local/project/update/budget/
+  private async _updateProjectBudget(
+    projectId: string, localAccountId: string, budget: number, token: string,
+  ): Promise<boolean> {
+    await oeRequest(`${LOCAL_BASE}project/update/budget/`, token, {
+      method: 'POST',
+      body: {
+        local_account_id: localAccountId,
+        project_id: projectId,
+        budget,
+        budget_mode: 'BUDGET_MODE_DAY',
+      },
+    });
     return true;
   }
 
