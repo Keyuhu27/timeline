@@ -46,6 +46,21 @@ export interface Account {
   color: string;
   externalId?: string;
   tokenExpiresAt?: number;
+  // 账户级（全域投放）报表汇总——来自 /local/report/account/get/。
+  // 全域投放消耗不进项目报表，只在账户报表，故单独缓存供品牌详情页顶部展示。
+  globalReport?: {
+    spent: number;       // stat_cost 全域消耗（今日）
+    gmv: number;         // oto_pay_order_amount 全域成交金额
+    orders: number;      // oto_pay_order_count 全域成交订单数
+    roi: number;         // oto_pay_order_roi 全域支付ROI
+    orderCost: number;   // conversion_cost 成交订单成本
+    impressions: number;
+    clicks: number;
+    ctr: number;
+    cpm: number;
+    syncedAt: number;
+    source: 'account_report';
+  };
 }
 
 export interface LiveSession {

@@ -5,6 +5,7 @@ window.TL = window.TL || {};
 const BrandDetail = function BrandDetail({ brandId, onBack }) {
   const { useState, useEffect, useCallback } = React;
   const [campaigns, setCampaigns] = useState([]);
+  const [accountReport, setAccountReport] = useState(null);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(null);
@@ -21,6 +22,7 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
       fetch('/api/logs').then(r => r.json()).catch(() => null),
     ]).then(([a, l]) => {
       setCampaigns(a?.data?.campaigns || []);
+      setAccountReport(a?.data?.accountReport || null);
       setLogs(l?.data?.logs || []);
     }).finally(() => setLoading(false));
   }, [brandId]);
@@ -77,7 +79,26 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
   // 只要有项目就展示列表+状态（即便今日消耗为 0，例如全域投放品牌）；仅当完全没有项目时才显示空态
   const hasData = campaigns.length > 0;
 
-  const overview = [
+  // 数据来源：账户级报表（全域投放）优先；缺失时回退到项目报表聚合
+  const ar = accountReport;
+  const dataSource = ar ? 'account_report' : (campaigns.length ? 'project_report_aggregated' : null);
+  const dataSourceLabel = {
+    account_report:             '全域投放报表（account_report）',
+    project_report_aggregated:  '项目报表聚合（project_report_aggregated）',
+  }[dataSource] || null;
+
+  const overview = ar ? [
+    { label: '今日消耗',     value: `¥ ${TL.fmtMoney(ar.spent)}` },
+    { label: '全域成交金额', value: `¥ ${TL.fmtMoney(ar.gmv)}` },
+    { label: '全域成交订单', value: ar.orders },
+    { label: '全域支付ROI',  value: (ar.roi || 0).toFixed(2) },
+    { label: '成交订单成本', value: ar.orderCost > 0 ? `¥ ${ar.orderCost.toFixed(1)}` : '—' },
+    { label: '展现',         value: TL.fmtCount(ar.impressions) },
+    { label: '点击',         value: TL.fmtCount(ar.clicks) },
+    { label: 'CTR',          value: `${((ar.ctr || 0) * 100).toFixed(1)}%` },
+    { label: '活跃计划',     value: agg.active },
+    { label: '暂停计划',     value: agg.paused },
+  ] : [
     { label: '今日消耗', value: `¥ ${TL.fmtMoney(agg.spent)}` },
     { label: '展现',     value: TL.fmtCount(agg.impressions) },
     { label: '点击',     value: TL.fmtCount(agg.clicks) },
@@ -133,7 +154,14 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
           <>
             {/* 当日概览 */}
             <section style={{ marginBottom: 24 }}>
-              <SectionTitle title="当日数据概览" />
+              <div className="row" style={{ alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <SectionTitle title="当日数据概览" />
+                {dataSourceLabel && (
+                  <Chip tone={dataSource === 'account_report' ? 'success' : ''}>
+                    数据来源：{dataSourceLabel}
+                  </Chip>
+                )}
+              </div>
               <div className="stat-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
                 {overview.map((o, i) => (
                   <div className="stat" key={i}>

@@ -82,9 +82,18 @@ async function probeReport(
   }
 
   const data = parsed?.data as Record<string, unknown> | undefined;
-  const list: unknown[] = (data?.list ?? data?.data ?? []) as unknown[];
+  // 巨量本地推报表的数据路径因接口而异：
+  //   account-report   → data.data_list
+  //   project-report   → data.project_list
+  //   promotion-report → data.promotion_list / data.data_list
+  // 还兼容历史 StatsData.Rows / list 结构。
+  const stats = (parsed?.StatsData ?? data?.StatsData) as Record<string, unknown> | undefined;
+  const list: unknown[] = (
+    data?.data_list ?? data?.project_list ?? data?.promotion_list ??
+    data?.list ?? data?.data ?? stats?.Rows ?? []
+  ) as unknown[];
   const firstRow = list[0] as Record<string, unknown> | undefined;
-  const totals   = data?.total   as Record<string, unknown> | undefined;
+  const totals   = (data?.total ?? data?.summary ?? stats?.SumData) as Record<string, unknown> | undefined;
   const summary  = data?.summary as Record<string, unknown> | undefined;
 
   ok(res, {

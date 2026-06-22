@@ -433,6 +433,74 @@ export class OceanEngineAdapter implements IAdAdapter {
     return rows.map(row => mapLocalPromoRow(row, String(row.project_id ?? '')));
   }
 
+  /**
+   * 拉取账户级（全域投放）报表 —— /local/report/account/get/。
+   * 巨量本地推「全域投放」消耗只出现在账户级报表，不进项目报表的 stat_cost。
+   * 返回 data.data_list[0]（单账户一行汇总）。即使全 0 也返回，由调用方判断是否有数据。
+   */
+  async fetchAccountReport(
+    localAccountId: string,
+    startDate?: string,
+    endDate?: string,
+  ): Promise<{
+    localAccountId: string;
+    spent: number;        // stat_cost 全域消耗
+    gmv: number;          // oto_pay_order_amount 全域成交金额
+    orders: number;       // oto_pay_order_count 全域成交订单数
+    roi: number;          // oto_pay_order_roi 全域支付ROI
+    orderCost: number;    // conversion_cost 成交订单成本/转化成本
+    impressions: number;
+    clicks: number;
+    ctr: number;
+    cpm: number;
+    convertCnt: number;
+    raw: Record<string, unknown>;
+  } | null> {
+    const rawLocalAccountId = localAccountId;
+    localAccountId = normalizeOceanEngineAccountId(localAccountId);
+    const token = await this.getAccessToken(localAccountId);
+    const today = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
+    const end   = endDate   ?? today;
+    const start = startDate ?? today;
+
+    const params: Record<string, string> = {
+      local_account_id: localAccountId,
+      time_granularity: 'TIME_GRANULARITY_TOTAL',
+      start_date: start,
+      end_date: end,
+      metrics: JSON.stringify(LOCAL_PROMO_METRICS),
+      page: '1',
+      page_size: '5',
+    };
+    console.log(`[OE] fetchAccountReport rawLocalAccountId=${rawLocalAccountId} normalizedLocalAccountId=${localAccountId} ${start}~${end}`);
+
+    const data = await oeRequest<{ data_list?: Array<Record<string, unknown>> }>(
+      `${LOCAL_BASE}report/account/get/`, token, { method: 'GET', params },
+    );
+
+    const row = (data.data_list ?? [])[0];
+    if (!row) {
+      console.log(`[OceanEngine] 账户报表无 data_list（${localAccountId}）`);
+      return null;
+    }
+    console.log(`[OceanEngine] 账户报表首行:`, JSON.stringify(row).slice(0, 300));
+
+    return {
+      localAccountId,
+      spent:       Number(row.stat_cost            ?? 0),
+      gmv:         Number(row.oto_pay_order_amount ?? 0),
+      orders:      Number(row.oto_pay_order_count  ?? 0),
+      roi:         Number(row.oto_pay_order_roi    ?? 0),
+      orderCost:   Number(row.conversion_cost      ?? 0),
+      impressions: Number(row.show_cnt             ?? 0),
+      clicks:      Number(row.click_cnt            ?? 0),
+      ctr:         Number(row.ctr                  ?? 0) / 100,
+      cpm:         Number(row.cpm_platform         ?? 0),
+      convertCnt:  Number(row.convert_cnt          ?? 0),
+      raw: row,
+    };
+  }
+
   async fetchCampaignStats(externalId: string, advertiserId: string): Promise<CampaignStats> {
     advertiserId = normalizeOceanEngineAccountId(advertiserId);
     const rows = await this.fetchProjectReport(advertiserId, [externalId]);

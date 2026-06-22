@@ -201,6 +201,26 @@ export async function syncLocalAccounts(
         console.log(`[AccountSync] 新增项目: ${camp.campaign_name} status=${normalizedStatus} (raw="${camp.rawStatus}")`);
       }
       console.log(`[AccountSync] ${account.name}: 同步 ${campList.length} 个计划（含报表）`);
+
+      // 账户级（全域投放）报表：全域消耗不进项目报表，单独拉一份缓存到账户上，
+      // 供品牌详情页顶部「今日消耗/全域成交金额/订单数/ROI」展示。即使全 0 也保留，
+      // 以便 UI 标注数据来源为 account_report，而非误判接口失败。
+      try {
+        const ar = await oe.fetchAccountReport(account.externalId);
+        if (ar) {
+          account.globalReport = {
+            spent: ar.spent, gmv: ar.gmv, orders: ar.orders, roi: ar.roi,
+            orderCost: ar.orderCost, impressions: ar.impressions, clicks: ar.clicks,
+            ctr: ar.ctr, cpm: ar.cpm, syncedAt: now, source: 'account_report',
+          };
+          console.log(`[AccountSync] ${account.name} 全域报表: 消耗¥${ar.spent} 成交¥${ar.gmv} 订单${ar.orders} ROI${ar.roi}`);
+        } else {
+          delete account.globalReport;
+          console.log(`[AccountSync] ${account.name} 全域报表无数据（无 data_list）`);
+        }
+      } catch (e) {
+        console.error(`[AccountSync] ⚠️ 拉取账户全域报表失败 ${account.name} (${account.externalId}): ${String(e)}`);
+      }
     } catch (e) {
       const msg = `❌ 拉取计划失败 ${account.name} (${account.externalId}): ${String(e)}`;
       console.error(`[AccountSync] ${msg}`);
@@ -609,6 +629,23 @@ export const syncStatus: RouteHandler = async (req, res) => {
           addedInAcc++;
         }
       }
+      // 账户级（全域投放）报表——同 syncLocalAccounts，刷新时一并更新
+      try {
+        const ar = await oe.fetchAccountReport(account.externalId!);
+        if (ar) {
+          account.globalReport = {
+            spent: ar.spent, gmv: ar.gmv, orders: ar.orders, roi: ar.roi,
+            orderCost: ar.orderCost, impressions: ar.impressions, clicks: ar.clicks,
+            ctr: ar.ctr, cpm: ar.cpm, syncedAt: now, source: 'account_report',
+          };
+          console.log(`[SyncStatus] ${account.name} 全域报表: 消耗¥${ar.spent} 成交¥${ar.gmv} 订单${ar.orders} ROI${ar.roi}`);
+        } else {
+          delete account.globalReport;
+        }
+      } catch (e) {
+        console.error(`[SyncStatus] ⚠️ 拉取账户全域报表失败 ${account.name}: ${String(e)}`);
+      }
+
       totalUpdated += updatedInAcc;
       totalAdded   += addedInAcc;
       syncSummary.push({ account: account.name, campaigns: campList.length, updated: updatedInAcc, added: addedInAcc });
