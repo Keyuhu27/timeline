@@ -2,7 +2,7 @@
 // POST  /api/ads   { name, brand, account, budget, goal, productIds?, startDate }
 // PATCH /api/ads?id=c1  { status?, budget?, name? }
 
-import { adCampaigns, brands, accounts } from '../../../lib/db';
+import { adCampaigns, brands, accounts, resolveExternalAccountId } from '../../../lib/db';
 import { ok, err, paginate }             from '../../../lib/api';
 import { adAdapter }                     from '../../../lib/adapters/index';
 import { saveSnapshot }                  from '../../../lib/persist';
@@ -49,7 +49,7 @@ export const POST: RouteHandler = async (req, res) => {
   try {
     const result = await adAdapter.createCampaign({
       name:         body.name,
-      advertiserId: account.externalId ?? account.id,
+      advertiserId: resolveExternalAccountId(body.account),
       budget:       body.budget,
       goal:         (body.goal ?? 'video_sales') as 'video_sales' | 'live_room' | 'product_card' | 'follow',
       productIds:   body.productIds,
@@ -87,9 +87,16 @@ export const PATCH: RouteHandler = async (req, res) => {
 
   const campaign = adCampaigns[idx]!;
   const body = req.body as Partial<AdCampaign>;
-  const account = accounts.find(a => a.id === campaign.account);
   const externalId = campaign.externalId ?? campaign.id;
-  const advertiserId = account?.externalId ?? campaign.account;
+  let advertiserId: string;
+  try {
+    advertiserId = resolveExternalAccountId(campaign.account);
+  } catch (e) {
+    console.warn('[PATCH /api/ads] 无法解析账户外部 ID，跳过 OceanEngine 调用:', e);
+    Object.assign(campaign, body);
+    saveSnapshot();
+    return ok(res, campaign);
+  }
 
   // 状态变更 → 调用适配器
   if (body.status && body.status !== campaign.status) {
@@ -124,11 +131,9 @@ export const DELETE: RouteHandler = async (req, res) => {
   const campaign = adCampaigns.find(c => c.id === id);
   if (!campaign) return err(res, '计划不存在', 404);
 
-  const account = accounts.find(a => a.id === campaign.account);
   const externalId = campaign.externalId ?? campaign.id;
-  const advertiserId = account?.externalId ?? campaign.account;
-
   try {
+    const advertiserId = resolveExternalAccountId(campaign.account);
     await adAdapter.pauseCampaign(externalId, advertiserId);
   } catch (e) {
     console.warn('[DELETE /api/ads] 适配器暂停失败:', e);

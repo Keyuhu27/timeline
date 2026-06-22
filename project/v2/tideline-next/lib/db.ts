@@ -241,3 +241,24 @@ export const operationLogs: OperationLog[] = [
 
 // ─── AI 决策 ─────────────────────────────────────────────────────────────
 export const aiDecisions: AiDecision[] = [];
+
+// ─── 账户 ID 解析（统一入口，防止内部 DB ID 泄漏给 OceanEngine API）────────
+/**
+ * 把任意形式的账户引用转换成巨量引擎 local_account_id（纯数字字符串）。
+ * - 输入已经是纯数字（≥10 位）→ 直接返回
+ * - 输入是内部 DB ID（如 a1 / a_1751...）→ 在 accounts 数组中查找 externalId
+ * - 找不到或 externalId 不是纯数字 → 抛出清晰错误，禁止 fallback 到内部 ID
+ */
+export function resolveExternalAccountId(accountRef: string): string {
+  if (/^\d{10,}$/.test(accountRef)) return accountRef;
+  const acct = accounts.find(a => a.id === accountRef);
+  const extId = acct?.externalId ?? '';
+  if (!extId || !/^\d{10,}$/.test(extId)) {
+    throw new Error(
+      `无法解析巨量账户外部 ID："${accountRef}" 不是纯数字，` +
+      `且在 accounts 中找不到有效 externalId（当前 externalId="${extId}"）。` +
+      `请先执行「同步广告主」使账户数据进入内存。`,
+    );
+  }
+  return extId;
+}

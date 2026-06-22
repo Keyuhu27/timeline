@@ -248,3 +248,46 @@ export const POST: RouteHandler = async (req, res) => {
   const r = await syncLocalAccounts(localIds, accessToken, nameById);
   ok(res, { synced: r.synced, total: localIds.length, campaignsSynced: r.campaignsSynced, accounts: r.accounts, errors: r.errors }, {});
 };
+
+// ── GET /api/accounts/debug — 诊断内存状态（孤儿计划、账户列表）─────────────
+export const debug: RouteHandler = (req, res) => {
+  const orphans = adCampaigns.filter(c => {
+    const acct = accounts.find(a => a.id === c.account);
+    return !acct?.externalId || !/^\d{10,}$/.test(acct.externalId);
+  });
+  ok(res, {
+    accountCount:       accounts.length,
+    campaignCount:      adCampaigns.length,
+    orphanedCampaigns:  orphans.length,
+    accounts: accounts.map(a => ({
+      id: a.id, name: a.name, externalId: a.externalId,
+      externalIdValid: /^\d{10,}$/.test(a.externalId ?? ''),
+    })),
+    orphanDetails: orphans.slice(0, 20).map(c => ({
+      id: c.id, name: c.name, account: c.account, externalId: c.externalId,
+    })),
+  }, {});
+};
+
+// ── POST /api/accounts/test-fetch?local_account_id=1751180038902863 ──────────
+// 只拉单个账户的项目列表和报表，不写数据库，仅返回原始结果供调试
+export const testFetch: RouteHandler = async (req, res) => {
+  const lid = String(req.query.local_account_id ?? '').trim();
+  if (!/^\d{10,}$/.test(lid)) {
+    return err(res, 'local_account_id 必须是纯数字（16-19 位巨量引擎账户 ID）');
+  }
+  try {
+    const oe        = adAdapter as OceanEngineAdapter;
+    const campList  = await oe.fetchCampaignList(lid);
+    const stats     = await oe.fetchProjectReport(lid);
+    ok(res, {
+      local_account_id: lid,
+      projectCount:  campList.length,
+      statsCount:    stats.length,
+      projects:      campList.slice(0, 5),
+      firstStats:    stats[0] ?? null,
+    }, {});
+  } catch (e) {
+    err(res, String(e));
+  }
+};

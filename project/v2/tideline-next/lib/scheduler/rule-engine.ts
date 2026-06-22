@@ -4,7 +4,7 @@
 import type { AutoRule, AdCampaign, OperationLog } from '../../types/index';
 import type { CampaignStats }                       from '../adapters/ad-adapter';
 import { adAdapter, alertService }                  from '../adapters/index';
-import { autoRules, adCampaigns, operationLogs, accounts } from '../db';
+import { autoRules, adCampaigns, operationLogs, accounts, resolveExternalAccountId } from '../db';
 
 // ─── 运算符比较 ───────────────────────────────────────────────────────────
 function compare(value: number, operator: AutoRule['operator'], threshold: number): boolean {
@@ -38,7 +38,8 @@ async function executeAction(
   stats:    CampaignStats,
   metricValue: number,
 ): Promise<void> {
-  const account = campaign.account;
+  // 必须解析成纯数字外部 ID，禁止把内部 a_xxx 传给 OceanEngine
+  const account    = resolveExternalAccountId(campaign.account);
   const externalId = campaign.externalId ?? campaign.id;
   const before: Record<string, unknown> = {
     status: campaign.status,
@@ -172,11 +173,11 @@ export async function runRulesOnce(): Promise<{
   // 按账户分组批量拉取，避免逐计划高频请求（40110 限流）
   const byAccount = new Map<string, { acctExternalId: string; campaigns: typeof activeCampaigns }>();
   for (const campaign of activeCampaigns) {
-    const acct = accounts.find(a => a.id === campaign.account);
-    const externalAccountId = acct?.externalId ?? '';
-    // 校验：巨量引擎 local_account_id 必须是纯数字（16-19 位雪花 ID）
-    if (!/^\d{10,}$/.test(externalAccountId)) {
-      console.warn(`[RuleEngine] 跳过 ${campaign.id}（${campaign.name}）: 账户 ${campaign.account} 无有效外部 ID（当前="${externalAccountId}"）`);
+    let externalAccountId: string;
+    try {
+      externalAccountId = resolveExternalAccountId(campaign.account);
+    } catch (e) {
+      console.warn(`[RuleEngine] 跳过 ${campaign.id}（${campaign.name}）: ${String(e)}`);
       errors++;
       continue;
     }
