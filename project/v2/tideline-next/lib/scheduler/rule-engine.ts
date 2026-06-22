@@ -4,7 +4,7 @@
 import type { AutoRule, AdCampaign, OperationLog } from '../../types/index';
 import type { CampaignStats }                       from '../adapters/ad-adapter';
 import { adAdapter, alertService }                  from '../adapters/index';
-import { autoRules, adCampaigns, operationLogs, accounts, resolveExternalAccountId } from '../db';
+import { autoRules, adCampaigns, operationLogs, normalizeOceanEngineAccountId } from '../db';
 
 // ─── 运算符比较 ───────────────────────────────────────────────────────────
 function compare(value: number, operator: AutoRule['operator'], threshold: number): boolean {
@@ -39,7 +39,7 @@ async function executeAction(
   metricValue: number,
 ): Promise<void> {
   // 必须解析成纯数字外部 ID，禁止把内部 a_xxx 传给 OceanEngine
-  const account    = resolveExternalAccountId(campaign.account);
+  const account    = normalizeOceanEngineAccountId(campaign.account);
   const externalId = campaign.externalId ?? campaign.id;
   const before: Record<string, unknown> = {
     status: campaign.status,
@@ -175,7 +175,7 @@ export async function runRulesOnce(): Promise<{
   for (const campaign of activeCampaigns) {
     let externalAccountId: string;
     try {
-      externalAccountId = resolveExternalAccountId(campaign.account);
+      externalAccountId = normalizeOceanEngineAccountId(campaign.account);
     } catch (e) {
       console.warn(`[RuleEngine] 跳过 ${campaign.id}（${campaign.name}）: ${String(e)}`);
       errors++;

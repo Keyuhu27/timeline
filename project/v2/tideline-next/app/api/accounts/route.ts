@@ -1,7 +1,7 @@
 // GET  /api/accounts         — 返回当前账户列表
 // POST /api/accounts/sync    — 从巨量引擎 API 自动发现并同步所有授权广告主
 
-import { accounts, brands, adCampaigns } from '../../../lib/db';
+import { accounts, brands, adCampaigns, normalizeOceanEngineAccountId } from '../../../lib/db';
 import { ok, err, paginate }             from '../../../lib/api';
 import { OceanEngineAdapter }            from '../../../lib/adapters/oceanengine-adapter';
 import { tokenManager, adAdapter }       from '../../../lib/adapters/index';
@@ -272,9 +272,12 @@ export const debug: RouteHandler = (req, res) => {
 // ── POST /api/accounts/test-fetch?local_account_id=1751180038902863 ──────────
 // 只拉单个账户的项目列表和报表，不写数据库，仅返回原始结果供调试
 export const testFetch: RouteHandler = async (req, res) => {
-  const lid = String(req.query.local_account_id ?? '').trim();
-  if (!/^\d{10,}$/.test(lid)) {
-    return err(res, 'local_account_id 必须是纯数字（16-19 位巨量引擎账户 ID）');
+  const rawLid = String(req.query.local_account_id ?? '').trim();
+  let lid: string;
+  try {
+    lid = normalizeOceanEngineAccountId(rawLid);   // 容忍 a_ 前缀，归一化成纯数字
+  } catch (e) {
+    return err(res, String(e));
   }
   try {
     const oe        = adAdapter as OceanEngineAdapter;

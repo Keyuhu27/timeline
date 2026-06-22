@@ -1,4 +1,5 @@
 import type { IAdAdapter, CampaignStats, CreateCampaignParams, UpdateCampaignParams } from './ad-adapter';
+import { normalizeOceanEngineAccountId } from '../db';
 
 const BASE = 'https://ad.oceanengine.com/open_api/2/';
 // 巨量本地推（升级版）走 v3.0 local 接口，账户是"项目/广告"结构，非经典版"计划"
@@ -261,9 +262,7 @@ export class OceanEngineAdapter implements IAdAdapter {
     budget_mode: string;
     poi_name: string;
   }>> {
-    if (!/^\d{10,}$/.test(advertiserId)) {
-      throw new Error(`无效本地推账户 ID "${advertiserId}"：必须是纯数字（16-19 位巨量引擎 local_account_id），当前传入的可能是内部 DB ID`);
-    }
+    advertiserId = normalizeOceanEngineAccountId(advertiserId);
     const token = await this.getAccessToken(advertiserId);
 
     const data = await oeRequest<{
@@ -318,9 +317,9 @@ export class OceanEngineAdapter implements IAdAdapter {
     startDate?: string,
     endDate?: string,
   ): Promise<CampaignStats[]> {
-    if (!/^\d{10,}$/.test(localAccountId)) {
-      throw new Error(`无效本地推账户 ID "${localAccountId}"：必须是纯数字（16-19 位巨量引擎 local_account_id），当前传入的可能是内部 DB ID`);
-    }
+    const rawLocalAccountId = localAccountId;
+    localAccountId = normalizeOceanEngineAccountId(localAccountId);
+    console.log(`[OE] fetchProjectReport rawLocalAccountId=${rawLocalAccountId} normalizedLocalAccountId=${localAccountId}`);
     const token = await this.getAccessToken(localAccountId);
     const end   = endDate   ?? new Date().toISOString().slice(0, 10);
     const start = startDate ?? new Date(Date.now() - 90 * 86400_000).toISOString().slice(0, 10);
@@ -354,6 +353,7 @@ export class OceanEngineAdapter implements IAdAdapter {
   }
 
   async fetchCampaignStats(externalId: string, advertiserId: string): Promise<CampaignStats> {
+    advertiserId = normalizeOceanEngineAccountId(advertiserId);
     const rows = await this.fetchProjectReport(advertiserId, [externalId]);
     const row = rows.find(r => r.externalId === externalId) ?? rows[0];
     if (!row) throw new Error(`找不到本地推项目报表数据: ${externalId}`);
@@ -371,6 +371,7 @@ export class OceanEngineAdapter implements IAdAdapter {
    * landing_type 使用 STORE_VISIT（到店推广），适用于巨量本地推场景。
    */
   async createCampaign(params: CreateCampaignParams): Promise<{ externalId: string }> {
+    params.advertiserId = normalizeOceanEngineAccountId(params.advertiserId);
     const token = await this.getAccessToken(params.advertiserId);
 
     const data = await oeRequest<{ campaign_id: string }>(
@@ -413,14 +414,17 @@ export class OceanEngineAdapter implements IAdAdapter {
   }
 
   async pauseCampaign(externalId: string, advertiserId: string): Promise<boolean> {
+    advertiserId = normalizeOceanEngineAccountId(advertiserId);
     return this.updateCampaign({ externalId, advertiserId, status: 'disable' });
   }
 
   async resumeCampaign(externalId: string, advertiserId: string): Promise<boolean> {
+    advertiserId = normalizeOceanEngineAccountId(advertiserId);
     return this.updateCampaign({ externalId, advertiserId, status: 'enable' });
   }
 
   async adjustBudget(externalId: string, advertiserId: string, newBudget: number): Promise<boolean> {
+    advertiserId = normalizeOceanEngineAccountId(advertiserId);
     return this.updateCampaign({ externalId, advertiserId, budget: newBudget });
   }
 }

@@ -249,16 +249,34 @@ export const aiDecisions: AiDecision[] = [];
  * - 输入是内部 DB ID（如 a1 / a_1751...）→ 在 accounts 数组中查找 externalId
  * - 找不到或 externalId 不是纯数字 → 抛出清晰错误，禁止 fallback 到内部 ID
  */
-export function resolveExternalAccountId(accountRef: string): string {
-  if (/^\d{10,}$/.test(accountRef)) return accountRef;
-  const acct = accounts.find(a => a.id === accountRef);
-  const extId = acct?.externalId ?? '';
-  if (!extId || !/^\d{10,}$/.test(extId)) {
+// 把任意账户引用归一化成巨量引擎要求的纯数字 local_account_id / advertiser_id。
+// 规则：
+//   1. 纯数字（10+ 位）→ 直接返回
+//   2. a_ + 纯数字（如 a_1751180038902863）→ 剥离前缀返回 1751180038902863
+//   3. 内部种子 ID（a1/a2/a10 等）→ 从 accounts 查 externalId（externalId 也可能被污染成 a_）
+//   4. 查不到有效 externalId → 抛错，禁止 fallback
+// 返回值始终满足 /^\d{10,}$/。
+export function normalizeOceanEngineAccountId(input: string): string {
+  const raw = String(input ?? '').trim();
+  // 1. 纯数字
+  if (/^\d{10,}$/.test(raw)) return raw;
+  // 2. a_ + 纯数字
+  const m = raw.match(/^a_(\d{10,})$/);
+  if (m) return m[1]!;
+  // 3. 内部种子 ID → 查 externalId
+  const acct = accounts.find(a => a.id === raw);
+  const extId = String(acct?.externalId ?? '').trim();
+  const em = extId.match(/^a_(\d{10,})$/);
+  const resolved = /^\d{10,}$/.test(extId) ? extId : (em ? em[1]! : '');
+  // 4. 查不到 → 抛错
+  if (!/^\d{10,}$/.test(resolved)) {
     throw new Error(
-      `无法解析巨量账户外部 ID："${accountRef}" 不是纯数字，` +
-      `且在 accounts 中找不到有效 externalId（当前 externalId="${extId}"）。` +
-      `请先执行「同步广告主」使账户数据进入内存。`,
+      `无法归一化巨量账户 ID："${raw}" 既非纯数字、非 a_<数字>，` +
+      `且在 accounts 中找不到有效 externalId（externalId="${extId}"）。请先执行「同步广告主」使账户数据进入内存。`,
     );
   }
-  return extId;
+  return resolved;
 }
+
+// 兼容旧调用名
+export const resolveExternalAccountId = normalizeOceanEngineAccountId;

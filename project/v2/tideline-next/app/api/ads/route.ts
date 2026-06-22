@@ -2,7 +2,7 @@
 // POST  /api/ads   { name, brand, account, budget, goal, productIds?, startDate }
 // PATCH /api/ads?id=c1  { status?, budget?, name? }
 
-import { adCampaigns, brands, accounts, resolveExternalAccountId } from '../../../lib/db';
+import { adCampaigns, brands, accounts, normalizeOceanEngineAccountId } from '../../../lib/db';
 import { ok, err, paginate }             from '../../../lib/api';
 import { adAdapter }                     from '../../../lib/adapters/index';
 import { saveSnapshot }                  from '../../../lib/persist';
@@ -49,7 +49,7 @@ export const POST: RouteHandler = async (req, res) => {
   try {
     const result = await adAdapter.createCampaign({
       name:         body.name,
-      advertiserId: resolveExternalAccountId(body.account),
+      advertiserId: normalizeOceanEngineAccountId(body.account),
       budget:       body.budget,
       goal:         (body.goal ?? 'video_sales') as 'video_sales' | 'live_room' | 'product_card' | 'follow',
       productIds:   body.productIds,
@@ -90,7 +90,7 @@ export const PATCH: RouteHandler = async (req, res) => {
   const externalId = campaign.externalId ?? campaign.id;
   let advertiserId: string;
   try {
-    advertiserId = resolveExternalAccountId(campaign.account);
+    advertiserId = normalizeOceanEngineAccountId(campaign.account);
   } catch (e) {
     console.warn('[PATCH /api/ads] 无法解析账户外部 ID，跳过 OceanEngine 调用:', e);
     Object.assign(campaign, body);
@@ -133,7 +133,7 @@ export const DELETE: RouteHandler = async (req, res) => {
 
   const externalId = campaign.externalId ?? campaign.id;
   try {
-    const advertiserId = resolveExternalAccountId(campaign.account);
+    const advertiserId = normalizeOceanEngineAccountId(campaign.account);
     await adAdapter.pauseCampaign(externalId, advertiserId);
   } catch (e) {
     console.warn('[DELETE /api/ads] 适配器暂停失败:', e);
