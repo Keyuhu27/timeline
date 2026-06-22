@@ -449,7 +449,7 @@ export class OceanEngineAdapter implements IAdAdapter {
       data: [
         {
           project_id: projectId,
-          opt_status: status === 'enable' ? 'ENABLE' : 'DISABLE',
+          opt_status: status === 'enable' ? 'ENABLE' : 'PAUSED',
         },
       ],
     };
