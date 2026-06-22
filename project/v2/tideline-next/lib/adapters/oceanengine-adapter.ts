@@ -39,18 +39,25 @@ export function safeJsonParse<T>(text: string): T {
 // 不加引号、不丢精度。用于巨量本地推写接口要求 integer 而 ID 又超过 JS 安全整数
 // （>9e15）的场景：直接 Number() 会丢精度暂停错项目，必须按原始字面量发送。
 const RAW_INT = '@@RAWINT@@';
-function stringifyWithRawInts(obj: Record<string, unknown>, rawKeys: string[]): string {
-  const clone: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(obj)) {
-    if (rawKeys.includes(k) && v != null) {
-      clone[k] = Array.isArray(v)
-        ? v.map(x => `${RAW_INT}${x}${RAW_INT}`)
-        : `${RAW_INT}${v}${RAW_INT}`;
-    } else {
-      clone[k] = v;
+function markRawInts(value: unknown, rawKeys: string[]): unknown {
+  if (Array.isArray(value)) return value.map(v => markRawInts(v, rawKeys));
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (rawKeys.includes(k) && v != null) {
+        out[k] = Array.isArray(v)
+          ? v.map(x => `${RAW_INT}${x}${RAW_INT}`)
+          : `${RAW_INT}${v}${RAW_INT}`;
+      } else {
+        out[k] = markRawInts(v, rawKeys);
+      }
     }
+    return out;
   }
-  return JSON.stringify(clone)
+  return value;
+}
+function stringifyWithRawInts(obj: Record<string, unknown>, rawKeys: string[]): string {
+  return JSON.stringify(markRawInts(obj, rawKeys))
     .replace(new RegExp(`"${RAW_INT}(\\d+)${RAW_INT}"`, 'g'), '$1');
 }
 
@@ -439,8 +446,10 @@ export class OceanEngineAdapter implements IAdAdapter {
   ): Promise<boolean> {
     const body = {
       local_account_id: localAccountId,
-      project_ids: [projectId],
-      opt_status: status === 'enable' ? 'ENABLE' : 'DISABLE',
+      data: {
+        project_ids: [projectId],
+        opt_status: status === 'enable' ? 'ENABLE' : 'DISABLE',
+      },
     };
     const rawBody = stringifyWithRawInts(body, ['local_account_id', 'project_ids']);
     console.log(`[OE] project/status/update body=${rawBody} typeof local_account_id=integer typeof project_ids[0]=integer`);
@@ -454,9 +463,11 @@ export class OceanEngineAdapter implements IAdAdapter {
   ): Promise<boolean> {
     const body = {
       local_account_id: localAccountId,
-      project_id: projectId,
-      budget,
-      budget_mode: 'BUDGET_MODE_DAY',
+      data: {
+        project_id: projectId,
+        budget,
+        budget_mode: 'BUDGET_MODE_DAY',
+      },
     };
     const rawBody = stringifyWithRawInts(body, ['local_account_id', 'project_id']);
     console.log(`[OE] project/update body=${rawBody}`);
