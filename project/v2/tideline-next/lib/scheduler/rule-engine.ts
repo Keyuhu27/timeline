@@ -161,7 +161,7 @@ export async function runRulesOnce(): Promise<{
   triggered: number;
   errors: number;
 }> {
-  const enabledRules  = autoRules.filter(r => r.enabled);
+  const enabledRules    = autoRules.filter(r => r.enabled);
   const activeCampaigns = adCampaigns.filter(c => c.status === 'active');
 
   let triggered = 0;
@@ -169,35 +169,57 @@ export async function runRulesOnce(): Promise<{
 
   console.log(`[RuleEngine] 开始巡检: ${enabledRules.length} 条规则 × ${activeCampaigns.length} 个活跃计划`);
 
+  // 按账户分组批量拉取，避免逐计划高频请求（40110 限流）
+  const byAccount = new Map<string, { acctExternalId: string; campaigns: typeof activeCampaigns }>();
   for (const campaign of activeCampaigns) {
-    // 拉取实时数据
-    let stats: CampaignStats;
-    try {
-      // 本地推报表用 local_account_id（账户 externalId），不是内部 a_ 前缀ID
-      const acct = accounts.find(a => a.id === campaign.account);
-      stats = await adAdapter.fetchCampaignStats(
-        campaign.externalId ?? campaign.id,
-        acct?.externalId ?? campaign.account,
-      );
-      // 同步到内存 DB
-      campaign.roas  = stats.roas;
-      campaign.ctr   = stats.ctr;
-      campaign.cvr   = stats.cvr;
-      campaign.cpm   = stats.cpm;
-      campaign.spent = stats.spent;
-      campaign.gmv   = stats.gmv;
-      campaign.lastSyncAt = Date.now();
-    } catch (e) {
-      console.error(`[RuleEngine] 拉取计划数据失败 ${campaign.id}:`, e);
+    const acct = accounts.find(a => a.id === campaign.account);
+    const externalAccountId = acct?.externalId ?? '';
+    // 校验：巨量引擎 local_account_id 必须是纯数字（16-19 位雪花 ID）
+    if (!/^\d{10,}$/.test(externalAccountId)) {
+      console.warn(`[RuleEngine] 跳过 ${campaign.id}（${campaign.name}）: 账户 ${campaign.account} 无有效外部 ID（当前="${externalAccountId}"）`);
       errors++;
       continue;
     }
+    const group = byAccount.get(externalAccountId) ?? { acctExternalId: externalAccountId, campaigns: [] };
+    group.campaigns.push(campaign);
+    byAccount.set(externalAccountId, group);
+  }
+
+  // 逐账户批量拉统计，账户间加 1 秒间隔防限流
+  const statsMap = new Map<string, CampaignStats>();
+  let accountIdx = 0;
+  for (const [acctExtId, group] of byAccount) {
+    if (accountIdx++ > 0) await new Promise(r => setTimeout(r, 1000));
+    try {
+      const externalIds = group.campaigns.map(c => c.externalId ?? c.id);
+      const batchStats  = await adAdapter.fetchBatchStats(externalIds, acctExtId);
+      for (const st of batchStats) {
+        statsMap.set(st.externalId, st);
+      }
+      console.log(`[RuleEngine] 账户 ${acctExtId}: 拉取 ${batchStats.length}/${group.campaigns.length} 个计划数据`);
+    } catch (e) {
+      console.error(`[RuleEngine] 账户 ${acctExtId} 批量拉取失败:`, e);
+      errors += group.campaigns.length;
+    }
+  }
+
+  // 用批量拉到的数据评估规则
+  for (const campaign of activeCampaigns) {
+    const stats = statsMap.get(campaign.externalId ?? campaign.id);
+    if (!stats) continue;
+
+    // 同步到内存 DB
+    campaign.roas  = stats.roas;
+    campaign.ctr   = stats.ctr;
+    campaign.cvr   = stats.cvr;
+    campaign.cpm   = stats.cpm;
+    campaign.spent = stats.spent;
+    campaign.gmv   = stats.gmv;
+    campaign.lastSyncAt = Date.now();
 
     // 评估每条规则
     for (const rule of enabledRules) {
-      // 品牌过滤
       if (rule.brand !== 'all' && rule.brand !== campaign.brand) continue;
-      // 冷却检查
       if (isInCooldown(rule, campaign.id)) continue;
 
       const value   = getMetric(stats, campaign, rule.metric);

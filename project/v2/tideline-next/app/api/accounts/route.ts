@@ -25,10 +25,11 @@ export async function syncLocalAccounts(
   localIds: string[],
   accessToken: string,
   nameById?: Map<string, string>,
-): Promise<{ synced: number; campaignsSynced: number; accounts: Account[] }> {
+): Promise<{ synced: number; campaignsSynced: number; accounts: Account[]; errors: string[] }> {
   let synced = 0;
   let campaignsSynced = 0;
   const result: Account[] = [];
+  const errors: string[] = [];
 
   for (const lid of localIds) {
     const existed = accounts.find(a => a.externalId === lid);
@@ -71,7 +72,9 @@ export async function syncLocalAccounts(
         const stats = await oe.fetchProjectReport(account.externalId);
         statsById = new Map(stats.map(s => [s.externalId, s]));
       } catch (e) {
-        console.error(`[AccountSync] ⚠️ 拉取报表失败 ${account.name} (${account.externalId}):`, String(e));
+        const msg = `⚠️ 拉取报表失败 ${account.name} (${account.externalId}): ${String(e)}`;
+        console.error(`[AccountSync] ${msg}`);
+        errors.push(msg);
       }
 
       const now = Date.now();
@@ -116,12 +119,14 @@ export async function syncLocalAccounts(
       }
       console.log(`[AccountSync] ${account.name}: 同步 ${campList.length} 个计划（含报表）`);
     } catch (e) {
-      console.error(`[AccountSync] ❌ 拉取计划失败 ${account.name} (${account.externalId}):`, String(e));
+      const msg = `❌ 拉取计划失败 ${account.name} (${account.externalId}): ${String(e)}`;
+      console.error(`[AccountSync] ${msg}`);
+      errors.push(msg);
     }
   }
 
   saveSnapshot();
-  return { synced, campaignsSynced, accounts: result };
+  return { synced, campaignsSynced, accounts: result, errors };
 }
 
 // GET /api/accounts/ebp-orgs[?advertiser_id=XXX]
@@ -241,5 +246,5 @@ export const POST: RouteHandler = async (req, res) => {
   }
 
   const r = await syncLocalAccounts(localIds, accessToken, nameById);
-  ok(res, { synced: r.synced, total: localIds.length, campaignsSynced: r.campaignsSynced, accounts: r.accounts, errors: [] }, {});
+  ok(res, { synced: r.synced, total: localIds.length, campaignsSynced: r.campaignsSynced, accounts: r.accounts, errors: r.errors }, {});
 };

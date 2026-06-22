@@ -261,6 +261,9 @@ export class OceanEngineAdapter implements IAdAdapter {
     budget_mode: string;
     poi_name: string;
   }>> {
+    if (!/^\d{10,}$/.test(advertiserId)) {
+      throw new Error(`无效本地推账户 ID "${advertiserId}"：必须是纯数字（16-19 位巨量引擎 local_account_id），当前传入的可能是内部 DB ID`);
+    }
     const token = await this.getAccessToken(advertiserId);
 
     const data = await oeRequest<{
@@ -315,6 +318,9 @@ export class OceanEngineAdapter implements IAdAdapter {
     startDate?: string,
     endDate?: string,
   ): Promise<CampaignStats[]> {
+    if (!/^\d{10,}$/.test(localAccountId)) {
+      throw new Error(`无效本地推账户 ID "${localAccountId}"：必须是纯数字（16-19 位巨量引擎 local_account_id），当前传入的可能是内部 DB ID`);
+    }
     const token = await this.getAccessToken(localAccountId);
     const end   = endDate   ?? new Date().toISOString().slice(0, 10);
     const start = startDate ?? new Date(Date.now() - 90 * 86400_000).toISOString().slice(0, 10);

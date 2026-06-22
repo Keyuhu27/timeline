@@ -49,13 +49,23 @@ const Data = function Data({ subView, setSubView, openLive }) {
 // ---- Overview --------------------------------------------------------------
 function OverviewTab() {
   const [adData, setAdData] = React.useState(null);
+  const [adError, setAdError] = React.useState('');
   React.useEffect(() => {
     fetch('/api/ads').then(r => r.json()).then(d => {
-      if (d.data) setAdData(d.data);
-    }).catch(() => {});
+      if (d.data) { setAdData(d.data); setAdError(''); }
+      else setAdError(d.error || '接口返回异常');
+    }).catch(e => setAdError('请求失败: ' + e.message));
   }, []);
 
   const campaigns = adData?.campaigns || [];
+  if (adError && campaigns.length === 0) return (
+    <div className="card" style={{ padding: '32px 24px', textAlign: 'center' }}>
+      <Icon name="warn" size={24} className="muted" />
+      <div style={{ marginTop: 8, fontWeight: 500 }}>数据加载失败</div>
+      <div className="muted" style={{ marginTop: 4, fontSize: 12.5, maxWidth: 400, margin: '4px auto 0' }}>{adError}</div>
+      <div className="muted" style={{ marginTop: 8, fontSize: 11.5 }}>请前往「千川投流」→「同步广告主」拉取数据，或检查 OceanEngine API 授权配置</div>
+    </div>
+  );
   const totalSpent = campaigns.reduce((s, c) => s + (c.spent || 0), 0);
   const totalGmv = campaigns.reduce((s, c) => s + (c.gmv || 0), 0);
   const totalLeads = campaigns.reduce((s, c) => s + (c.leads || c.storeVisits || 0), 0);
