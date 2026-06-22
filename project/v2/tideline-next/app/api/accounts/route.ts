@@ -9,6 +9,17 @@ import { saveSnapshot }                  from '../../../lib/persist';
 import type { RouteHandler }             from '../../../lib/api';
 import type { Account, Brand, AdCampaign } from '../../../types/index';
 
+// 已授权本地推账户白名单（兜底）——确保这些账户始终被同步发现，
+// 不依赖 .env / EBP / 代理商接口是否覆盖。新增已授权账户时在此登记。
+const KNOWN_LOCAL_ACCOUNT_IDS = [
+  '1770545948162062',  // 半日懒竹林漂流
+  '1851121699721292',  // 亿滋本地推
+];
+// 已知账户名（接口未回填 poi_name 时的兜底显示名）
+const KNOWN_LOCAL_ACCOUNT_NAMES: Record<string, string> = {
+  '1851121699721292': '亿滋本地推',
+};
+
 export const GET: RouteHandler = (req, res) => {
   const { brand } = req.query;
   let filtered = accounts.slice();
@@ -78,7 +89,7 @@ export async function syncLocalAccounts(
     const brandId = `b_${lid}`;
     const accountId = `a_${lid}`;
     const colorIdx = (accounts.length % 10) + 1;
-    const seedName = nameById?.get(lid)?.trim() || `本地推账户 ${lid}`;
+    const seedName = nameById?.get(lid)?.trim() || KNOWN_LOCAL_ACCOUNT_NAMES[lid] || `本地推账户 ${lid}`;
     const newBrand: Brand = { id: brandId, name: seedName, cat: '本地推', logo: seedName.slice(0, 1) };
     const newAccount: Account = {
       id: accountId, name: seedName, externalId: lid,
@@ -285,6 +296,15 @@ export const POST: RouteHandler = async (req, res) => {
   // 来源2：服务商账户 OCEANENGINE_AGENT_ID（agent/advertiser/select，待权限放通后启用）
   const localIds = (process.env.OCEANENGINE_LOCAL_ACCOUNT_IDS ?? '')
     .split(',').map(s => s.trim()).filter(Boolean);
+
+  // 已授权本地推账户兜底白名单——即使 .env / EBP / 代理商接口未覆盖，也必须同步进来，
+  // 避免「本地 accounts 没有该账户就跳过」导致漏拉（如亿滋本地推）。
+  for (const known of KNOWN_LOCAL_ACCOUNT_IDS) {
+    if (!localIds.includes(known)) {
+      localIds.push(known);
+      console.log(`[AccountSync] 兜底白名单补入本地推账户: ${known}`);
+    }
+  }
 
   // 来源3：升级版巨量引擎工作台(EBP) —— 配 OCEANENGINE_EBP_ORG_ID 即可一次性发现名下全部本地推账户
   const nameById = new Map<string, string>();
