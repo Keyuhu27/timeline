@@ -193,9 +193,10 @@ TL.brandById = (id) => TL.brands.find(b => b.id === id);
 TL.userById  = (id) => TL.team.find(u => u.id === id);
 TL.accountById = (id) => TL.accounts.find(a => a.id === id);
 
-// ── 展示层 helper：UI 默认只显示业务名称，过滤内部编码（a_/b_/c_/Localad-/本地推账户）──
-const INTERNAL_ID_RE = /^(a_|b_|c_|Localad-)/i;
-const PLACEHOLDER_NAME_RE = /^(Localad-|本地推账户\s*\d)/i;
+// ── 展示层 helper：UI 默认只显示业务名称，过滤内部记录编码（a_/b_/c_）──
+// 注：Localad-xxx 是巨量本地推自带命名，按用户要求原样展示，不视为占位。
+const INTERNAL_ID_RE = /^(a_|b_|c_)/i;
+const PLACEHOLDER_NAME_RE = /^(本地推账户\s*\d)/i;
 TL._isInternalName = (s) => !s || INTERNAL_ID_RE.test(String(s));
 TL._isPlaceholderName = (s) => !s || PLACEHOLDER_NAME_RE.test(String(s));
 
