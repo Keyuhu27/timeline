@@ -34,8 +34,9 @@ async function probeReport(
   const localAccountId = url.searchParams.get('local_account_id');
   if (!localAccountId) return sendErr(res, '缺少 local_account_id 参数');
 
-  const startDate = url.searchParams.get('start_date') ?? todayBeijing();
-  const endDate   = url.searchParams.get('end_date')   ?? todayBeijing();
+  const startDate  = url.searchParams.get('start_date') ?? todayBeijing();
+  const endDate    = url.searchParams.get('end_date')   ?? todayBeijing();
+  const pageSize   = url.searchParams.get('page_size')  ?? '100';
 
   // metrics 支持 query 覆盖（逗号分隔字符串），否则用默认集
   const metricsRaw = url.searchParams.get('metrics');
@@ -58,7 +59,7 @@ async function probeReport(
     time_granularity: 'TIME_GRANULARITY_TOTAL',
     metrics: JSON.stringify(metrics),
     page: '1',
-    page_size: '5',
+    page_size: pageSize,
   };
 
   const qs = new URLSearchParams(params).toString();
