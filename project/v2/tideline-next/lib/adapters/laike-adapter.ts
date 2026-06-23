@@ -306,4 +306,41 @@ export class LaikeAdapter {
       endDate:   extraInfo?.compare_end_date   ?? endDate,
     };
   }
+
+  /**
+   * 拉取来客商品列表（product_id / title / origin_amount / image）。
+   * 返回 productMap，供商品 ID/SKU 映射、TOP 商品图片展示。
+   * URL：LAIKE_PRODUCT_LIST_URL 或 LAIKE_API_BASE + /api/node/flow/batch
+   */
+  static async fetchProductList(
+    poiId: string,
+  ): Promise<Record<string, { title: string; originAmount: number; image: string }> | null> {
+    if (!cookie() || !poiId) return null;
+    const url = process.env.LAIKE_PRODUCT_LIST_URL || (base() + '/api/node/flow/batch');
+    if (!url.startsWith('http')) {
+      console.warn('[LaikeAdapter] 未配置 LAIKE_API_BASE 或 LAIKE_PRODUCT_LIST_URL，跳过来客商品列表');
+      return null;
+    }
+
+    const body = { view_type: 'product_list', poi_id: poiId, page: 1, page_size: 200 };
+    const json = await postJson<{
+      code?: number;
+      data?: { list?: Array<{ product_id?: string | number; title?: string; origin_amount?: number; image?: string }>;
+               products?: Array<{ product_id?: string | number; title?: string; origin_amount?: number; image?: string }> };
+    }>(url, body);
+
+    const rows = json?.data?.list ?? json?.data?.products ?? [];
+    if (!rows.length) { console.log(`[LaikeAdapter] product_list 无数据 poi=${poiId}`); return null; }
+
+    const map: Record<string, { title: string; originAmount: number; image: string }> = {};
+    for (const p of rows) {
+      if (p.product_id == null) continue;
+      map[String(p.product_id)] = {
+        title: p.title ?? '',
+        originAmount: Math.round(Number(p.origin_amount ?? 0)) / 100,
+        image: p.image ?? '',
+      };
+    }
+    return map;
+  }
 }

@@ -1,0 +1,179 @@
+// 抖音生活服务「生意经」(Business Compass) 数据接口
+// 鉴权通过环境变量（不提交 Git）：
+//   BUSINESS_COMPASS_COOKIE    — 生意经后台 Cookie
+//   BUSINESS_COMPASS_API_BASE  — 生意经后台域名，例如 https://www.life-data.cn
+//   BUSINESS_FLOW_TRADE_SPLIT_URL  — 流量成交拆分接口完整 URL（可选覆盖）
+//   BUSINESS_FLOW_EXPOSURE_URL     — 流量曝光拆分接口完整 URL（可选覆盖）
+//   BUSINESS_FLOW_INSIGHTS_URL     — data_conclusion/explain 接口完整 URL（可选覆盖）
+//
+// 全部方法 try/catch：未配置/失败/解析失败 → 返回 null，日报继续生成。
+
+export interface BusinessTradeSplit {
+  liveGmv: number;            // 直播渠道 GMV（生意经口径，非达播）
+  videoGmv: number;           // 视频渠道 GMV
+  leadCardGmv: number;        // 获客卡 GMV
+  searchResultCardGmv: number;// 搜索结果卡 GMV
+  searchSceneGmv: number;     // 抖音搜索场景 GMV
+  recommendSceneGmv: number;  // 推荐分享场景 GMV
+  groupbuySceneGmv: number;   // 团购商城场景 GMV
+  totalGmv: number;
+  rows: Array<{ name: string; scene: string; order: string; gmv: number }>;
+  fetchedAt: string;
+}
+
+export interface BusinessExposureSplit {
+  rows: Array<{ scene: string; showCnt: number | null; rate: number | null }>;
+  totalShow: number;
+  fetchedAt: string;
+}
+
+export interface BusinessInsightResult {
+  conclusion: string;
+  startDate: string;
+  endDate: string;
+}
+
+function cookie(): string { return process.env.BUSINESS_COMPASS_COOKIE ?? ''; }
+function base(): string { return (process.env.BUSINESS_COMPASS_API_BASE ?? '').replace(/\/$/, ''); }
+
+function headers(): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    'Cookie': cookie(),
+    'Accept': 'application/json, text/plain, */*',
+    'User-Agent': 'Mozilla/5.0',
+    'Referer': base() + '/',
+    'Origin': base(),
+  };
+}
+
+function tryParse<T>(text: string): T | null {
+  try { return JSON.parse(text) as T; } catch { return null; }
+}
+
+async function postJson<T>(url: string, body: unknown): Promise<T | null> {
+  try {
+    const res = await fetch(url, { method: 'POST', headers: headers(), body: JSON.stringify(body) });
+    const text = await res.text();
+    const json = tryParse<T>(text);
+    if (!json) { console.error(`[BusinessCompass] 响应非 JSON (HTTP ${res.status}) ${url}: ${text.slice(0, 200)}`); return null; }
+    return json;
+  } catch (e) {
+    console.error(`[BusinessCompass] 请求失败 ${url}:`, String(e));
+    return null;
+  }
+}
+
+const fen2yuan = (n: unknown) => Math.round(Number(n ?? 0)) / 100;
+
+// ── 解析：流量成交拆分 ─────────────────────────────────────────────────────────
+interface TradeRow {
+  first_enter_order_source_name?: string;
+  first_enter_source?: string;
+  first_order_source?: string;
+  pay_amount_1d?: number;
+}
+export function parseTradeSplit(data: TradeRow[]): Omit<BusinessTradeSplit, 'fetchedAt'> {
+  const sumBy = (pred: (r: TradeRow) => boolean) =>
+    data.filter(pred).reduce((s, r) => s + Number(r.pay_amount_1d ?? 0), 0);
+
+  const liveGmv            = sumBy(r => r.first_order_source === '直播');
+  const videoGmv           = sumBy(r => r.first_order_source === '视频');
+  const leadCardGmv        = sumBy(r => r.first_order_source === '获客卡');
+  const searchResultCardGmv= sumBy(r => r.first_order_source === '搜索结果卡');
+  const searchSceneGmv     = sumBy(r => r.first_enter_source === '抖音搜索场景');
+  const recommendSceneGmv  = sumBy(r => r.first_enter_source === '推荐分享场景');
+  const groupbuySceneGmv   = sumBy(r => r.first_enter_source === '团购商城场景');
+  const totalGmv           = data.reduce((s, r) => s + Number(r.pay_amount_1d ?? 0), 0);
+
+  return {
+    liveGmv: fen2yuan(liveGmv),
+    videoGmv: fen2yuan(videoGmv),
+    leadCardGmv: fen2yuan(leadCardGmv),
+    searchResultCardGmv: fen2yuan(searchResultCardGmv),
+    searchSceneGmv: fen2yuan(searchSceneGmv),
+    recommendSceneGmv: fen2yuan(recommendSceneGmv),
+    groupbuySceneGmv: fen2yuan(groupbuySceneGmv),
+    totalGmv: fen2yuan(totalGmv),
+    rows: data
+      .map(r => ({
+        name: r.first_enter_order_source_name ?? `${r.first_enter_source ?? ''}_${r.first_order_source ?? ''}`,
+        scene: r.first_enter_source ?? '',
+        order: r.first_order_source ?? '',
+        gmv: fen2yuan(r.pay_amount_1d),
+      }))
+      .filter(r => r.gmv > 0)
+      .sort((a, b) => b.gmv - a.gmv),
+  };
+}
+
+// ── 解析：曝光拆分 ─────────────────────────────────────────────────────────────
+interface ExposureRow {
+  first_enter_source_name?: string;
+  show_cnt_1d?: number | null;
+  show_cnt_1d_rate?: number | null;
+}
+export function parseExposureSplit(data: ExposureRow[]): Omit<BusinessExposureSplit, 'fetchedAt'> {
+  const rows = data.map(r => ({
+    scene: r.first_enter_source_name ?? '',
+    showCnt: r.show_cnt_1d == null ? null : Number(r.show_cnt_1d),
+    rate: r.show_cnt_1d_rate == null ? null : Number(r.show_cnt_1d_rate),
+  })).filter(r => r.scene);
+  const totalShow = rows.reduce((s, r) => s + (r.showCnt ?? 0), 0);
+  return { rows, totalShow };
+}
+
+export class BusinessCompassAdapter {
+  /** 流量成交拆分（pay_amount_1d × first_enter_source × first_order_source） */
+  static async fetchTradeSplit(poiId: string, startDate: string, endDate: string): Promise<BusinessTradeSplit | null> {
+    if (!cookie() || !poiId) return null;
+    const url = process.env.BUSINESS_FLOW_TRADE_SPLIT_URL || (base() + '/api/compass/flow/trade_split');
+    if (!url.startsWith('http')) { console.warn('[BusinessCompass] 未配置流量成交拆分 URL，跳过'); return null; }
+
+    const json = await postJson<{ code?: number; data?: TradeRow[]; responseData?: { data?: TradeRow[] } }>(url, {
+      poi_id: poiId, start_date: startDate, end_date: endDate,
+    });
+    const data = json?.data ?? json?.responseData?.data;
+    if (!Array.isArray(data) || !data.length) { console.log(`[BusinessCompass] 流量成交拆分无数据 poi=${poiId}`); return null; }
+    return { ...parseTradeSplit(data), fetchedAt: new Date().toISOString() };
+  }
+
+  /** 曝光拆分（show_cnt_1d × first_enter_source） */
+  static async fetchExposureSplit(poiId: string, startDate: string, endDate: string): Promise<BusinessExposureSplit | null> {
+    if (!cookie() || !poiId) return null;
+    const url = process.env.BUSINESS_FLOW_EXPOSURE_URL || (base() + '/api/compass/flow/exposure_split');
+    if (!url.startsWith('http')) { console.warn('[BusinessCompass] 未配置曝光拆分 URL，跳过'); return null; }
+
+    const json = await postJson<{ code?: number; data?: ExposureRow[]; responseData?: { data?: ExposureRow[] } }>(url, {
+      poi_id: poiId, start_date: startDate, end_date: endDate,
+    });
+    const data = json?.data ?? json?.responseData?.data;
+    if (!Array.isArray(data) || !data.length) { console.log(`[BusinessCompass] 曝光拆分无数据 poi=${poiId}`); return null; }
+    return { ...parseExposureSplit(data), fetchedAt: new Date().toISOString() };
+  }
+
+  /** 生意经经营洞察（data_conclusion / data_explain） */
+  static async fetchInsights(poiId: string, startDate: string, endDate: string): Promise<BusinessInsightResult | null> {
+    if (!cookie() || !poiId) return null;
+    const url = process.env.BUSINESS_FLOW_INSIGHTS_URL || (base() + '/api/compass/flow/insights');
+    if (!url.startsWith('http')) { console.warn('[BusinessCompass] 未配置洞察 URL，跳过'); return null; }
+
+    const json = await postJson<{
+      code?: number;
+      data?: {
+        data_conclusion?: string | { text?: string; content?: string };
+        extra_info?: { compare_start_date?: string; compare_end_date?: string };
+      };
+    }>(url, { poi_id: poiId, start_date: startDate, end_date: endDate });
+
+    const dc = json?.data?.data_conclusion;
+    const conclusion = typeof dc === 'string' ? dc : (dc?.text || dc?.content || '');
+    if (!conclusion) { console.log(`[BusinessCompass] data_conclusion 无文本 poi=${poiId}`); return null; }
+    const ex = json?.data?.extra_info;
+    return {
+      conclusion,
+      startDate: ex?.compare_start_date ?? startDate,
+      endDate: ex?.compare_end_date ?? endDate,
+    };
+  }
+}

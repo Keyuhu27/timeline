@@ -48,6 +48,7 @@ import * as routeAiDecisions from '../app/api/ai/decisions/route';
 import * as routeAiCreative  from '../app/api/ai/creative/route';
 import * as routeAiWorkflow  from '../app/api/ai/workflow/route';
 import * as routeDebugOE     from '../app/api/debug/oe/route';
+import * as routeDebugReplay from '../app/api/debug/replay/route';
 import * as routeReports      from '../app/api/reports/route';
 
 // 启动即注水：把上次同步的真实数据从磁盘恢复到内存
@@ -88,6 +89,8 @@ const ROUTES: Record<string, RouteModule> = {
   '/api/debug/oe/promotion-report': { GET: routeDebugOE.promotionReport },
   '/api/debug/oe/stat-query':       { GET: routeDebugOE.statQueryAuto, POST: routeDebugOE.statQuery },
   '/api/debug/oe/workbench-local-accounts': { GET: routeDebugOE.workbenchLocalAccounts },
+  '/api/debug/laike/replay':    { POST: routeDebugReplay.laikeReplay },
+  '/api/debug/business/replay': { POST: routeDebugReplay.businessReplay },
   '/api/reports':    routeReports,
 };
 

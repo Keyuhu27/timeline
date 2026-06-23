@@ -22,6 +22,8 @@ TL.openDailyReport = function (brandId, date) {
     platform:       { color: '#389e0d', bg: 'rgba(56,158,13,0.10)', label: '平台自动拉取' },
     laike_sales:    { color: '#389e0d', bg: 'rgba(56,158,13,0.10)', label: '来客明细' },
     laike_overview: { color: '#0958d9', bg: 'rgba(9,88,217,0.08)',  label: '来客概览（周期不确定）' },
+    business:       { color: '#0958d9', bg: 'rgba(9,88,217,0.08)',  label: '生意经经营数据' },
+    insight:        { color: '#8c8c8c', bg: 'rgba(0,0,0,0.05)',     label: '周期洞察，仅供参考' },
     manual:         { color: '#8c8c8c', bg: 'rgba(0,0,0,0.05)',     label: '手动录入' },
     pending:        { color: '#d48806', bg: 'rgba(212,136,6,0.10)', label: '待补充' },
   };
@@ -205,19 +207,94 @@ TL.openDailyReport = function (brandId, date) {
     );
   }
 
-  // ── 平台经营洞察 ─────────────────────────────────────────────────────────────
-  function InsightBlock({ laikeInsight }) {
-    if (!laikeInsight?.conclusion) return null;
+  // ── 生意经流量成交拆分 ───────────────────────────────────────────────────────
+  function BusinessTradeCard({ businessTrade }) {
+    if (!businessTrade) return null;
+    const t = businessTrade;
+    const items = [
+      { label: '直播渠道 GMV', value: `¥${fen(t.liveGmv)}`, note: '生意经直播场景，非达播' },
+      { label: '视频渠道 GMV', value: `¥${fen(t.videoGmv)}` },
+      { label: '搜索场景 GMV', value: `¥${fen(t.searchSceneGmv)}` },
+      { label: '推荐分享场景', value: `¥${fen(t.recommendSceneGmv)}` },
+      { label: '团购商城场景', value: `¥${fen(t.groupbuySceneGmv)}` },
+      { label: '获客卡 GMV',   value: `¥${fen(t.leadCardGmv)}` },
+      { label: '搜索结果卡',   value: `¥${fen(t.searchResultCardGmv)}` },
+    ];
     return (
       <section style={{ marginBottom: 16 }}>
-        <SectionTitle title="平台经营洞察" sub={`${laikeInsight.startDate}～${laikeInsight.endDate}`} badge="laike_overview" />
-        <div style={{ padding: '12px 14px', background: 'rgba(9,88,217,0.05)', borderRadius: 8, fontSize: 13, lineHeight: 1.75, color: 'var(--text)', whiteSpace: 'pre-wrap' }}>
-          {laikeInsight.conclusion}
+        <SectionTitle title="生意经流量成交拆分" sub="按流量场景 / 成交体裁" badge="business" />
+        <div style={{ padding: '6px 10px', background: 'rgba(9,88,217,0.06)', borderRadius: 7, fontSize: 11.5, color: '#0958d9', marginBottom: 8 }}>
+          ⚠️ 「直播渠道 GMV」仅表示成交来自直播场景，无法区分达人直播 / 商家自播，不等于「达播 GMV」。
         </div>
-        <div style={{ fontSize: 11, color: '#0958d9', marginTop: 6 }}>
-          数据周期：{laikeInsight.startDate}～{laikeInsight.endDate}，非昨日数据，仅供经营复盘参考。
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {items.map(it => (
+            <div key={it.label} className="card" style={{ flex: '1 1 110px', padding: '10px 14px', textAlign: 'center' }}>
+              <div style={{ fontSize: 17, fontWeight: 700 }}>{it.value}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{it.label}</div>
+              {it.note && <div style={{ fontSize: 9.5, color: '#d48806', marginTop: 1 }}>{it.note}</div>}
+            </div>
+          ))}
+        </div>
+        {t.rows?.length > 0 && (
+          <div className="card" style={{ overflow: 'auto', marginTop: 8 }}>
+            <table className="tbl">
+              <thead><tr><th>流量场景 × 体裁</th><th className="num">成交金额</th></tr></thead>
+              <tbody>
+                {t.rows.map((r, i) => (
+                  <tr key={i}><td>{r.name}</td><td className="num">¥{(r.gmv || 0).toLocaleString()}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    );
+  }
+
+  // ── 生意经曝光拆分 ───────────────────────────────────────────────────────────
+  function BusinessExposureCard({ businessExposure }) {
+    if (!businessExposure?.rows?.length) return null;
+    return (
+      <section style={{ marginBottom: 16 }}>
+        <SectionTitle title="流量曝光拆分" sub="生意经 show_cnt_1d" badge="business" />
+        <div className="card" style={{ overflow: 'auto' }}>
+          <table className="tbl">
+            <thead><tr><th>流量场景</th><th className="num">曝光次数</th><th className="num">曝光占比</th></tr></thead>
+            <tbody>
+              {businessExposure.rows.map((r, i) => (
+                <tr key={i}>
+                  <td>{r.scene}</td>
+                  <td className="num">{isNil(r.showCnt) ? <span style={{ color: '#d48806', fontSize: 11 }}>—</span> : r.showCnt.toLocaleString()}</td>
+                  <td className="num">{isNil(r.rate) ? '—' : (r.rate * 100).toFixed(2) + '%'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
+    );
+  }
+
+  // ── 平台经营洞察（来客 + 生意经）─────────────────────────────────────────────
+  function InsightBlock({ laikeInsight, businessInsight }) {
+    const items = [];
+    if (businessInsight?.conclusion) items.push({ title: '生意经平台洞察', ins: businessInsight, badge: 'business' });
+    if (laikeInsight?.conclusion)    items.push({ title: '来客经营洞察',   ins: laikeInsight,   badge: 'laike_overview' });
+    if (!items.length) return null;
+    return (
+      <>
+        {items.map((it, i) => (
+          <section key={i} style={{ marginBottom: 16 }}>
+            <SectionTitle title={it.title} sub={`${it.ins.startDate}～${it.ins.endDate}`} badge={it.badge} />
+            <div style={{ padding: '12px 14px', background: 'rgba(9,88,217,0.05)', borderRadius: 8, fontSize: 13, lineHeight: 1.75, color: 'var(--text)', whiteSpace: 'pre-wrap' }}>
+              {it.ins.conclusion}
+            </div>
+            <div style={{ fontSize: 11, color: '#8c8c8c', marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <SrcBadge src="insight" /> 数据周期：{it.ins.startDate}～{it.ins.endDate}，非昨日数据，仅供经营复盘参考。
+            </div>
+          </section>
+        ))}
+      </>
     );
   }
 
@@ -377,7 +454,14 @@ TL.openDailyReport = function (brandId, date) {
     };
     sectorText('成交数据', rep.gmvRows, ['历史GMV', '昨日GMV', '本月GMV']);
     sectorText('核销数据', rep.redeemRows, ['历史核销', '昨日核销', '本月核销']);
-    if (rep.laikeInsight) L.push(`\n【平台洞察（${rep.laikeInsight.startDate}~${rep.laikeInsight.endDate}）】\n${rep.laikeInsight.conclusion}`);
+    if (rep.businessTrade) {
+      const t = rep.businessTrade;
+      L.push(`\n【生意经流量成交拆分】`);
+      L.push(`· 直播渠道 ¥${fen(t.liveGmv)}（非达播）/ 视频渠道 ¥${fen(t.videoGmv)}`);
+      L.push(`· 搜索场景 ¥${fen(t.searchSceneGmv)} / 推荐分享 ¥${fen(t.recommendSceneGmv)} / 团购商城 ¥${fen(t.groupbuySceneGmv)}`);
+    }
+    if (rep.businessInsight) L.push(`\n【生意经洞察（${rep.businessInsight.startDate}~${rep.businessInsight.endDate}）】\n${rep.businessInsight.conclusion}`);
+    if (rep.laikeInsight) L.push(`\n【来客洞察（${rep.laikeInsight.startDate}~${rep.laikeInsight.endDate}）】\n${rep.laikeInsight.conclusion}`);
     if (rep.notes?.dabo) L.push(`\n达播：${rep.notes.dabo}`);
     if (rep.notes?.official) L.push(`\n官号：${rep.notes.official}`);
     if (rep.notes?.officialVideo) L.push(`\n官号短视频：${rep.notes.officialVideo}`);
@@ -433,8 +517,8 @@ TL.openDailyReport = function (brandId, date) {
               </h2>
               <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 3, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <SrcBadge src="platform" />
-                <SrcBadge src="laike_sales" />
-                <SrcBadge src="laike_overview" />
+                <SrcBadge src="business" />
+                <SrcBadge src="insight" />
                 <SrcBadge src="pending" />
               </div>
             </div>
@@ -490,11 +574,17 @@ TL.openDailyReport = function (brandId, date) {
               {/* 商品排行 */}
               <ProductCard laikeSales={rep.laikeSales} />
 
+              {/* 生意经流量成交拆分 */}
+              <BusinessTradeCard businessTrade={rep.businessTrade} />
+
+              {/* 生意经曝光拆分 */}
+              <BusinessExposureCard businessExposure={rep.businessExposure} />
+
               {/* 直播板块明细 */}
               <LiveDetailTable liveDetail={rep.liveDetail} onChange={liveChange} />
 
-              {/* 平台经营洞察 */}
-              <InsightBlock laikeInsight={rep.laikeInsight} />
+              {/* 平台经营洞察（来客 + 生意经）*/}
+              <InsightBlock laikeInsight={rep.laikeInsight} businessInsight={rep.businessInsight} />
 
               {/* 经营备注 */}
               <section>

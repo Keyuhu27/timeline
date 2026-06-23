@@ -432,6 +432,35 @@ export interface DailyReport {
     endDate: string;
     fetchedAt: string;
   };
+
+  // 生意经流量成交拆分（pay_amount_1d × 场景 × 体裁）——元
+  businessTrade?: {
+    liveGmv: number;             // 生意经直播渠道 GMV（非达播）
+    videoGmv: number;            // 生意经视频渠道 GMV
+    leadCardGmv: number;         // 获客卡 GMV
+    searchResultCardGmv: number; // 搜索结果卡 GMV
+    searchSceneGmv: number;      // 抖音搜索场景 GMV
+    recommendSceneGmv: number;   // 推荐分享场景 GMV
+    groupbuySceneGmv: number;    // 团购商城场景 GMV
+    totalGmv: number;
+    rows: Array<{ name: string; scene: string; order: string; gmv: number }>;
+    fetchedAt: string;
+  };
+
+  // 生意经曝光拆分（show_cnt_1d × 场景）
+  businessExposure?: {
+    rows: Array<{ scene: string; showCnt: number | null; rate: number | null }>;
+    totalShow: number;
+    fetchedAt: string;
+  };
+
+  // 生意经经营洞察（data_conclusion/data_explain）
+  businessInsight?: {
+    conclusion: string;
+    startDate: string;
+    endDate: string;
+    fetchedAt: string;
+  };
 }
 
 // ─── API 响应 ─────────────────────────────────────────────────────────────

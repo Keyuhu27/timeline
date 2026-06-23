@@ -12,6 +12,7 @@ import { ok, err }            from '../../../lib/api';
 import { saveSnapshot }       from '../../../lib/persist';
 import { OceanEngineAdapter } from '../../../lib/adapters/oceanengine-adapter';
 import { LaikeAdapter }       from '../../../lib/adapters/laike-adapter';
+import { BusinessCompassAdapter } from '../../../lib/adapters/business-compass-adapter';
 import type { RouteHandler }  from '../../../lib/api';
 import type { DailyReport, DailyReportRow, DailyReportLiveBlock } from '../../../types/index';
 
@@ -144,6 +145,31 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
     }
   }
 
+  // ── 5. 生意经流量成交拆分 / 曝光拆分 / 洞察 ───────────────────────────────
+  let businessTrade: DailyReport['businessTrade'] | undefined;
+  let businessExposure: DailyReport['businessExposure'] | undefined;
+  let businessInsight: DailyReport['businessInsight'] | undefined;
+  if (poiId && process.env.BUSINESS_COMPASS_COOKIE) {
+    const [trade, exposure, bIns] = await Promise.all([
+      BusinessCompassAdapter.fetchTradeSplit(poiId, yesterday, yesterday).catch(() => null),
+      BusinessCompassAdapter.fetchExposureSplit(poiId, yesterday, yesterday).catch(() => null),
+      BusinessCompassAdapter.fetchInsights(poiId, yesterday, date).catch(() => null),
+    ]);
+    if (trade) {
+      businessTrade = trade;
+      sourceLines.push(`生意经流量成交（${yesterday}）：直播渠道 ¥${trade.liveGmv} / 视频渠道 ¥${trade.videoGmv} / 搜索场景 ¥${trade.searchSceneGmv}`);
+      seeded = true;
+    }
+    if (exposure) {
+      businessExposure = exposure;
+      seeded = true;
+    }
+    if (bIns) {
+      businessInsight = { ...bIns, fetchedAt: now };
+      seeded = true;
+    }
+  }
+
   const seedNote = sourceLines.length
     ? `自动回填：${sourceLines.join('；')}。达播/POI、核销明细、直播场次/时长平台无接口，请手动补充。`
     : '未检测到可用的平台数据接口（未配置 statQuery Cookie 或 Laike Cookie）。所有字段为空，请手动填写。';
@@ -168,6 +194,9 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
     ...(laikeSales  ? { laikeSales }  : {}),
     ...(laikeOverview ? { laikeOverview } : {}),
     ...(laikeInsight  ? { laikeInsight }  : {}),
+    ...(businessTrade    ? { businessTrade }    : {}),
+    ...(businessExposure ? { businessExposure } : {}),
+    ...(businessInsight  ? { businessInsight }  : {}),
   };
 }
 
