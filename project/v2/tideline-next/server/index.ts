@@ -87,6 +87,7 @@ const ROUTES: Record<string, RouteModule> = {
   '/api/debug/oe/project-report':   { GET: routeDebugOE.projectReport },
   '/api/debug/oe/promotion-report': { GET: routeDebugOE.promotionReport },
   '/api/debug/oe/stat-query':       { GET: routeDebugOE.statQueryAuto, POST: routeDebugOE.statQuery },
+  '/api/debug/oe/workbench-local-accounts': { GET: routeDebugOE.workbenchLocalAccounts },
   '/api/reports':    routeReports,
 };
 

@@ -35,6 +35,13 @@ const ARCHIVED_LOCAL_ACCOUNT_IDS = new Set([
   '1847218637597210',  // 耀银 旧账户（保留新账户 1847915308786764）
 ]);
 
+// 占位/无效账户名（需用真实 account_name 覆盖）
+function isPlaceholderName(name: string | undefined): boolean {
+  const v = (name ?? '').trim();
+  if (!v) return true;
+  return /^(Localad-|本地推账户\s*\d|unknown$)/i.test(v);
+}
+
 export const GET: RouteHandler = (req, res) => {
   const { brand } = req.query;
   let filtered = accounts.filter(a => !a.hidden);
@@ -100,6 +107,14 @@ export async function syncLocalAccounts(
     if (existed) {
       // 同步归档状态（防止已存在账户未标 hidden）
       if (ARCHIVED_LOCAL_ACCOUNT_IDS.has(lid)) existed.hidden = true;
+      // 用真实 account_name 覆盖占位名（Localad-xxx / 本地推账户 xxx / 空 / unknown）
+      const realName = (nameById?.get(lid) ?? '').trim() || KNOWN_LOCAL_ACCOUNT_NAMES[lid];
+      if (realName && isPlaceholderName(existed.name)) {
+        existed.name = realName;
+        const b = brands.find(br => br.id === existed.brand);
+        if (b) { b.name = realName; b.logo = realName.slice(0, 1); }
+        console.log(`[AccountSync] 覆盖占位名 ${lid} → ${realName}`);
+      }
       if (!result.includes(existed)) result.push(existed);
       continue;
     }
@@ -371,8 +386,25 @@ export const POST: RouteHandler = async (req, res) => {
     }
   }
 
-  // 来源3：升级版巨量引擎工作台(EBP) —— 配 OCEANENGINE_EBP_ORG_ID 即可一次性发现名下全部本地推账户
   const nameById = new Map<string, string>();
+
+  // 来源0（优先）：旧版巨量引擎工作台账户列表 —— 配 OCEANENGINE_CC_ACCOUNT_ID 即可发现
+  // 名下全部本地推账户并补全真实 account_name。失败时静默 fallback 到下方各来源。
+  const ccAccountId = (process.env.OCEANENGINE_CC_ACCOUNT_ID ?? '').trim();
+  if (ccAccountId) {
+    try {
+      const r = await OceanEngineAdapter.fetchOldWorkbenchLocalAccounts(ccAccountId, accessToken);
+      console.log(`[AccountSync] 旧版工作台 ${ccAccountId} 名下本地推账户: ${r.accounts.length} 个`);
+      for (const { id, name } of r.accounts) {
+        if (name) nameById.set(id, name);
+        if (!localIds.includes(id)) localIds.push(id);
+      }
+    } catch (e) {
+      console.error(`[AccountSync] ❌ 旧版工作台账户列表失败，fallback 到 .env / EBP:`, String(e));
+    }
+  }
+
+  // 来源3：升级版巨量引擎工作台(EBP) —— 配 OCEANENGINE_EBP_ORG_ID 即可一次性发现名下全部本地推账户
   const ebpOrgId = (process.env.OCEANENGINE_EBP_ORG_ID ?? '').trim();
   if (ebpOrgId) {
     try {

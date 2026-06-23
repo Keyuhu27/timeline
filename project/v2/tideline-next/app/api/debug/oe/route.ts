@@ -289,3 +289,37 @@ export async function statQueryAuto(req: IncomingMessage, res: ServerResponse) {
     });
   }
 }
+
+// ─── GET /api/debug/oe/workbench-local-accounts?cc_account_id=...[&account_name=] ──
+// 用旧版工作台账户列表接口发现名下本地推账户（仅账户发现/名称补全，非业务取数）。
+export async function workbenchLocalAccounts(req: IncomingMessage, res: ServerResponse) {
+  const url = new URL('http://x' + req.url!);
+  const ccAccountId = (url.searchParams.get('cc_account_id') ?? '').trim();
+  const accountName = (url.searchParams.get('account_name') ?? '').trim() || undefined;
+  if (!ccAccountId) return sendErr(res, '缺少 cc_account_id 参数（工作台/纵横组织 ID）');
+
+  let accessToken: string;
+  try {
+    accessToken = await tokenManager.getAnyToken('oceanengine');
+  } catch (e) {
+    return sendErr(res, `无法获取 Access Token: ${String(e)}`);
+  }
+
+  try {
+    const r = await OceanEngineAdapter.fetchOldWorkbenchLocalAccounts(ccAccountId, accessToken, { accountName });
+    ok(res, {
+      request: { cc_account_id: ccAccountId, account_source: 'LOCAL', page_size: 100, account_name: accountName ?? null, url: r.requestUrl },
+      list_count: r.accounts.length,
+      first_row: r.firstRow,
+      first_row_keys: r.firstRowKeys,
+      accounts: r.accounts.map(a => ({ local_account_id: a.id, account_name: a.name, account_status: a.status })),
+      raw_response: r.rawResponse,
+    });
+  } catch (e) {
+    ok(res, {
+      success: false,
+      error: String(e),
+      request: { cc_account_id: ccAccountId, account_source: 'LOCAL', account_name: accountName ?? null },
+    });
+  }
+}

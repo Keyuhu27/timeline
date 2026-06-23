@@ -231,6 +231,98 @@ export class OceanEngineAdapter implements IAdAdapter {
   }
 
   /**
+   * 旧版巨量引擎工作台「账户列表」接口 —— 按 cc_account_id（工作台/纵横组织ID）发现
+   * 名下本地推账户。仅用于账户发现 + 名称补全，不取 GMV/核销等业务数据。
+   * 文档：GET https://api.oceanengine.com/open_api/2/cc/advertiser/list/
+   * 入参 account_source=LOCAL、page_size=100、可选 filtering.account_name 过滤。
+   * URL 可用 OCEANENGINE_WORKBENCH_LIST_URL 覆盖（不同租户路径可能不同）。
+   * 自动翻页拉全；返回 normalize 后的 {id,name,status,raw} 数组 + 原始首行供 debug。
+   */
+  static async fetchOldWorkbenchLocalAccounts(
+    ccAccountId: string,
+    accessToken: string,
+    opts: { accountName?: string } = {},
+  ): Promise<{
+    accounts: Array<{ id: string; name: string; status: string; raw: Record<string, unknown> }>;
+    firstRow: Record<string, unknown> | null;
+    firstRowKeys: string[];
+    rawResponse: Record<string, unknown> | null;
+    requestUrl: string;
+  }> {
+    const listUrl = (process.env.OCEANENGINE_WORKBENCH_LIST_URL ?? '').trim()
+      || 'https://api.oceanengine.com/open_api/2/cc/advertiser/list/';
+
+    const out: Array<{ id: string; name: string; status: string; raw: Record<string, unknown> }> = [];
+    let firstRow: Record<string, unknown> | null = null;
+    let rawResponse: Record<string, unknown> | null = null;
+    let lastUrl = '';
+    let page = 1;
+    const pageSize = 100;
+
+    // 各租户字段命名不一，逐一兜底取值
+    const pick = (row: Record<string, unknown>, keys: string[]): string => {
+      for (const k of keys) {
+        const v = row[k];
+        if (v != null && v !== '') return String(v);
+      }
+      return '';
+    };
+
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const params: Record<string, string> = {
+        cc_account_id: String(ccAccountId).replace(/[^0-9]/g, ''),
+        account_source: 'LOCAL',
+        page: String(page),
+        page_size: String(pageSize),
+      };
+      if (opts.accountName) {
+        params.filtering = JSON.stringify({ account_name: opts.accountName });
+      }
+      const qs = Object.entries(params)
+        .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+        .join('&');
+      lastUrl = `${listUrl}?${qs}`;
+      console.log(`[OceanEngine] GET 旧版工作台本地推账户列表 cc=${ccAccountId} page=${page}`);
+      const res = await fetch(lastUrl, { method: 'GET', headers: { 'Access-Token': accessToken } });
+      const json = safeJsonParse<{
+        code: number; message: string;
+        data: {
+          list?: Array<Record<string, unknown>>;
+          account_list?: Array<Record<string, unknown>>;
+          page_info?: { total_page?: number; total_number?: number; page?: number };
+        };
+      }>(await res.text());
+      if (json.code !== 0) {
+        throw new Error(`巨量引擎 旧版工作台账户列表: ${json.message} (code=${json.code})`);
+      }
+      if (page === 1) rawResponse = json as unknown as Record<string, unknown>;
+
+      const rows = json.data.list ?? json.data.account_list ?? [];
+      for (const row of rows) {
+        if (!firstRow) firstRow = row;
+        const id = pick(row, ['local_account_id', 'advertiser_id', 'account_id', 'id']);
+        if (!id) continue;
+        const name = pick(row, ['account_name', 'company_name', 'name', 'advertiser_name', 'company']);
+        const status = pick(row, ['account_status', 'status', 'opt_status']);
+        out.push({ id, name, status, raw: row });
+      }
+
+      const totalPage = json.data.page_info?.total_page;
+      if (!totalPage || page >= totalPage || rows.length < pageSize) break;
+      page++;
+    }
+
+    return {
+      accounts: out,
+      firstRow,
+      firstRowKeys: firstRow ? Object.keys(firstRow) : [],
+      rawResponse,
+      requestUrl: lastUrl,
+    };
+  }
+
+  /**
    * 拉取当前 AppId 下已授权的广告主列表。
    * 文档：GET https://open.oceanengine.com/open_api/oauth2/advertiser/get/
    */
