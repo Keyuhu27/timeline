@@ -47,6 +47,7 @@ export interface Account {
   externalId?: string;
   tokenExpiresAt?: number;
   hidden?: boolean;           // 归档/隐藏账户（如重复账户），不在常规列表展示
+  laikePoi?: string;          // 抖音来客 POI ID（用于来客经营数据接口）
   // 后台首页 statQuery 全域消耗（DataSetKey=pc_home_roi2）——最高优先级今日消耗来源。
   // 开放平台三个 report 接口均不覆盖全域投放口径，只能用 statQuery 对齐后台首页数字。
   // 鉴权依赖本地 .env OCEANENGINE_LOCALADS_COOKIE，不提交。
@@ -325,46 +326,112 @@ export interface AlertConfig {
 }
 
 // ─── 经营日报 ─────────────────────────────────────────────────────────────
-// 结构对齐运营手工日报（如「永和大王日报」）：成交/核销两张分板块表 +
-// 直播板块明细 + 文字备注。平台只能回填部分「昨日」真实数据（statQuery 全域口径），
-// 目标/历史/本月累计/核销等需运营手动补充，因此每个数字都是可编辑字段。
+
+// 每个数字字段的数据来源标注
+export type DailyReportCellSrc =
+  | 'platform'       // 绿色：statQuery 平台自动拉取
+  | 'laike_sales'    // 绿色：抖音来客 coupon_sale_record 自动拉取
+  | 'laike_overview' // 蓝色：抖音来客 data_overview（周期不确定）
+  | 'manual'         // 灰色：用户手动录入
+  | 'pending';       // 黄色：暂无接口，待补充
+
 export interface DailyReportRow {
-  key: string;        // zibo | dabo | poi | video
-  label: string;      // 自播 | 达播 | POI | 短视频
-  history: number;    // 历史累计
-  yesterday: number;  // 昨日（可由平台回填）
-  month: number;      // 本月累计
-  target: number;     // 月目标
+  key: string;           // zibo | dabo | poi | video
+  label: string;         // 自播 | 达播 | POI | 短视频
+  history: number | null;
+  yesterday: number | null;
+  month: number | null;
+  target: number | null;
+  // 每格数据来源；不记录 = pending
+  src?: Partial<Record<'history' | 'yesterday' | 'month' | 'target', DailyReportCellSrc>>;
 }
+
 export interface DailyReportLiveCol {
-  sessions: number;   // 直播场次
-  gmv: number;        // 直播 GMV
-  duration: number;   // 直播时长（小时）
+  sessions: number | null;
+  gmv: number | null;
+  duration: number | null;
 }
 export interface DailyReportLiveBlock {
   history: DailyReportLiveCol;
   yesterday: DailyReportLiveCol;
   month: DailyReportLiveCol;
 }
+
+// 抖音来客 coupon_sale_record 聚合
+export interface LaikeSaleSummary {
+  totalGmv: number;
+  totalOrders: number;
+  liveGmv: number;
+  searchGmv: number;
+  otherGmv: number;
+  refundGmv: number;
+  validOrderCount: number;
+  refundOrderCount: number;
+  byChannel: Record<string, number>;
+  byProduct: Array<{ name: string; gmv: number; orders: number }>;
+}
+
+// 抖音来客 data_overview
+export interface LaikeOverviewData {
+  payAmount: number;
+  payCertCnt: number;
+  verifyAmount: number;
+  verifyCertCnt: number;
+  refundAmount: number;
+  productViewUv: number;
+}
+
 export interface DailyReport {
   id: string;
   brandId: string;
   brandName: string;
   accountExternalId?: string;
-  date: string;            // YYYY-MM-DD（报告日）
-  timeProgress: number;    // 时间进度 %（按当月已过天数推算，可改）
-  gmvRows: DailyReportRow[];      // 成交数据
-  redeemRows: DailyReportRow[];   // 核销数据
+  date: string;
+  timeProgress: number;
+  gmvRows: DailyReportRow[];
+  redeemRows: DailyReportRow[];
   liveDetail: {
-    zibo: DailyReportLiveBlock;   // 自播板块
-    dabo: DailyReportLiveBlock;   // 达播板块
+    zibo: DailyReportLiveBlock;
+    dabo: DailyReportLiveBlock;
   };
   notes: { dabo: string; official: string; officialVideo: string };
-  seeded: boolean;         // 是否回填了平台真实数据
-  seedNote?: string;       // 数据来源/口径说明
+  seeded: boolean;
+  seedNote?: string;
   source: 'platform' | 'manual';
   createdAt: string;
   updatedAt: string;
+
+  // 投放数据（statQuery 昨日全域消耗）
+  adSpend?: {
+    totalSpent: number;
+    liveSpent: number;
+    videoSpent: number;
+    liveRoi: number;
+    videoRoi: number;
+    period: string;   // e.g. "2026-06-15 全天"
+    source: 'statQuery_pc_home_roi2';
+  };
+
+  // 来客成交明细汇总（coupon_sale_record 昨日）
+  laikeSales?: LaikeSaleSummary & {
+    startDate: string;
+    endDate: string;
+    fetchedAt: string;
+  };
+
+  // 来客经营概览（data_overview，周期不确定）
+  laikeOverview?: LaikeOverviewData & {
+    fetchedAt: string;
+    periodNote: string;
+  };
+
+  // 来客经营洞察（data_conclusion/data_explain）
+  laikeInsight?: {
+    conclusion: string;
+    startDate: string;
+    endDate: string;
+    fetchedAt: string;
+  };
 }
 
 // ─── API 响应 ─────────────────────────────────────────────────────────────

@@ -11,6 +11,7 @@ import { dailyReports, accounts, brandById } from '../../../lib/db';
 import { ok, err }            from '../../../lib/api';
 import { saveSnapshot }       from '../../../lib/persist';
 import { OceanEngineAdapter } from '../../../lib/adapters/oceanengine-adapter';
+import { LaikeAdapter }       from '../../../lib/adapters/laike-adapter';
 import type { RouteHandler }  from '../../../lib/api';
 import type { DailyReport, DailyReportRow, DailyReportLiveBlock } from '../../../types/index';
 
@@ -22,10 +23,10 @@ const ROW_DEFS: Array<{ key: string; label: string }> = [
 ];
 
 function emptyRows(): DailyReportRow[] {
-  return ROW_DEFS.map(d => ({ key: d.key, label: d.label, history: 0, yesterday: 0, month: 0, target: 0 }));
+  return ROW_DEFS.map(d => ({ key: d.key, label: d.label, history: null, yesterday: null, month: null, target: null }));
 }
 function emptyLiveBlock(): DailyReportLiveBlock {
-  const col = () => ({ sessions: 0, gmv: 0, duration: 0 });
+  const col = () => ({ sessions: null, gmv: null, duration: null });
   return { history: col(), yesterday: col(), month: col() };
 }
 
@@ -49,62 +50,103 @@ function bjMonthStartStr(date: string): string {
 }
 function sq(dt: string, hms: string) { return `${dt} ${hms}`; }
 
-/** 按品牌+日期生成一份新日报，尝试从 statQuery 按精确日期区间回填数据（不落盘） */
+/** 按品牌+日期生成一份新日报（不落盘）。
+ *  数据优先级：statQuery（投放）> 来客成交明细 > 来客经营概览 > 手动待补充。
+ *  所有外部调用均 catch 静默，日报始终可生成。
+ */
 export async function buildReport(brandId: string, date: string): Promise<DailyReport> {
   const brand = brandById(brandId);
   const account = accounts.find(a => a.brand === brandId);
   const now = new Date().toISOString();
+  const yesterday  = bjDateStr(date, -1);
+  const monthStart = bjMonthStartStr(date);
+  const poiId = account?.laikePoi ?? account?.externalId ?? '';
 
   const gmvRows = emptyRows();
   const liveDetail = { zibo: emptyLiveBlock(), dabo: emptyLiveBlock() };
   let seeded = false;
-  let seedNote = '未检测到该品牌的巨量后台全域数据（statQuery 无法访问）。所有数字为空，请手动填写。';
+  const sourceLines: string[] = [];
 
+  // ── 1. statQuery 投放全域成交 ────────────────────────────────────────────
+  let adSpend: DailyReport['adSpend'] | undefined;
   if (account?.externalId && process.env.OCEANENGINE_LOCALADS_COOKIE) {
-    const yesterday   = bjDateStr(date, -1);
-    const monthStart  = bjMonthStartStr(date);
+    const [sqYday, sqMonth] = await Promise.all([
+      OceanEngineAdapter.fetchHomeRoi2StatQuery(
+        account.externalId, sq(yesterday, '00:00:00'), sq(yesterday, '23:59:59'),
+      ).catch(() => null),
+      OceanEngineAdapter.fetchHomeRoi2StatQuery(
+        account.externalId, sq(monthStart, '00:00:00'), sq(date, '23:59:59'),
+      ).catch(() => null),
+    ]);
 
-    try {
-      const [sqYday, sqMonth] = await Promise.all([
-        OceanEngineAdapter.fetchHomeRoi2StatQuery(
-          account.externalId,
-          sq(yesterday, '00:00:00'),
-          sq(yesterday, '23:59:59'),
-        ).catch(() => null),
-        OceanEngineAdapter.fetchHomeRoi2StatQuery(
-          account.externalId,
-          sq(monthStart, '00:00:00'),
-          sq(date, '23:59:59'),
-        ).catch(() => null),
-      ]);
-
+    if (sqYday) {
       const zibo  = gmvRows.find(r => r.key === 'zibo')!;
       const video = gmvRows.find(r => r.key === 'video')!;
-
-      if (sqYday) {
-        zibo.yesterday  = Math.round(sqYday.liveGmv  || 0);
-        video.yesterday = Math.round(sqYday.videoGmv || 0);
-        liveDetail.zibo.yesterday.gmv = Math.round(sqYday.liveGmv || 0);
-        seeded = true;
-      }
-      if (sqMonth) {
-        zibo.month  = Math.round(sqMonth.liveGmv  || 0);
-        video.month = Math.round(sqMonth.videoGmv || 0);
-        liveDetail.zibo.month.gmv = Math.round(sqMonth.liveGmv || 0);
-        seeded = true;
-      }
-
-      if (seeded) {
-        seedNote = [
-          `昨日数据（${yesterday} 全天 statQuery）：自播 ¥${zibo.yesterday}、短视频 ¥${video.yesterday}。`,
-          `本月数据（${monthStart}～${date} statQuery）：自播 ¥${zibo.month}、短视频 ¥${video.month}。`,
-          `达播/POI、核销、目标、历史平台无对应口径，请手动补充。`,
-        ].join('');
-      }
-    } catch {
-      seedNote = 'statQuery 请求失败，所有数字为空，请手动填写。';
+      zibo.yesterday  = Math.round(sqYday.liveGmv  || 0);
+      video.yesterday = Math.round(sqYday.videoGmv || 0);
+      zibo.src = { ...zibo.src,  yesterday: 'platform' };
+      video.src = { ...video.src, yesterday: 'platform' };
+      liveDetail.zibo.yesterday.gmv = Math.round(sqYday.liveGmv || 0);
+      adSpend = {
+        totalSpent: Math.round(sqYday.spent || 0),
+        liveSpent:  Math.round(sqYday.liveSpent || 0),
+        videoSpent: Math.round(sqYday.videoSpent || 0),
+        liveRoi:    sqYday.liveRoi || 0,
+        videoRoi:   sqYday.videoRoi || 0,
+        period: `${yesterday} 全天`,
+        source: 'statQuery_pc_home_roi2',
+      };
+      sourceLines.push(`投放消耗（${yesterday}）：全域 ¥${adSpend.totalSpent} / 直播 ¥${adSpend.liveSpent} / 短视频 ¥${adSpend.videoSpent}`);
+      seeded = true;
+    }
+    if (sqMonth) {
+      const zibo  = gmvRows.find(r => r.key === 'zibo')!;
+      const video = gmvRows.find(r => r.key === 'video')!;
+      zibo.month  = Math.round(sqMonth.liveGmv  || 0);
+      video.month = Math.round(sqMonth.videoGmv || 0);
+      zibo.src  = { ...zibo.src,  month: 'platform' };
+      video.src = { ...video.src, month: 'platform' };
+      liveDetail.zibo.month.gmv = Math.round(sqMonth.liveGmv || 0);
+      sourceLines.push(`本月成交（${monthStart}~${date}）：自播 ¥${zibo.month} / 短视频 ¥${video.month}`);
+      seeded = true;
     }
   }
+
+  // ── 2. 来客成交明细（coupon_sale_record）─────────────────────────────────
+  let laikeSales: DailyReport['laikeSales'] | undefined;
+  if (poiId && process.env.LAIKE_COOKIE) {
+    const sales = await LaikeAdapter.fetchCouponSaleRecords(poiId, yesterday, yesterday).catch(() => null);
+    if (sales) {
+      laikeSales = sales;
+      sourceLines.push(`来客成交（${yesterday}）：¥${sales.totalGmv} / ${sales.validOrderCount} 单 / 直播 ¥${sales.liveGmv} / 搜索 ¥${sales.searchGmv}`);
+      seeded = true;
+    }
+  }
+
+  // ── 3. 来客经营概览（data_overview）──────────────────────────────────────
+  let laikeOverview: DailyReport['laikeOverview'] | undefined;
+  if (poiId && process.env.LAIKE_COOKIE) {
+    const ov = await LaikeAdapter.fetchDataOverview(poiId).catch(() => null);
+    if (ov) {
+      laikeOverview = ov;
+      sourceLines.push(`来客经营概览（当前周期）：核销 ¥${ov.verifyAmount} / ${ov.verifyCertCnt} 张`);
+      seeded = true;
+    }
+  }
+
+  // ── 4. 来客经营洞察（data_conclusion）────────────────────────────────────
+  let laikeInsight: DailyReport['laikeInsight'] | undefined;
+  if (poiId && process.env.LAIKE_COOKIE) {
+    const ins = await LaikeAdapter.fetchInsights(poiId, yesterday, date).catch(() => null);
+    if (ins) {
+      laikeInsight = { ...ins, fetchedAt: now };
+      seeded = true;
+    }
+  }
+
+  const seedNote = sourceLines.length
+    ? `自动回填：${sourceLines.join('；')}。达播/POI、核销明细、直播场次/时长平台无接口，请手动补充。`
+    : '未检测到可用的平台数据接口（未配置 statQuery Cookie 或 Laike Cookie）。所有字段为空，请手动填写。';
 
   return {
     id: `rpt_${brandId}_${date}`,
@@ -122,6 +164,10 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
     source: 'platform',
     createdAt: now,
     updatedAt: now,
+    ...(adSpend     ? { adSpend }     : {}),
+    ...(laikeSales  ? { laikeSales }  : {}),
+    ...(laikeOverview ? { laikeOverview } : {}),
+    ...(laikeInsight  ? { laikeInsight }  : {}),
   };
 }
 
