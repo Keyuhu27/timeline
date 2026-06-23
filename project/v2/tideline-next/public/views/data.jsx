@@ -29,6 +29,7 @@ const Data = function Data({ subView, setSubView, openLive }) {
             { id: 'lives',    label: '直播数据' },
             { id: 'content',  label: '内容数据' },
             { id: 'traffic',  label: '流量来源' },
+            { id: 'reports',  label: '日报中心' },
           ].map(t => (
             <div key={t.id} className={`tab ${subView === t.id ? 'active' : ''}`} onClick={() => setSubView(t.id)}>
               {t.label}
@@ -41,6 +42,7 @@ const Data = function Data({ subView, setSubView, openLive }) {
         {subView === 'lives' && <LivesTab openLive={openLive} />}
         {subView === 'content' && <ContentTab />}
         {subView === 'traffic' && <TrafficTab />}
+        {subView === 'reports' && <ReportsCenterTab />}
       </div>
     </div>
   );
@@ -573,6 +575,88 @@ function Tile({ label, value, delta, tone }) {
       <div className="muted" style={{ fontSize: 11 }}>{label}</div>
       <div className="num" style={{ fontSize: 18, fontWeight: 600, marginTop: 2 }}>{value}</div>
       {delta && <div style={{ fontSize: 11, color: tone === 'success' ? 'var(--success)' : 'var(--text-muted)', marginTop: 2 }}>{delta}</div>}
+    </div>
+  );
+}
+
+// ---- 日报中心：选择品牌+日期生成日报，列出已保存日报 ----------------------
+function ReportsCenterTab() {
+  const [brandId, setBrandId] = React.useState('');
+  const [date, setDate] = React.useState(new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10));
+  const [list, setList] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const brands = (TL.brands || []);
+
+  const loadList = React.useCallback(() => {
+    setLoading(true);
+    fetch('/api/reports').then(r => r.json()).then(j => setList(j.data || [])).finally(() => setLoading(false));
+  }, []);
+  React.useEffect(() => {
+    loadList();
+    const onClose = () => loadList();
+    // 弹窗保存后刷新列表（监听品牌更新事件即可，简单起见用聚焦刷新）
+    window.addEventListener('focus', onClose);
+    return () => window.removeEventListener('focus', onClose);
+  }, [loadList]);
+
+  React.useEffect(() => { if (!brandId && brands.length) setBrandId(brands[0].id); }, [brands.length]);
+
+  const brandName = (id) => {
+    const b = (TL.brands || []).find(x => x.id === id);
+    const a = (TL.accounts || []).find(x => x.brand === id);
+    return TL.displayBrandName ? TL.displayBrandName(b, a) : (b?.name || id);
+  };
+
+  return (
+    <div className="col" style={{ gap: 18 }}>
+      {/* 生成区 */}
+      <div className="card" style={{ padding: 16 }}>
+        <SectionTitle title="生成日报" sub="选择品牌与日期，生成结构化经营日报（平台自动回填全域成交，其余手动补充）" />
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <select className="select" value={brandId} onChange={e => setBrandId(e.target.value)} style={{ width: 'auto', minWidth: 200 }}>
+            {brands.map(b => <option key={b.id} value={b.id}>{brandName(b.id)}</option>)}
+          </select>
+          <input type="date" value={date} onChange={e => setDate(e.target.value)}
+            style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '6px 8px', font: 'inherit' }} />
+          <button className="btn" disabled={!brandId} onClick={() => TL.openDailyReport(brandId, date)}>
+            <Icon name="fileText" size={13} /> 生成 / 编辑日报
+          </button>
+          <button className="btn ghost" onClick={loadList}><Icon name="refresh" size={13} /> 刷新列表</button>
+        </div>
+        <div className="muted" style={{ fontSize: 11.5, marginTop: 10 }}>
+          也可在「数据分析 → 各品牌详情页」点「生成日报」，或在 AI 工作台直接说「帮我生成{brands[0] ? brandName(brands[0].id) : '某品牌'}今天日报」。
+        </div>
+      </div>
+
+      {/* 已保存日报列表 */}
+      <div>
+        <SectionTitle title="已保存日报" sub={`${list.length} 份`} />
+        <div className="card">
+          {loading ? (
+            <div style={{ padding: 28, textAlign: 'center', color: 'var(--text-muted)' }}>加载中…</div>
+          ) : list.length === 0 ? (
+            <div style={{ padding: 28, textAlign: 'center', color: 'var(--text-muted)' }}>暂无已保存日报，先在上方生成一份。</div>
+          ) : (
+            <table className="tbl">
+              <thead><tr><th>品牌</th><th>日期</th><th className="num">本月GMV</th><th className="num">月目标</th><th className="num">完成进度</th><th>数据来源</th><th>更新时间</th><th></th></tr></thead>
+              <tbody>
+                {list.map(r => (
+                  <tr key={r.id}>
+                    <td style={{ fontWeight: 500 }}>{r.brandName}</td>
+                    <td className="mono">{r.date}</td>
+                    <td className="num">{(r.gmvMonth || 0).toLocaleString()}</td>
+                    <td className="num">{(r.gmvTarget || 0).toLocaleString()}</td>
+                    <td className="num">{r.gmvTarget > 0 ? Math.round((r.gmvMonth / r.gmvTarget) * 100) + '%' : '—'}</td>
+                    <td><Chip tone={r.seeded ? 'success' : ''}>{r.seeded ? '平台回填' : '手动'}</Chip></td>
+                    <td className="muted" style={{ fontSize: 11 }}>{r.updatedAt ? new Date(r.updatedAt).toLocaleString('zh') : '—'}</td>
+                    <td><button className="btn ghost sm" onClick={() => TL.openDailyReport(r.brandId, r.date)}><Icon name="pen" size={11} /> 打开</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

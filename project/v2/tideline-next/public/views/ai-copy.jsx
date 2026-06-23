@@ -67,6 +67,8 @@ const AiCopy = function AiCopy() {
           </div>
         </div>
 
+        <DailyReportNL />
+
         <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 16 }}>
           <div>
             <div className="muted" style={{ fontSize: 11, marginBottom: 6, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>模板</div>
@@ -193,6 +195,56 @@ const defaultResults = [
     tags: ['直播话术','开场','留人']
   },
 ];
+
+// ---- AI 日报助手：自然语言「帮我生成XX今天日报」→ 打开日报弹窗 -------------
+function DailyReportNL() {
+  const [q, setQ] = _useState('');
+  const [hint, setHint] = _useState('');
+
+  const parse = () => {
+    const text = q.trim();
+    if (!text) return;
+    // 匹配品牌：用品牌名/账户名子串匹配
+    const brands = TL.brands || [];
+    const accounts = TL.accounts || [];
+    const matched = brands.find(b => {
+      const a = accounts.find(x => x.brand === b.id);
+      const name = TL.displayBrandName ? TL.displayBrandName(b, a) : b.name;
+      // 取品牌名前 2-4 字做宽松匹配
+      return text.includes(name) || (name && name.length >= 2 && text.includes(name.slice(0, 2)))
+        || (b.name && text.includes(b.name.slice(0, 2)));
+    });
+    if (!matched) { setHint('没找到匹配的品牌，请在「日报中心」手动选择，或换个说法（如「生成亿滋今天日报」）。'); return; }
+    // 解析日期
+    const today = new Date(Date.now() + 8 * 3600e3);
+    let d = new Date(today);
+    if (text.includes('昨天') || text.includes('昨日')) d.setDate(d.getDate() - 1);
+    else if (text.includes('前天')) d.setDate(d.getDate() - 2);
+    const mdy = text.match(/(\d{1,2})[.\-月](\d{1,2})/);
+    let dateStr;
+    if (mdy) dateStr = `${today.getFullYear()}-${String(+mdy[1]).padStart(2, '0')}-${String(+mdy[2]).padStart(2, '0')}`;
+    else dateStr = d.toISOString().slice(0, 10);
+    setHint('');
+    TL.openDailyReport(matched.id, dateStr);
+  };
+
+  return (
+    <div className="card" style={{ padding: 14, marginBottom: 16, background: 'var(--accent-subtle, #f4f0ff)' }}>
+      <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <Icon name="sparkle" size={14} />
+        <span style={{ fontSize: 12.5, fontWeight: 600 }}>AI 日报助手</span>
+        <span className="muted" style={{ fontSize: 11 }}>用自然语言生成经营日报（辅助入口）</span>
+        <div className="tb-spacer" style={{ flex: 1 }} />
+      </div>
+      <div className="row" style={{ gap: 8, marginTop: 8 }}>
+        <input className="input grow" placeholder="例如：帮我生成亿滋今天日报 / 永和大王 6.16 日报"
+          value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && parse()} />
+        <button className="btn" onClick={parse}><Icon name="fileText" size={13} /> 生成日报</button>
+      </div>
+      {hint && <div className="muted" style={{ fontSize: 11.5, marginTop: 6, color: 'var(--warn, #ad6800)' }}>{hint}</div>}
+    </div>
+  );
+}
 
 TL.AiCopy = AiCopy;
 window.AiCopy = AiCopy;

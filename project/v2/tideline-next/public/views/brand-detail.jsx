@@ -159,13 +159,18 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
             )}
           </div>
           <div className="page-actions">
-            <button className="btn sm" onClick={async () => {
-              setLoading(true);
-              try {
-                await fetch('/api/accounts/sync-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-              } catch {}
-              load();
-            }} disabled={loading}><Icon name="refresh" size={12} /> 同步状态</button>
+            <div className="row tight">
+              <button className="btn sm" onClick={() => TL.openDailyReport(brandId)}>
+                <Icon name="fileText" size={12} /> 生成日报
+              </button>
+              <button className="btn sm" onClick={async () => {
+                setLoading(true);
+                try {
+                  await fetch('/api/accounts/sync-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+                } catch {}
+                load();
+              }} disabled={loading}><Icon name="refresh" size={12} /> 同步状态</button>
+            </div>
           </div>
         </div>
 

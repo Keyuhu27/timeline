@@ -324,6 +324,49 @@ export interface AlertConfig {
   events: Array<'rule_triggered' | 'publish_failed' | 'budget_low' | 'token_expiring'>;
 }
 
+// ─── 经营日报 ─────────────────────────────────────────────────────────────
+// 结构对齐运营手工日报（如「永和大王日报」）：成交/核销两张分板块表 +
+// 直播板块明细 + 文字备注。平台只能回填部分「昨日」真实数据（statQuery 全域口径），
+// 目标/历史/本月累计/核销等需运营手动补充，因此每个数字都是可编辑字段。
+export interface DailyReportRow {
+  key: string;        // zibo | dabo | poi | video
+  label: string;      // 自播 | 达播 | POI | 短视频
+  history: number;    // 历史累计
+  yesterday: number;  // 昨日（可由平台回填）
+  month: number;      // 本月累计
+  target: number;     // 月目标
+}
+export interface DailyReportLiveCol {
+  sessions: number;   // 直播场次
+  gmv: number;        // 直播 GMV
+  duration: number;   // 直播时长（小时）
+}
+export interface DailyReportLiveBlock {
+  history: DailyReportLiveCol;
+  yesterday: DailyReportLiveCol;
+  month: DailyReportLiveCol;
+}
+export interface DailyReport {
+  id: string;
+  brandId: string;
+  brandName: string;
+  accountExternalId?: string;
+  date: string;            // YYYY-MM-DD（报告日）
+  timeProgress: number;    // 时间进度 %（按当月已过天数推算，可改）
+  gmvRows: DailyReportRow[];      // 成交数据
+  redeemRows: DailyReportRow[];   // 核销数据
+  liveDetail: {
+    zibo: DailyReportLiveBlock;   // 自播板块
+    dabo: DailyReportLiveBlock;   // 达播板块
+  };
+  notes: { dabo: string; official: string; officialVideo: string };
+  seeded: boolean;         // 是否回填了平台真实数据
+  seedNote?: string;       // 数据来源/口径说明
+  source: 'platform' | 'manual';
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ─── API 响应 ─────────────────────────────────────────────────────────────
 export interface ApiResponse<T> {
   data: T;

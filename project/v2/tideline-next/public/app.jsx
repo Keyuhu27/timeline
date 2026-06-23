@@ -81,7 +81,7 @@ function App() {
   const baseCrumb = navItem ? [groupOf(view).label, navItem.label] : ['工作台'];
 
   const breadcrumb = {
-    data: ['工作流', '数据分析', { overview: '总览', accounts: '账号分析', lives: '直播数据', content: '内容数据', traffic: '流量来源' }[dataSubView]],
+    data: ['工作流', '数据分析', { overview: '总览', accounts: '账号分析', lives: '直播数据', content: '内容数据', traffic: '流量来源', reports: '日报中心' }[dataSubView]],
     aiVideo: ['内容 & 投放', 'AI 视频工作台', '会话 · #4128'],
     aiCopy: ['内容 & 投放', 'AI 文案/标题', '基础模板'],
     brandDetail: ['工作流', '在管品牌', TL.displayBrandName(TL.brandById && TL.brandById(brandId), (TL.accounts || []).find(a => a.brand === brandId))],
@@ -205,6 +205,9 @@ function App() {
       )}
 
       <HomeTweaks tweaks={tweaks} setTweak={setTweak} />
+
+      {/* 经营日报弹窗宿主（任意视图通过 TL.openDailyReport 打开）*/}
+      <DailyReportHost />
     </div>
   );
 }

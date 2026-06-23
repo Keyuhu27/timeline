@@ -6,9 +6,9 @@
 import { mkdirSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
-import { brands, accounts, adCampaigns } from './db';
+import { brands, accounts, adCampaigns, dailyReports } from './db';
 import { tokenManager } from './adapters/token-manager';
-import type { Brand, Account, AdCampaign, PlatformCredential } from '../types/index';
+import type { Brand, Account, AdCampaign, PlatformCredential, DailyReport } from '../types/index';
 
 const require_ = createRequire(import.meta.url);
 
@@ -20,6 +20,7 @@ interface Snapshot {
   brands: Brand[];
   accounts: Account[];
   adCampaigns: AdCampaign[];
+  dailyReports: DailyReport[];
 }
 
 // ─── SQLite 后端（首选）──────────────────────────────────────────────────────
@@ -70,19 +71,21 @@ function kvGet(key: string): string | null {
 }
 
 function writeSnapshot(snap: Snapshot) {
-  kvPut('brands',      JSON.stringify(snap.brands));
-  kvPut('accounts',    JSON.stringify(snap.accounts));
-  kvPut('adCampaigns', JSON.stringify(snap.adCampaigns));
+  kvPut('brands',       JSON.stringify(snap.brands));
+  kvPut('accounts',     JSON.stringify(snap.accounts));
+  kvPut('adCampaigns',  JSON.stringify(snap.adCampaigns));
+  kvPut('dailyReports', JSON.stringify(snap.dailyReports));
 }
 
 function readSnapshot(): Snapshot | null {
   try {
-    const b = kvGet('brands'), a = kvGet('accounts'), c = kvGet('adCampaigns');
-    if (!b && !a && !c) return null;
+    const b = kvGet('brands'), a = kvGet('accounts'), c = kvGet('adCampaigns'), d = kvGet('dailyReports');
+    if (!b && !a && !c && !d) return null;
     return {
-      brands:      JSON.parse(b ?? '[]'),
-      accounts:    JSON.parse(a ?? '[]'),
-      adCampaigns: JSON.parse(c ?? '[]'),
+      brands:       JSON.parse(b ?? '[]'),
+      accounts:     JSON.parse(a ?? '[]'),
+      adCampaigns:  JSON.parse(c ?? '[]'),
+      dailyReports: JSON.parse(d ?? '[]'),
     };
   } catch (e) {
     console.error('[Persist] 读取快照失败:', String(e));
@@ -136,10 +139,11 @@ export function loadPersisted(): void {
 
   const snap = readSnapshot();
   if (snap) {
-    upsertAll(brands,      snap.brands);
-    upsertAll(accounts,    snap.accounts);
-    upsertAll(adCampaigns, snap.adCampaigns);
-    console.log(`[Persist] ✅ 已注水 (${backend}): 账户 ${snap.accounts.length}、品牌 ${snap.brands.length}、计划 ${snap.adCampaigns.length}`);
+    upsertAll(brands,       snap.brands);
+    upsertAll(accounts,     snap.accounts);
+    upsertAll(adCampaigns,  snap.adCampaigns);
+    upsertAll(dailyReports, snap.dailyReports ?? []);
+    console.log(`[Persist] ✅ 已注水 (${backend}): 账户 ${snap.accounts.length}、品牌 ${snap.brands.length}、计划 ${snap.adCampaigns.length}、日报 ${(snap.dailyReports ?? []).length}`);
   } else {
     console.log(`[Persist] 后端=${backend}，暂无历史快照`);
   }
@@ -153,8 +157,8 @@ export function saveSnapshot(): void {
   const realAccounts = accounts.filter(a => a.id.startsWith('a_'));
   const realCamps    = adCampaigns.filter(c => !!c.externalId);
   try {
-    writeSnapshot({ brands: realBrands, accounts: realAccounts, adCampaigns: realCamps });
-    console.log(`[Persist] 💾 已保存 (${backend}): 账户 ${realAccounts.length}、计划 ${realCamps.length}`);
+    writeSnapshot({ brands: realBrands, accounts: realAccounts, adCampaigns: realCamps, dailyReports });
+    console.log(`[Persist] 💾 已保存 (${backend}): 账户 ${realAccounts.length}、计划 ${realCamps.length}、日报 ${dailyReports.length}`);
   } catch (e) {
     console.error('[Persist] 保存失败:', String(e));
   }

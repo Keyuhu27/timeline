@@ -48,6 +48,7 @@ import * as routeAiDecisions from '../app/api/ai/decisions/route';
 import * as routeAiCreative  from '../app/api/ai/creative/route';
 import * as routeAiWorkflow  from '../app/api/ai/workflow/route';
 import * as routeDebugOE     from '../app/api/debug/oe/route';
+import * as routeReports      from '../app/api/reports/route';
 
 // 启动即注水：把上次同步的真实数据从磁盘恢复到内存
 loadPersisted();
@@ -86,6 +87,7 @@ const ROUTES: Record<string, RouteModule> = {
   '/api/debug/oe/project-report':   { GET: routeDebugOE.projectReport },
   '/api/debug/oe/promotion-report': { GET: routeDebugOE.promotionReport },
   '/api/debug/oe/stat-query':       { GET: routeDebugOE.statQueryAuto, POST: routeDebugOE.statQuery },
+  '/api/reports':    routeReports,
 };
 
 const PUBLIC_ROUTES = new Set(['/api/auth/login', '/api/auth', '/api/auth/callback']);
@@ -146,6 +148,7 @@ function renderShell(session: { name: string; role: string }): string {
 <script type="text/babel" src="/views/home.jsx"></script>
 <script type="text/babel" src="/views/data.jsx"></script>
 <script type="text/babel" src="/views/brand-detail.jsx"></script>
+<script type="text/babel" src="/views/daily-report.jsx"></script>
 <script type="text/babel" src="/views/ai-video.jsx"></script>
 <script type="text/babel" src="/views/ai-copy.jsx"></script>
 <script type="text/babel" src="/views/library.jsx"></script>
