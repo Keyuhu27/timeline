@@ -145,31 +145,41 @@ function filterByPayDate(rows: SaleRow[], startDate: string, endDate: string): S
   });
 }
 
-// ── coupon_verify_record（核销明细）──────────────────────────────────────────
-// ⚠️ 字段名为抓包前的容错占位，覆盖常见命名；抓到真实接口后按 first_row_keys 收敛。
+// ── verify_record_list（核销明细）──────────────────────────────────────────
+// 真实接口：POST https://life.douyin.com/life/trade_view/v1/workbench/verify/query/verify_record_list
+//   查询参数：root_life_account_id / life_biz_view_id=22 / page_index / page_size
+//   请求体：{ condition: { query_type:101, query_conditions:[{query_type:12, column_name:"verify_time", params:[startTs,endTs]}] }, is_app:false }
+//   时间范围：Unix 时间戳（秒，字符串形式）
+//   配置：LAIKE_VERIFY_URL（完整域名） / LAIKE_COOKIE / laikePoi（作为 root_life_account_id）
+// ⚠️ response 字段名为抓包前的多候选猜测；跑 replay 拿到 first_row_keys 后收敛。
 
 interface VerifyRow {
-  // 核销金额（分）——多候选
+  // 核销金额（分）——多候选，按 Douyin 常见命名排序
+  verify_money?: number;
   verify_amount?: number;
-  verify_amount_info?: { verify_amount?: number; amount?: number };
-  pay_amount_info?: { pay_amount?: number };
   amount?: number;
-  // 核销时间——多候选
-  verify_time?: string;
-  write_off_time?: string;
-  verify_info?: { verify_time?: string };
-  // 核销订单数 / 张数——多候选
+  pay_amount?: number;
+  // 核销券张数——多候选
+  cert_count?: number;
+  verify_count?: number;
   verify_cnt?: number;
   cert_cnt?: number;
+  item_count?: number;
   item_num?: number;
   // 退款/撤销标记
-  verify_status?: string;
-  status?: string;
-  // 渠道（自播/达播/搜索）
-  order_source?: { sale_channel?: string };
-  channel?: string;
-  // 商品
-  product_info?: { product_name?: string };
+  verify_status?: string | number;
+  status?: string | number;
+  order_status?: string;
+  // 核销时间（Unix秒 或 YYYY-MM-DD HH:mm:ss）
+  verify_time?: string | number;
+  write_off_time?: string | number;
+  // 渠道
+  channel_name?: string;
+  sale_channel?: string;
+  order_source?: string | { sale_channel?: string };
+  // 商品名
+  product_name?: string;
+  sku_name?: string;
 }
 
 export interface LaikeVerifySummary {
@@ -193,23 +203,27 @@ export function parseVerifyRecords(rows: VerifyRow[]): Omit<LaikeVerifySummary, 
   let verifyAmount = 0, verifyOrderCnt = 0, verifyCertCnt = 0;
 
   for (const row of rows) {
-    const status = row.verify_status ?? row.status ?? '';
-    if (/撤销|取消|退款|作废/.test(status)) continue;
+    const status = String(row.verify_status ?? row.status ?? row.order_status ?? '');
+    // 跳过退款/撤销/作废记录（数值状态 2/3 通常代表撤销，字符串匹配兜底）
+    if (/撤销|取消|退款|作废/.test(status) || status === '2' || status === '3') continue;
 
-    // 金额：分 → 元
+    // 金额：分 → 元（多候选，按实际命名概率排序）
     const rawAmt = pickNum(
+      row.verify_money,
       row.verify_amount,
-      row.verify_amount_info?.verify_amount,
-      row.verify_amount_info?.amount,
-      row.pay_amount_info?.pay_amount,
       row.amount,
+      row.pay_amount,
     );
     const amt = rawAmt / 100;
     verifyAmount += amt;
     verifyOrderCnt += 1;
-    verifyCertCnt += pickNum(row.verify_cnt, row.cert_cnt, row.item_num) || 1;
+    verifyCertCnt += pickNum(row.cert_count, row.verify_count, row.verify_cnt, row.cert_cnt, row.item_count, row.item_num) || 1;
 
-    const channel = row.order_source?.sale_channel ?? row.channel ?? '其他';
+    const orderSrc = row.order_source;
+    const channel = row.channel_name
+      ?? row.sale_channel
+      ?? (typeof orderSrc === 'string' ? orderSrc : orderSrc?.sale_channel)
+      ?? '其他';
     byChannel[channel] = (byChannel[channel] ?? 0) + amt;
   }
 
@@ -221,14 +235,10 @@ export function parseVerifyRecords(rows: VerifyRow[]): Omit<LaikeVerifySummary, 
   };
 }
 
-// 用核销时间过滤指定日期范围（多候选时间字段）
-function filterByVerifyDate(rows: VerifyRow[], startDate: string, endDate: string): VerifyRow[] {
-  return rows.filter(row => {
-    const vt = row.verify_time ?? row.write_off_time ?? row.verify_info?.verify_time;
-    if (!vt) return true; // 时间字段缺失时不过滤，避免误删
-    const d = String(vt).slice(0, 10);
-    return d >= startDate && d <= endDate;
-  });
+// YYYY-MM-DD → Unix 时间戳字符串（北京 UTC+8，当天 00:00:00 或 23:59:59）
+function dateToTs(date: string, endOfDay = false): string {
+  const suffix = endOfDay ? 'T23:59:59+08:00' : 'T00:00:00+08:00';
+  return String(Math.floor(new Date(date + suffix).getTime() / 1000));
 }
 
 export class LaikeAdapter {
@@ -279,11 +289,22 @@ export class LaikeAdapter {
   }
 
   /**
-   * 拉取来客核销明细（核销记录列表）并聚合。
-   * ⚠️ 字段名为抓包前的容错占位：金额/核销时间/订单号做了多候选匹配，
-   *    抓到真实接口后按 first_row_keys 收敛即可。
-   * URL：LAIKE_VERIFY_RECORDS_URL 或 LAIKE_API_BASE + /api/node/flow/batch
-   * 鉴权：LAIKE_COOKIE。失败返回 null（日报降级为手动填写）。
+   * 拉取来客核销明细（verify_record_list）并聚合。
+   *
+   * 真实接口：
+   *   POST https://life.douyin.com/life/trade_view/v1/workbench/verify/query/verify_record_list
+   *     ?page_index=N&page_size=100&root_life_account_id=<poiId>&life_biz_view_id=22&life_account_biz_ids=
+   *   body: { condition:{ query_type:101, query_conditions:[{query_type:12,column_name:"verify_time",params:[startTs,endTs]}] }, is_app:false }
+   *   时间：Unix 时间戳字符串（秒，北京时间）
+   *
+   * 配置：
+   *   LAIKE_VERIFY_URL        — 完整域名（如 https://life.douyin.com），不含路径
+   *   LAIKE_COOKIE            — 来客登录态 Cookie
+   *   laikePoi（账户字段）     — 作为 root_life_account_id
+   *
+   * ⚠️ response 行字段名（verify_money/amount 等）为多候选猜测；
+   *    跑 POST /api/debug/laike/replay 拿到 first_row_keys 后可收敛。
+   * 失败返回 null（日报降级为手动填写）。
    */
   static async fetchVerifyRecords(
     poiId: string,
@@ -291,39 +312,64 @@ export class LaikeAdapter {
     endDate: string,
   ): Promise<LaikeVerifySummary | null> {
     if (!cookie() || !poiId) return null;
-    const url = process.env.LAIKE_VERIFY_RECORDS_URL || (base() + '/api/node/flow/batch');
-    if (!url.startsWith('http')) {
-      console.warn('[LaikeAdapter] 未配置 LAIKE_API_BASE 或 LAIKE_VERIFY_RECORDS_URL，跳过来客核销明细');
+
+    // 域名：LAIKE_VERIFY_URL（如 https://life.douyin.com）或从 LAIKE_API_BASE 取 origin
+    const verifyBase = (process.env.LAIKE_VERIFY_URL ?? base()).replace(/\/$/, '');
+    const urlBase = verifyBase || 'https://life.douyin.com';
+    if (!urlBase.startsWith('http')) {
+      console.warn('[LaikeAdapter] 未配置 LAIKE_VERIFY_URL 或 LAIKE_API_BASE，跳过来客核销明细');
       return null;
     }
 
-    // 请求体也是占位：抓到真实 view_type/view_key 后替换即可
-    const body = {
-      view_type: 'coupon_verify_record',
-      view_key: 'management_coupon_verify_record_list',
-      main_data_key: 'common_verify_record',
-      poi_id: poiId,
-      start_date: startDate,
-      end_date: endDate,
-      page: 1,
-      page_size: 200,
+    const PATH = '/life/trade_view/v1/workbench/verify/query/verify_record_list';
+    const PAGE_SIZE = 100;
+    const startTs = dateToTs(startDate, false);
+    const endTs   = dateToTs(endDate, true);
+
+    const queryConditions = [{
+      query_type: 12,
+      column_name: 'verify_time',
+      params: [startTs, endTs],
+    }];
+    const bodyBase = {
+      condition: { query_type: 101, query_conditions: queryConditions },
+      is_app: false,
+      permission_common_param: {},
     };
 
-    const json = await postJson<{
-      code?: number; errno?: number;
-      data?: { list?: VerifyRow[]; common_verify_record?: VerifyRow[]; records?: VerifyRow[]; verify_record?: VerifyRow[] };
-    }>(url, body);
+    const allRows: VerifyRow[] = [];
+    for (let page = 1; page <= 20; page++) {
+      const qs = new URLSearchParams({
+        page_index: String(page),
+        page_size: String(PAGE_SIZE),
+        root_life_account_id: poiId,
+        life_biz_view_id: '22',
+        life_account_biz_ids: '',
+      });
+      const url = `${urlBase}${PATH}?${qs}`;
+      const json = await postJson<{
+        code?: number; status_code?: number; errno?: number;
+        data?: {
+          list?: VerifyRow[];
+          verify_record_list?: VerifyRow[];
+          records?: VerifyRow[];
+          total?: number;
+          has_more?: boolean;
+        };
+      }>(url, bodyBase);
 
-    if (!json) return null;
-    const rows: VerifyRow[] =
-      json.data?.list ?? json.data?.common_verify_record ?? json.data?.verify_record ?? json.data?.records ?? [];
-    if (!rows.length) {
-      console.log(`[LaikeAdapter] coupon_verify_record 无数据 poi=${poiId} ${startDate}~${endDate}`);
-      return null;
+      if (!json) break;
+      const rows: VerifyRow[] =
+        json.data?.list ?? json.data?.verify_record_list ?? json.data?.records ?? [];
+      if (!rows.length) { if (page === 1) console.log(`[LaikeAdapter] verify_record_list 无数据 poi=${poiId} ${startDate}~${endDate}`); break; }
+      allRows.push(...rows);
+      const total = json.data?.total ?? 0;
+      const hasMore = json.data?.has_more;
+      if (hasMore === false || allRows.length >= total || rows.length < PAGE_SIZE) break;
     }
 
-    const filtered = filterByVerifyDate(rows, startDate, endDate);
-    const summary = parseVerifyRecords(filtered.length ? filtered : rows);
+    if (!allRows.length) return null;
+    const summary = parseVerifyRecords(allRows);
     return { ...summary, startDate, endDate, fetchedAt: new Date().toISOString() };
   }
 
