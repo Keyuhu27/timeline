@@ -70,6 +70,7 @@ async function doReplay(
 ) {
   const body = (req.body ?? {}) as {
     url?: string; method?: string; headers?: Record<string, string>; body?: unknown; expect?: number;
+    cookie?: string;
   };
   if (!body.url) return err(res, '请提供 url（完整 URL 或以 / 开头的路径）');
 
@@ -77,7 +78,9 @@ async function doReplay(
   const url = body.url.startsWith('http') ? body.url : apiBase + body.url;
   if (!url.startsWith('http')) return err(res, `url 是相对路径但未配置 ${baseEnv}`);
 
-  const cookie = process.env[cookieEnv] ?? '';
+  // Cookie 优先级：请求体 cookie（一次性调试，不回显明文）> .env[cookieEnv]
+  const cookie = body.cookie || process.env[cookieEnv] || '';
+  const cookieFrom = body.cookie ? 'request' : (process.env[cookieEnv] ? 'env' : 'none');
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'Accept': 'application/json, text/plain, */*',
@@ -112,7 +115,7 @@ async function doReplay(
   return ok(res, {
     success: httpStatus >= 200 && httpStatus < 300,
     http_status: httpStatus,
-    request: { url, method, cookie_injected: !!cookie },
+    request: { url, method, cookie_injected: !!cookie, cookie_from: cookieFrom },
     response_keys: isObj ? Object.keys(json as object) : [],
     data_keys: isObj && (json as Record<string, unknown>).data && typeof (json as Record<string, unknown>).data === 'object'
       ? Object.keys((json as Record<string, unknown>).data as object) : [],
