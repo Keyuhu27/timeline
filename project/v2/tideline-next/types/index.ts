@@ -433,6 +433,15 @@ export interface DailyReport {
     fetchedAt: string;
   };
 
+  // 来客核销明细（coupon_verify_record）——元；null=待接入/无数据
+  laikeVerify?: {
+    yesterdayAmount: number | null;
+    yesterdayOrderCnt: number | null;
+    monthAmount: number | null;
+    monthOrderCnt: number | null;
+    fetchedAt: string;
+  };
+
   // 生意经流量成交拆分（pay_amount_1d × 场景 × 体裁）——元
   businessTrade?: {
     liveGmv: number;             // 生意经直播渠道 GMV（非达播）

@@ -175,6 +175,40 @@ TL.openDailyReport = function (brandId, date) {
     );
   }
 
+  // ── 来客核销明细卡片（精确核销，coupon_verify_record）─────────────────────────
+  function LaikeVerifyCard({ laikeVerify }) {
+    if (!laikeVerify) return (
+      <section style={{ marginBottom: 16 }}>
+        <SectionTitle title="精确核销" sub="抖音来客 coupon_verify_record" badge="laike_sales" />
+        <div style={{ padding: '10px 14px', background: '#fafafa', borderRadius: 8, fontSize: 12, color: '#8c8c8c' }}>
+          待接入 — 未配置来客核销明细接口（LAIKE_VERIFY_RECORDS_URL）
+        </div>
+      </section>
+    );
+    const v = laikeVerify;
+    const amt = (x) => isNil(x) ? <span style={{ color: '#d48806', fontSize: 13 }}>待接入</span> : `¥${(x || 0).toLocaleString()}`;
+    const cnt = (x) => isNil(x) ? <span style={{ color: '#d48806', fontSize: 13 }}>待接入</span> : `${(x || 0).toLocaleString()} 单`;
+    const items = [
+      { label: '昨日核销金额', value: amt(v.yesterdayAmount) },
+      { label: '昨日核销订单', value: cnt(v.yesterdayOrderCnt) },
+      { label: '本月核销金额', value: amt(v.monthAmount) },
+      { label: '本月核销订单', value: cnt(v.monthOrderCnt) },
+    ];
+    return (
+      <section style={{ marginBottom: 16 }}>
+        <SectionTitle title="精确核销" sub="抖音来客 coupon_verify_record · 按核销时间" badge="laike_sales" />
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {items.map(it => (
+            <div key={it.label} className="card" style={{ flex: '1 1 120px', padding: '10px 14px', textAlign: 'center' }}>
+              <div style={{ fontSize: 17, fontWeight: 700 }}>{it.value}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{it.label}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
   // ── 商品排行卡片 ─────────────────────────────────────────────────────────────
   function ProductCard({ laikeSales }) {
     if (!laikeSales?.byProduct?.length) return null;
@@ -625,6 +659,9 @@ TL.openDailyReport = function (brandId, date) {
 
               {/* 来客核销概览 */}
               <LaikeOverviewCard laikeOverview={rep.laikeOverview} />
+
+              {/* 精确核销明细（coupon_verify_record）*/}
+              <LaikeVerifyCard laikeVerify={rep.laikeVerify} />
 
               {/* 核销数据表 */}
               <SectorTable title="核销数据" rows={rep.redeemRows}

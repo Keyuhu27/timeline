@@ -145,6 +145,92 @@ function filterByPayDate(rows: SaleRow[], startDate: string, endDate: string): S
   });
 }
 
+// ── coupon_verify_record（核销明细）──────────────────────────────────────────
+// ⚠️ 字段名为抓包前的容错占位，覆盖常见命名；抓到真实接口后按 first_row_keys 收敛。
+
+interface VerifyRow {
+  // 核销金额（分）——多候选
+  verify_amount?: number;
+  verify_amount_info?: { verify_amount?: number; amount?: number };
+  pay_amount_info?: { pay_amount?: number };
+  amount?: number;
+  // 核销时间——多候选
+  verify_time?: string;
+  write_off_time?: string;
+  verify_info?: { verify_time?: string };
+  // 核销订单数 / 张数——多候选
+  verify_cnt?: number;
+  cert_cnt?: number;
+  item_num?: number;
+  // 退款/撤销标记
+  verify_status?: string;
+  status?: string;
+  // 渠道（自播/达播/搜索）
+  order_source?: { sale_channel?: string };
+  channel?: string;
+  // 商品
+  product_info?: { product_name?: string };
+}
+
+export interface LaikeVerifySummary {
+  verifyAmount: number;     // 核销金额（元）
+  verifyOrderCnt: number;   // 核销订单数
+  verifyCertCnt: number;    // 核销券张数
+  byChannel: Record<string, number>;
+  startDate: string;
+  endDate: string;
+  fetchedAt: string;
+}
+
+// 在多候选字段里取第一个有值的数字
+function pickNum(...vals: Array<number | undefined | null>): number {
+  for (const v of vals) if (v != null && !Number.isNaN(Number(v))) return Number(v);
+  return 0;
+}
+
+export function parseVerifyRecords(rows: VerifyRow[]): Omit<LaikeVerifySummary, 'startDate' | 'endDate' | 'fetchedAt'> {
+  const byChannel: Record<string, number> = {};
+  let verifyAmount = 0, verifyOrderCnt = 0, verifyCertCnt = 0;
+
+  for (const row of rows) {
+    const status = row.verify_status ?? row.status ?? '';
+    if (/撤销|取消|退款|作废/.test(status)) continue;
+
+    // 金额：分 → 元
+    const rawAmt = pickNum(
+      row.verify_amount,
+      row.verify_amount_info?.verify_amount,
+      row.verify_amount_info?.amount,
+      row.pay_amount_info?.pay_amount,
+      row.amount,
+    );
+    const amt = rawAmt / 100;
+    verifyAmount += amt;
+    verifyOrderCnt += 1;
+    verifyCertCnt += pickNum(row.verify_cnt, row.cert_cnt, row.item_num) || 1;
+
+    const channel = row.order_source?.sale_channel ?? row.channel ?? '其他';
+    byChannel[channel] = (byChannel[channel] ?? 0) + amt;
+  }
+
+  return {
+    verifyAmount: Math.round(verifyAmount),
+    verifyOrderCnt,
+    verifyCertCnt,
+    byChannel: Object.fromEntries(Object.entries(byChannel).map(([k, v]) => [k, Math.round(v)])),
+  };
+}
+
+// 用核销时间过滤指定日期范围（多候选时间字段）
+function filterByVerifyDate(rows: VerifyRow[], startDate: string, endDate: string): VerifyRow[] {
+  return rows.filter(row => {
+    const vt = row.verify_time ?? row.write_off_time ?? row.verify_info?.verify_time;
+    if (!vt) return true; // 时间字段缺失时不过滤，避免误删
+    const d = String(vt).slice(0, 10);
+    return d >= startDate && d <= endDate;
+  });
+}
+
 export class LaikeAdapter {
   /**
    * 拉取来客成交明细（coupon_sale_record）并聚合。
@@ -189,6 +275,55 @@ export class LaikeAdapter {
     // 过滤到指定日期范围（接口可能返回更宽范围）
     const filtered = filterByPayDate(rows, startDate, endDate);
     const summary = parseSaleRecords(filtered.length ? filtered : rows);
+    return { ...summary, startDate, endDate, fetchedAt: new Date().toISOString() };
+  }
+
+  /**
+   * 拉取来客核销明细（核销记录列表）并聚合。
+   * ⚠️ 字段名为抓包前的容错占位：金额/核销时间/订单号做了多候选匹配，
+   *    抓到真实接口后按 first_row_keys 收敛即可。
+   * URL：LAIKE_VERIFY_RECORDS_URL 或 LAIKE_API_BASE + /api/node/flow/batch
+   * 鉴权：LAIKE_COOKIE。失败返回 null（日报降级为手动填写）。
+   */
+  static async fetchVerifyRecords(
+    poiId: string,
+    startDate: string,
+    endDate: string,
+  ): Promise<LaikeVerifySummary | null> {
+    if (!cookie() || !poiId) return null;
+    const url = process.env.LAIKE_VERIFY_RECORDS_URL || (base() + '/api/node/flow/batch');
+    if (!url.startsWith('http')) {
+      console.warn('[LaikeAdapter] 未配置 LAIKE_API_BASE 或 LAIKE_VERIFY_RECORDS_URL，跳过来客核销明细');
+      return null;
+    }
+
+    // 请求体也是占位：抓到真实 view_type/view_key 后替换即可
+    const body = {
+      view_type: 'coupon_verify_record',
+      view_key: 'management_coupon_verify_record_list',
+      main_data_key: 'common_verify_record',
+      poi_id: poiId,
+      start_date: startDate,
+      end_date: endDate,
+      page: 1,
+      page_size: 200,
+    };
+
+    const json = await postJson<{
+      code?: number; errno?: number;
+      data?: { list?: VerifyRow[]; common_verify_record?: VerifyRow[]; records?: VerifyRow[]; verify_record?: VerifyRow[] };
+    }>(url, body);
+
+    if (!json) return null;
+    const rows: VerifyRow[] =
+      json.data?.list ?? json.data?.common_verify_record ?? json.data?.verify_record ?? json.data?.records ?? [];
+    if (!rows.length) {
+      console.log(`[LaikeAdapter] coupon_verify_record 无数据 poi=${poiId} ${startDate}~${endDate}`);
+      return null;
+    }
+
+    const filtered = filterByVerifyDate(rows, startDate, endDate);
+    const summary = parseVerifyRecords(filtered.length ? filtered : rows);
     return { ...summary, startDate, endDate, fetchedAt: new Date().toISOString() };
   }
 

@@ -64,6 +64,7 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
   const poiId = account?.laikePoi ?? account?.externalId ?? '';
 
   const gmvRows = emptyRows();
+  const redeemRows = emptyRows();
   const liveDetail = { zibo: emptyLiveBlock(), dabo: emptyLiveBlock() };
   let seeded = false;
   const sourceLines: string[] = [];
@@ -120,6 +121,34 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
     if (sales) {
       laikeSales = sales;
       sourceLines.push(`来客成交（${yesterday}）：¥${sales.totalGmv} / ${sales.validOrderCount} 单 / 直播 ¥${sales.liveGmv} / 搜索 ¥${sales.searchGmv}`);
+      seeded = true;
+    }
+  }
+
+  // ── 2b. 来客核销明细（coupon_verify_record）→ 核销板块 ────────────────────
+  let laikeVerify: DailyReport['laikeVerify'] | undefined;
+  if (poiId && process.env.LAIKE_COOKIE) {
+    const [vYday, vMonth] = await Promise.all([
+      LaikeAdapter.fetchVerifyRecords(poiId, yesterday, yesterday).catch(() => null),
+      LaikeAdapter.fetchVerifyRecords(poiId, monthStart, date).catch(() => null),
+    ]);
+    if (vYday || vMonth) {
+      laikeVerify = {
+        yesterdayAmount:   vYday?.verifyAmount ?? null,
+        yesterdayOrderCnt: vYday?.verifyOrderCnt ?? null,
+        monthAmount:       vMonth?.verifyAmount ?? null,
+        monthOrderCnt:     vMonth?.verifyOrderCnt ?? null,
+        fetchedAt: now,
+      };
+      // 回填「核销板块」自播行（核销口径暂不区分达播，先填自播/合计行）
+      const rZibo = redeemRows.find(r => r.key === 'zibo');
+      if (rZibo) {
+        if (vYday) { rZibo.yesterday = vYday.verifyAmount; rZibo.src = { ...rZibo.src, yesterday: 'laike_sales' }; }
+        if (vMonth) { rZibo.month = vMonth.verifyAmount; rZibo.src = { ...rZibo.src, month: 'laike_sales' }; }
+      }
+      const vy = vYday ? `昨日 ¥${vYday.verifyAmount}/${vYday.verifyOrderCnt}单` : '';
+      const vm = vMonth ? `本月 ¥${vMonth.verifyAmount}/${vMonth.verifyOrderCnt}单` : '';
+      sourceLines.push(`来客核销（${[vy, vm].filter(Boolean).join('，')}）`);
       seeded = true;
     }
   }
@@ -190,7 +219,7 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
     date,
     timeProgress: timeProgressOf(date),
     gmvRows,
-    redeemRows: emptyRows(),
+    redeemRows,
     liveDetail,
     notes: { dabo: '', official: '', officialVideo: '' },
     seeded,
@@ -200,6 +229,7 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
     updatedAt: now,
     ...(adSpend     ? { adSpend }     : {}),
     ...(laikeSales  ? { laikeSales }  : {}),
+    ...(laikeVerify ? { laikeVerify } : {}),
     ...(laikeOverview ? { laikeOverview } : {}),
     ...(laikeInsight  ? { laikeInsight }  : {}),
     ...(businessTrade     ? { businessTrade }     : {}),
