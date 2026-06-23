@@ -14,15 +14,30 @@ import type { Account, Brand, AdCampaign } from '../../../types/index';
 const KNOWN_LOCAL_ACCOUNT_IDS = [
   '1770545948162062',  // 半日懒竹林漂流
   '1851121699721292',  // 亿滋本地推
+  '1745303406415880',  // 快乐蜂（中国）餐饮管理有限公司
+  '1810161095323913',  // 永和大王
+  '1849117028573319',  // 蝶来望境
+  '1847915308786764',  // 耀银-广州烨道餐饮
 ];
 // 已知账户名（接口未回填 poi_name 时的兜底显示名）
 const KNOWN_LOCAL_ACCOUNT_NAMES: Record<string, string> = {
   '1851121699721292': '亿滋本地推',
+  '1745303406415880': '快乐蜂（中国）餐饮管理有限公司',
+  '1770545948162062': '半日懒竹林漂流',
+  '1810161095323913': '永和大王',
+  '1849117028573319': '蝶来望境',
+  '1847915308786764': '耀银-广州烨道餐饮',
 };
+// 归档账户（重复/废弃），UI 隐藏但保留数据
+const ARCHIVED_LOCAL_ACCOUNT_IDS = new Set([
+  '1746560597899271',  // 快乐蜂 重复账户（保留主账户 1745303406415880）
+  '1746097610345479',  // 快乐蜂 重复账户
+  '1847218637597210',  // 耀银 旧账户（保留新账户 1847915308786764）
+]);
 
 export const GET: RouteHandler = (req, res) => {
   const { brand } = req.query;
-  let filtered = accounts.slice();
+  let filtered = accounts.filter(a => !a.hidden);
   if (brand) filtered = filtered.filter(a => a.brand === brand);
   const { items, total, page, pageSize } = paginate(filtered, req.query);
   ok(res, items, { total, page, pageSize });
@@ -83,6 +98,8 @@ export async function syncLocalAccounts(
   for (const lid of localIds) {
     const existed = accounts.find(a => a.externalId === lid);
     if (existed) {
+      // 同步归档状态（防止已存在账户未标 hidden）
+      if (ARCHIVED_LOCAL_ACCOUNT_IDS.has(lid)) existed.hidden = true;
       if (!result.includes(existed)) result.push(existed);
       continue;
     }
@@ -95,6 +112,7 @@ export async function syncLocalAccounts(
       id: accountId, name: seedName, externalId: lid,
       brand: brandId, color: `c${colorIdx}`,
       followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0,
+      ...(ARCHIVED_LOCAL_ACCOUNT_IDS.has(lid) ? { hidden: true } : {}),
     };
     brands.push(newBrand);
     accounts.push(newAccount);

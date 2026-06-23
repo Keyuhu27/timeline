@@ -11,11 +11,13 @@ import type { AdCampaign }              from '../../../types/index';
 
 export const GET: RouteHandler = (req, res) => {
   const { brand, status } = req.query;
-  let filtered = adCampaigns.slice();
+  // 隐藏归档账户的计划（hidden 账户不在常规列表展示）
+  const hiddenAccountIds = new Set(accounts.filter(a => a.hidden).map(a => a.id));
+  let filtered = adCampaigns.filter(c => !hiddenAccountIds.has(c.account));
   if (brand)  filtered = filtered.filter(c => c.brand  === brand);
   if (status) filtered = filtered.filter(c => c.status === status);
 
-  const all = adCampaigns;
+  const all = filtered;
   const summary = {
     totalBudget:  all.reduce((s, c) => s + c.budget,      0),
     totalSpent:   all.reduce((s, c) => s + c.spent,       0),

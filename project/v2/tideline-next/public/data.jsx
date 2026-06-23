@@ -193,21 +193,31 @@ TL.brandById = (id) => TL.brands.find(b => b.id === id);
 TL.userById  = (id) => TL.team.find(u => u.id === id);
 TL.accountById = (id) => TL.accounts.find(a => a.id === id);
 
-// ── 展示层 helper：UI 默认只显示业务名称，过滤内部编码（a_/b_/c_/Localad-）──
+// ── 展示层 helper：UI 默认只显示业务名称，过滤内部编码（a_/b_/c_/Localad-/本地推账户）──
 const INTERNAL_ID_RE = /^(a_|b_|c_|Localad-)/i;
+const PLACEHOLDER_NAME_RE = /^(Localad-|本地推账户\s*\d)/i;
 TL._isInternalName = (s) => !s || INTERNAL_ID_RE.test(String(s));
+TL._isPlaceholderName = (s) => !s || PLACEHOLDER_NAME_RE.test(String(s));
 
-// 品牌名优先级：brand.name → account.name → 本地推账户 ${externalId}
-TL.displayBrandName = (brand, account) =>
-  (brand && !TL._isInternalName(brand.name) && brand.name) ||
-  (account && !TL._isInternalName(account.name) && account.name) ||
-  (account && account.externalId ? `本地推账户 ${account.externalId}` : '未命名品牌');
+// 将 externalId 末四位生成可读占位名
+const _fallbackName = (account, suffix) =>
+  account && account.externalId
+    ? `未命名本地推账户（${String(account.externalId).slice(-4)}）`
+    : (suffix || '未命名品牌');
 
-// 账户名优先级：account.name → brand.name → 本地推账户 ${externalId}
-TL.displayAccountName = (account, brand) =>
-  (account && !TL._isInternalName(account.name) && account.name) ||
-  (brand && !TL._isInternalName(brand.name) && brand.name) ||
-  (account && account.externalId ? `本地推账户 ${account.externalId}` : '未命名账户');
+// 品牌名优先级：brand.name → account.name → 未命名本地推账户（末四位）
+TL.displayBrandName = (brand, account) => {
+  if (brand && !TL._isInternalName(brand.name) && !TL._isPlaceholderName(brand.name)) return brand.name;
+  if (account && !TL._isInternalName(account.name) && !TL._isPlaceholderName(account.name)) return account.name;
+  return _fallbackName(account, brand?.name || '未命名品牌');
+};
+
+// 账户名优先级：account.name → brand.name → 未命名本地推账户（末四位）
+TL.displayAccountName = (account, brand) => {
+  if (account && !TL._isInternalName(account.name) && !TL._isPlaceholderName(account.name)) return account.name;
+  if (brand && !TL._isInternalName(brand.name) && !TL._isPlaceholderName(brand.name)) return brand.name;
+  return _fallbackName(account, '未命名账户');
+};
 
 // 计划名优先级：campaign.name → 未命名项目 ${externalId}
 TL.displayCampaignName = (c) =>

@@ -46,6 +46,7 @@ export interface Account {
   color: string;
   externalId?: string;
   tokenExpiresAt?: number;
+  hidden?: boolean;           // 归档/隐藏账户（如重复账户），不在常规列表展示
   // 后台首页 statQuery 全域消耗（DataSetKey=pc_home_roi2）——最高优先级今日消耗来源。
   // 开放平台三个 report 接口均不覆盖全域投放口径，只能用 statQuery 对齐后台首页数字。
   // 鉴权依赖本地 .env OCEANENGINE_LOCALADS_COOKIE，不提交。

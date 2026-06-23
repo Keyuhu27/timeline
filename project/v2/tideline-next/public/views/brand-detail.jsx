@@ -92,10 +92,13 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
     : campaigns.length ? 'project_report_aggregated'
     : null;
   const dataSourceLabel = {
-    statQuery_pc_home_roi2:     '后台首页全域投放（statQuery）',
+    statQuery_pc_home_roi2:     '巨量后台全域投放 statQuery',
     account_report:             '开放平台账户报表（account_report）',
     project_report_aggregated:  '项目报表聚合（project_report_aggregated）',
   }[dataSource] || null;
+
+  // 全域投放数据未同步：cookie 未配置或 statQuery 调用失败
+  const noStatQuery = !loading && !statQueryReport;
 
   const overview = sq ? [
     { label: '今日消耗',       value: `¥ ${TL.fmtMoney(sq.spent)}` },
@@ -175,6 +178,14 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
           </div>
         ) : (
           <>
+            {/* 全域投放数据未同步提示 */}
+            {noStatQuery && (
+              <div className="card" style={{ padding: '10px 16px', marginBottom: 16, color: 'var(--text-muted)', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Icon name="info" size={13} />
+                全域投放数据暂未同步，请检查后台 Cookie 配置或点击「同步状态」刷新。下方数据来自项目报表（非全域口径）。
+              </div>
+            )}
+
             {/* 当日概览 */}
             <section style={{ marginBottom: 24 }}>
               <div className="row" style={{ alignItems: 'center', gap: 8, marginBottom: 4 }}>
