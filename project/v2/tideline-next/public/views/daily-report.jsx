@@ -179,9 +179,9 @@ TL.openDailyReport = function (brandId, date) {
   function LaikeVerifyCard({ laikeVerify }) {
     if (!laikeVerify) return (
       <section style={{ marginBottom: 16 }}>
-        <SectionTitle title="精确核销" sub="抖音来客 coupon_verify_record" badge="laike_sales" />
+        <SectionTitle title="精确核销" sub="抖音来客 verify_record_list" badge="laike_sales" />
         <div style={{ padding: '10px 14px', background: '#fafafa', borderRadius: 8, fontSize: 12, color: '#8c8c8c' }}>
-          待接入 — 未配置来客核销明细接口（LAIKE_VERIFY_RECORDS_URL）
+          待接入 — 请在 .env 配置 LAIKE_VERIFY_URL=https://life.douyin.com 及 LAIKE_COOKIE
         </div>
       </section>
     );
@@ -189,17 +189,19 @@ TL.openDailyReport = function (brandId, date) {
     const amt = (x) => isNil(x) ? <span style={{ color: '#d48806', fontSize: 13 }}>待接入</span> : `¥${(x || 0).toLocaleString()}`;
     const cnt = (x) => isNil(x) ? <span style={{ color: '#d48806', fontSize: 13 }}>待接入</span> : `${(x || 0).toLocaleString()} 单`;
     const items = [
-      { label: '昨日核销金额', value: amt(v.yesterdayAmount) },
+      { label: '昨日核销金额（用户实付）', value: amt(v.yesterdayAmount) },
+      { label: '昨日商家实收', value: amt(v.yesterdayMerchantAmount) },
       { label: '昨日核销订单', value: cnt(v.yesterdayOrderCnt) },
-      { label: '本月核销金额', value: amt(v.monthAmount) },
+      { label: '本月核销金额（用户实付）', value: amt(v.monthAmount) },
+      { label: '本月商家实收', value: amt(v.monthMerchantAmount) },
       { label: '本月核销订单', value: cnt(v.monthOrderCnt) },
     ];
     return (
       <section style={{ marginBottom: 16 }}>
-        <SectionTitle title="精确核销" sub="抖音来客 coupon_verify_record · 按核销时间" badge="laike_sales" />
+        <SectionTitle title="精确核销" sub="抖音来客 verify_record_list · 按核销时间" badge="laike_sales" />
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           {items.map(it => (
-            <div key={it.label} className="card" style={{ flex: '1 1 120px', padding: '10px 14px', textAlign: 'center' }}>
+            <div key={it.label} className="card" style={{ flex: '1 1 130px', padding: '10px 14px', textAlign: 'center' }}>
               <div style={{ fontSize: 17, fontWeight: 700 }}>{it.value}</div>
               <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{it.label}</div>
             </div>

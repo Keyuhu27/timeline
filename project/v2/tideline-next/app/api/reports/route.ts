@@ -134,10 +134,12 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
     ]);
     if (vYday || vMonth) {
       laikeVerify = {
-        yesterdayAmount:   vYday?.verifyAmount ?? null,
-        yesterdayOrderCnt: vYday?.verifyOrderCnt ?? null,
-        monthAmount:       vMonth?.verifyAmount ?? null,
-        monthOrderCnt:     vMonth?.verifyOrderCnt ?? null,
+        yesterdayAmount:         vYday?.verifyAmount        ?? null,
+        yesterdayMerchantAmount: vYday?.merchantAmount      ?? null,
+        yesterdayOrderCnt:       vYday?.verifyOrderCnt      ?? null,
+        monthAmount:             vMonth?.verifyAmount       ?? null,
+        monthMerchantAmount:     vMonth?.merchantAmount     ?? null,
+        monthOrderCnt:           vMonth?.verifyOrderCnt     ?? null,
         fetchedAt: now,
       };
       // 回填「核销板块」自播行（核销口径暂不区分达播，先填自播/合计行）

@@ -147,91 +147,84 @@ function filterByPayDate(rows: SaleRow[], startDate: string, endDate: string): S
 
 // ── verify_record_list（核销明细）──────────────────────────────────────────
 // 真实接口：POST https://life.douyin.com/life/trade_view/v1/workbench/verify/query/verify_record_list
-//   查询参数：root_life_account_id / life_biz_view_id=22 / page_index / page_size
-//   请求体：{ condition: { query_type:101, query_conditions:[{query_type:12, column_name:"verify_time", params:[startTs,endTs]}] }, is_app:false }
-//   时间范围：Unix 时间戳（秒，字符串形式）
-//   配置：LAIKE_VERIFY_URL（完整域名） / LAIKE_COOKIE / laikePoi（作为 root_life_account_id）
-// ⚠️ response 字段名为抓包前的多候选猜测；跑 replay 拿到 first_row_keys 后收敛。
+//   data.data = string[]（每个元素是 JSON string，需要二次 parse）
+//   data.pagination.total_count = 总条数
+//   金额字段（分）：verify_info_v2.verify_info.verify_amount_info.pay_amount（用户实付）
+//                   verify_info_v2.verify_info.verify_amount_info.merchant_amount（商家实收）
+//   核销时间：verify_info.verify_time（Unix 秒）
+//   撤销标记：verify_info.is_cancel_verify === true
 
-interface VerifyRow {
-  // 核销金额（分）——多候选，按 Douyin 常见命名排序
-  verify_money?: number;
-  verify_amount?: number;
-  amount?: number;
-  pay_amount?: number;
-  // 核销券张数——多候选
-  cert_count?: number;
-  verify_count?: number;
-  verify_cnt?: number;
-  cert_cnt?: number;
-  item_count?: number;
-  item_num?: number;
-  // 退款/撤销标记
-  verify_status?: string | number;
-  status?: string | number;
-  order_status?: string;
-  // 核销时间（Unix秒 或 YYYY-MM-DD HH:mm:ss）
-  verify_time?: string | number;
-  write_off_time?: string | number;
-  // 渠道
-  channel_name?: string;
-  sale_channel?: string;
-  order_source?: string | { sale_channel?: string };
-  // 商品名
-  product_name?: string;
-  sku_name?: string;
+interface VerifyRowParsed {
+  amount_info?: { merchant_amount?: number };
+  verify_info?: {
+    is_cancel_verify?: boolean;
+    verify_time?: number;
+    verify_time_str?: string;
+  };
+  verify_info_v2?: {
+    verify_info?: {
+      is_cancel_verify?: boolean;
+      verify_time?: number;
+      item_num?: number;
+      verify_amount_info?: {
+        merchant_amount?: number;
+        pay_amount?: number;
+        payment_total_amount?: number;
+        bill_commissions_amount?: number;
+      };
+    };
+  };
+  order_info?: { pay_amount?: number };
+  product_info?: { product_name?: string };
+  status_info_v2?: { color_type?: string };
 }
 
 export interface LaikeVerifySummary {
-  verifyAmount: number;     // 核销金额（元）
-  verifyOrderCnt: number;   // 核销订单数
-  verifyCertCnt: number;    // 核销券张数
-  byChannel: Record<string, number>;
+  verifyAmount: number;      // 用户实付核销金额（元）= pay_amount ÷ 100
+  merchantAmount: number;    // 商家实收（元）= merchant_amount ÷ 100（扣除平台佣金后）
+  verifyOrderCnt: number;    // 核销订单数（去除撤销）
+  verifyCertCnt: number;     // 核销券张数（item_num 之和）
+  byProduct: Array<{ name: string; amount: number; cnt: number }>;
   startDate: string;
   endDate: string;
   fetchedAt: string;
 }
 
-// 在多候选字段里取第一个有值的数字
-function pickNum(...vals: Array<number | undefined | null>): number {
-  for (const v of vals) if (v != null && !Number.isNaN(Number(v))) return Number(v);
-  return 0;
-}
-
-export function parseVerifyRecords(rows: VerifyRow[]): Omit<LaikeVerifySummary, 'startDate' | 'endDate' | 'fetchedAt'> {
-  const byChannel: Record<string, number> = {};
-  let verifyAmount = 0, verifyOrderCnt = 0, verifyCertCnt = 0;
+export function parseVerifyRecords(rows: VerifyRowParsed[]): Omit<LaikeVerifySummary, 'startDate' | 'endDate' | 'fetchedAt'> {
+  const byProductMap: Record<string, { amount: number; cnt: number }> = {};
+  let verifyAmount = 0, merchantAmount = 0, verifyOrderCnt = 0, verifyCertCnt = 0;
 
   for (const row of rows) {
-    const status = String(row.verify_status ?? row.status ?? row.order_status ?? '');
-    // 跳过退款/撤销/作废记录（数值状态 2/3 通常代表撤销，字符串匹配兜底）
-    if (/撤销|取消|退款|作废/.test(status) || status === '2' || status === '3') continue;
+    // 撤销的核销记录不计入统计
+    if (row.verify_info?.is_cancel_verify || row.verify_info_v2?.verify_info?.is_cancel_verify) continue;
 
-    // 金额：分 → 元（多候选，按实际命名概率排序）
-    const rawAmt = pickNum(
-      row.verify_money,
-      row.verify_amount,
-      row.amount,
-      row.pay_amount,
-    );
-    const amt = rawAmt / 100;
-    verifyAmount += amt;
+    const vai = row.verify_info_v2?.verify_info?.verify_amount_info;
+    const payAmt     = Number(vai?.pay_amount     ?? row.order_info?.pay_amount ?? 0);
+    const merAmt     = Number(vai?.merchant_amount ?? row.amount_info?.merchant_amount ?? 0);
+    const itemNum    = Number(row.verify_info_v2?.verify_info?.item_num ?? 1);
+    const pname      = row.product_info?.product_name ?? '未知商品';
+
+    verifyAmount   += payAmt / 100;
+    merchantAmount += merAmt / 100;
     verifyOrderCnt += 1;
-    verifyCertCnt += pickNum(row.cert_count, row.verify_count, row.verify_cnt, row.cert_cnt, row.item_count, row.item_num) || 1;
+    verifyCertCnt  += itemNum;
 
-    const orderSrc = row.order_source;
-    const channel = row.channel_name
-      ?? row.sale_channel
-      ?? (typeof orderSrc === 'string' ? orderSrc : orderSrc?.sale_channel)
-      ?? '其他';
-    byChannel[channel] = (byChannel[channel] ?? 0) + amt;
+    if (!byProductMap[pname]) byProductMap[pname] = { amount: 0, cnt: 0 };
+    byProductMap[pname].amount += payAmt / 100;
+    byProductMap[pname].cnt   += itemNum;
   }
 
+  const byProduct = Object.entries(byProductMap)
+    .map(([name, v]) => ({ name, amount: Math.round(v.amount), cnt: v.cnt }))
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 10);
+
   return {
-    verifyAmount: Math.round(verifyAmount),
+    verifyAmount:   Math.round(verifyAmount),
+    merchantAmount: Math.round(merchantAmount),
     verifyOrderCnt,
     verifyCertCnt,
-    byChannel: Object.fromEntries(Object.entries(byChannel).map(([k, v]) => [k, Math.round(v)])),
+    byProduct,
   };
 }
 
@@ -239,6 +232,11 @@ export function parseVerifyRecords(rows: VerifyRow[]): Omit<LaikeVerifySummary, 
 function dateToTs(date: string, endOfDay = false): string {
   const suffix = endOfDay ? 'T23:59:59+08:00' : 'T00:00:00+08:00';
   return String(Math.floor(new Date(date + suffix).getTime() / 1000));
+}
+
+// Unix 秒 → 北京时间日期字符串 YYYY-MM-DD
+function tsToDateStr(ts: number): string {
+  return new Date(ts * 1000 + 8 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
 export class LaikeAdapter {
@@ -337,7 +335,7 @@ export class LaikeAdapter {
       permission_common_param: {},
     };
 
-    const allRows: VerifyRow[] = [];
+    const allRows: VerifyRowParsed[] = [];
     for (let page = 1; page <= 20; page++) {
       const qs = new URLSearchParams({
         page_index: String(page),
@@ -348,24 +346,35 @@ export class LaikeAdapter {
       });
       const url = `${urlBase}${PATH}?${qs}`;
       const json = await postJson<{
-        code?: number; status_code?: number; errno?: number;
+        BaseResp?: { StatusCode?: number };
+        status_code?: number;
         data?: {
-          list?: VerifyRow[];
-          verify_record_list?: VerifyRow[];
-          records?: VerifyRow[];
-          total?: number;
-          has_more?: boolean;
+          // data.data 是 JSON string 数组，每个元素需要二次 JSON.parse
+          data?: (string | VerifyRowParsed)[];
+          pagination?: { total_count?: number };
         };
       }>(url, bodyBase);
 
       if (!json) break;
-      const rows: VerifyRow[] =
-        json.data?.list ?? json.data?.verify_record_list ?? json.data?.records ?? [];
-      if (!rows.length) { if (page === 1) console.log(`[LaikeAdapter] verify_record_list 无数据 poi=${poiId} ${startDate}~${endDate}`); break; }
-      allRows.push(...rows);
-      const total = json.data?.total ?? 0;
-      const hasMore = json.data?.has_more;
-      if (hasMore === false || allRows.length >= total || rows.length < PAGE_SIZE) break;
+      const rawItems = json.data?.data ?? [];
+      const parsed: VerifyRowParsed[] = rawItems.map(item => {
+        if (typeof item === 'string') { try { return JSON.parse(item) as VerifyRowParsed; } catch { return null; } }
+        return item as VerifyRowParsed;
+      }).filter((x): x is VerifyRowParsed => x != null);
+
+      if (!parsed.length) { if (page === 1) console.log(`[LaikeAdapter] verify_record_list 无数据 poi=${poiId} ${startDate}~${endDate}`); break; }
+
+      // 接口已用时间戳参数过滤，这里按核销时间做精确日期兜底
+      const inRange = parsed.filter(row => {
+        const ts = row.verify_info?.verify_time ?? row.verify_info_v2?.verify_info?.verify_time;
+        if (!ts) return true;
+        const d = tsToDateStr(ts);
+        return d >= startDate && d <= endDate;
+      });
+      allRows.push(...inRange);
+
+      const totalCount = json.data?.pagination?.total_count ?? 0;
+      if (allRows.length >= totalCount || parsed.length < PAGE_SIZE) break;
     }
 
     if (!allRows.length) return null;

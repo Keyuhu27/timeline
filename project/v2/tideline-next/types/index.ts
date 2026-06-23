@@ -433,11 +433,13 @@ export interface DailyReport {
     fetchedAt: string;
   };
 
-  // 来客核销明细（coupon_verify_record）——元；null=待接入/无数据
+  // 来客核销明细（verify_record_list）——元；null=待接入/无数据
   laikeVerify?: {
-    yesterdayAmount: number | null;
+    yesterdayAmount: number | null;      // 用户实付核销金额（pay_amount ÷ 100）
+    yesterdayMerchantAmount: number | null; // 商家实收（merchant_amount ÷ 100，扣佣金后）
     yesterdayOrderCnt: number | null;
     monthAmount: number | null;
+    monthMerchantAmount: number | null;
     monthOrderCnt: number | null;
     fetchedAt: string;
   };
