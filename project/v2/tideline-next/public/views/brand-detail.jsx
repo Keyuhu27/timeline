@@ -79,8 +79,11 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
   // 只要有项目就展示列表+状态（即便今日消耗为 0，例如全域投放品牌）；仅当完全没有项目时才显示空态
   const hasData = campaigns.length > 0;
 
-  // 数据来源：账户级报表（全域投放）优先；缺失时回退到项目报表聚合
-  const ar = accountReport;
+  // 数据来源：账户级报表只有在确实拿到消耗（spent>0）时才作为今日消耗来源。
+  // 实测开放平台 account/project/promotion 报表对「全域投放」账户均返回 0/空，
+  // 与巨量后台首页「全域投放消耗」口径不一致，因此 spent=0 时不让它冒充权威今日消耗，
+  // 回退到项目报表聚合，等后台 statQuery 真实来源接入后再切换。
+  const ar = (accountReport && accountReport.spent > 0) ? accountReport : null;
   const dataSource = ar ? 'account_report' : (campaigns.length ? 'project_report_aggregated' : null);
   const dataSourceLabel = {
     account_report:             '全域投放报表（account_report）',

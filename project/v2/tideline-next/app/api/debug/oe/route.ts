@@ -125,3 +125,115 @@ export async function projectReport(req: IncomingMessage, res: ServerResponse) {
 export async function promotionReport(req: IncomingMessage, res: ServerResponse) {
   await probeReport(res, req, 'report/promotion/get/');
 }
+
+// ─── 后台首页 statQuery 抓包复现 ──────────────────────────────────────────────
+// 开放平台 account/project/promotion 报表都拿不到「全域投放消耗」(实测全 0/空)，
+// 只能复现本地推后台首页真实接口 statQuery 来理解字段口径。
+// 鉴权用本地 .env 的 OCEANENGINE_LOCALADS_COOKIE（绝不在对话里粘贴 cookie），
+// 额外头可选放 OCEANENGINE_LOCALADS_HEADERS（JSON）。
+// 用法：把 F12 抓到的 Request Payload 原样 POST 到本接口，
+//   POST /api/debug/oe/stat-query?aadvid=1851121699721292&expect=1203.49
+//   body = 抓包的 JSON payload（StartTime/EndTime/DataSetKey/Dimensions/Metrics/...）
+const STAT_QUERY_URL = 'https://localads.chengzijianzhan.cn/api/lamp/pc/v2/statistics/data/statQuery';
+
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    req.on('data', (c) => { data += c; });
+    req.on('end', () => resolve(data));
+    req.on('error', reject);
+  });
+}
+
+// 在任意嵌套对象里递归查找 Value === 目标值（如 1203.49），返回命中的字段路径
+function findValuePaths(obj: unknown, target: number, path = ''): string[] {
+  const hits: string[] = [];
+  if (obj == null) return hits;
+  if (typeof obj === 'object') {
+    for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+      const p = path ? `${path}.${k}` : k;
+      if (typeof v === 'number' && Math.abs(v - target) < 0.01) hits.push(`${p}=${v}`);
+      else if (typeof v === 'string' && Math.abs(Number(v) - target) < 0.01) hits.push(`${p}="${v}"`);
+      else hits.push(...findValuePaths(v, target, p));
+    }
+  }
+  return hits;
+}
+
+export async function statQuery(req: IncomingMessage, res: ServerResponse) {
+  const url = new URL('http://x' + req.url!);
+  const aadvid = url.searchParams.get('aadvid') ?? url.searchParams.get('local_account_id') ?? '';
+  const expect = url.searchParams.get('expect');
+
+  const cookie = process.env.OCEANENGINE_LOCALADS_COOKIE;
+  if (!cookie) {
+    return sendErr(res,
+      '未配置 OCEANENGINE_LOCALADS_COOKIE。请在本地 .env 设置后台首页的 Cookie（不要粘贴到对话里），' +
+      '可选 OCEANENGINE_LOCALADS_HEADERS（JSON）补充 csrf 等头。', 400);
+  }
+
+  let bodyText = '';
+  try { bodyText = await readBody(req); } catch { /* ignore */ }
+  if (!bodyText.trim()) {
+    return sendErr(res, '请把 F12 抓到的 statQuery Request Payload 原样作为 POST body 发送。', 400);
+  }
+
+  // 额外头（csrf / agw 等）：从 env 读，允许覆盖默认头
+  let extraHeaders: Record<string, string> = {};
+  try {
+    if (process.env.OCEANENGINE_LOCALADS_HEADERS)
+      extraHeaders = JSON.parse(process.env.OCEANENGINE_LOCALADS_HEADERS) as Record<string, string>;
+  } catch { /* ignore malformed */ }
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Cookie': cookie,
+    'Accept': 'application/json, text/plain, */*',
+    'Origin': 'https://localads.chengzijianzhan.cn',
+    'Referer': 'https://localads.chengzijianzhan.cn/',
+    'User-Agent': 'Mozilla/5.0',
+    ...extraHeaders,
+  };
+
+  // aadvid 通常作为 query 参数；附加到目标 URL
+  const target = aadvid ? `${STAT_QUERY_URL}?aadvid=${encodeURIComponent(aadvid)}` : STAT_QUERY_URL;
+
+  let rawText = '';
+  let httpStatus = 0;
+  try {
+    const r = await fetch(target, { method: 'POST', headers, body: bodyText });
+    httpStatus = r.status;
+    rawText = await r.text();
+  } catch (e) {
+    return sendErr(res, `请求 statQuery 失败: ${String(e)}`, 500);
+  }
+
+  let parsed: Record<string, unknown> | null = null;
+  try { parsed = safeJsonParse<Record<string, unknown>>(rawText); } catch { /* not JSON */ }
+
+  const data = (parsed?.data ?? parsed) as Record<string, unknown> | undefined;
+  const statsData = data?.StatsData as Record<string, unknown> | undefined;
+  const rows   = (statsData?.Rows   ?? []) as unknown[];
+  const totals = (statsData?.Totals ?? statsData?.Total) as Record<string, unknown> | undefined;
+  const firstRow = rows[0] as Record<string, unknown> | undefined;
+
+  const expectHits = expect ? findValuePaths(parsed, Number(expect)) : [];
+
+  ok(res, {
+    probe: 'statQuery',
+    request: { url: target, aadvid, sent_payload: safeTryParse(bodyText) },
+    http_status: httpStatus,
+    rows_count: rows.length,
+    first_row: firstRow ?? null,
+    first_row_keys: firstRow ? Object.keys(firstRow) : [],
+    totals: totals ?? null,
+    totals_keys: totals ? Object.keys(totals) : [],
+    expect_value: expect ? Number(expect) : null,
+    expect_hits: expectHits,   // 命中目标消耗值的字段路径，定位真实口径字段
+    raw_response: rawText.slice(0, 12000),
+  });
+}
+
+function safeTryParse(s: string): unknown {
+  try { return JSON.parse(s); } catch { return s; }
+}
