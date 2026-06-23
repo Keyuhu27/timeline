@@ -202,6 +202,24 @@ export async function syncLocalAccounts(
       }
       console.log(`[AccountSync] ${account.name}: 同步 ${campList.length} 个计划（含报表）`);
 
+      // 后台首页 statQuery——优先级最高的今日消耗来源（全域投放口径）
+      if (!process.env.OCEANENGINE_LOCALADS_COOKIE) {
+        console.warn(`[AccountSync] ⚠️ 后台 statQuery 未配置鉴权（OCEANENGINE_LOCALADS_COOKIE），跳过全域消耗拉取（${account.name}）`);
+      } else {
+        try {
+          const today8 = new Date(Date.now() + 8 * 3600_000);
+          const todayStr = today8.toISOString().slice(0, 10);
+          const startTime = `${todayStr} 00:00:00`;
+          const endTime   = today8.toISOString().replace('T', ' ').slice(0, 19);
+          const sq = await OceanEngineAdapter.fetchHomeRoi2StatQuery(account.externalId!, startTime, endTime);
+          account.statQueryReport = { ...sq, syncedAt: now };
+          console.log(`[AccountSync] ${account.name} statQuery: 消耗¥${sq.spent} 直播¥${sq.liveSpent} 视频¥${sq.videoSpent} 成交¥${sq.gmv}`);
+        } catch (e) {
+          console.error(`[AccountSync] ❌ statQuery 失败 ${account.name}: ${String(e)}`);
+          errors.push(`statQuery失败 ${account.name}: ${String(e)}`);
+        }
+      }
+
       // 账户级（全域投放）报表：全域消耗不进项目报表，单独拉一份缓存到账户上，
       // 供品牌详情页顶部「今日消耗/全域成交金额/订单数/ROI」展示。即使全 0 也保留，
       // 以便 UI 标注数据来源为 account_report，而非误判接口失败。
@@ -629,6 +647,24 @@ export const syncStatus: RouteHandler = async (req, res) => {
           addedInAcc++;
         }
       }
+      // 后台首页 statQuery——优先级最高的今日消耗来源（全域投放口径）
+      if (!process.env.OCEANENGINE_LOCALADS_COOKIE) {
+        console.warn(`[SyncStatus] ⚠️ 后台 statQuery 未配置鉴权（OCEANENGINE_LOCALADS_COOKIE），跳过全域消耗拉取（${account.name}）`);
+      } else {
+        try {
+          const today8 = new Date(Date.now() + 8 * 3600_000);
+          const todayStr = today8.toISOString().slice(0, 10);
+          const startTime = `${todayStr} 00:00:00`;
+          const endTime   = today8.toISOString().replace('T', ' ').slice(0, 19);
+          const sq = await OceanEngineAdapter.fetchHomeRoi2StatQuery(account.externalId!, startTime, endTime);
+          account.statQueryReport = { ...sq, syncedAt: now };
+          console.log(`[SyncStatus] ${account.name} statQuery: 消耗¥${sq.spent} 直播¥${sq.liveSpent} 视频¥${sq.videoSpent} 成交¥${sq.gmv}`);
+        } catch (e) {
+          console.error(`[SyncStatus] ❌ statQuery 失败 ${account.name}: ${String(e)}`);
+          errors.push(`statQuery失败 ${account.name}: ${String(e)}`);
+        }
+      }
+
       // 账户级（全域投放）报表——同 syncLocalAccounts，刷新时一并更新
       try {
         const ar = await oe.fetchAccountReport(account.externalId!);
@@ -638,7 +674,6 @@ export const syncStatus: RouteHandler = async (req, res) => {
             orderCost: ar.orderCost, impressions: ar.impressions, clicks: ar.clicks,
             ctr: ar.ctr, cpm: ar.cpm, syncedAt: now, source: 'account_report',
           };
-          console.log(`[SyncStatus] ${account.name} 全域报表: 消耗¥${ar.spent} 成交¥${ar.gmv} 订单${ar.orders} ROI${ar.roi}`);
         } else {
           delete account.globalReport;
         }

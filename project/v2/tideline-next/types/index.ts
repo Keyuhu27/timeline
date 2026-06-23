@@ -46,6 +46,22 @@ export interface Account {
   color: string;
   externalId?: string;
   tokenExpiresAt?: number;
+  // 后台首页 statQuery 全域消耗（DataSetKey=pc_home_roi2）——最高优先级今日消耗来源。
+  // 开放平台三个 report 接口均不覆盖全域投放口径，只能用 statQuery 对齐后台首页数字。
+  // 鉴权依赖本地 .env OCEANENGINE_LOCALADS_COOKIE，不提交。
+  statQueryReport?: {
+    spent:      number;
+    liveSpent:  number;
+    videoSpent: number;
+    liveGmv:    number;
+    videoGmv:   number;
+    gmv:        number;
+    liveRoi:    number;
+    videoRoi:   number;
+    roi:        number;
+    syncedAt:   number;
+    source: 'statQuery_pc_home_roi2';
+  };
   // 账户级（全域投放）报表汇总——来自 /local/report/account/get/。
   // 全域投放消耗不进项目报表，只在账户报表，故单独缓存供品牌详情页顶部展示。
   globalReport?: {

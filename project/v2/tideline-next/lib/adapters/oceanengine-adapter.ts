@@ -501,6 +501,128 @@ export class OceanEngineAdapter implements IAdAdapter {
     };
   }
 
+  /**
+   * 拉取巨量本地推后台首页「全域投放消耗」真实口径。
+   * 开放平台 local/report/account|project|promotion 三个接口均不覆盖全域消耗；
+   * 后台首页用的是私有 statQuery 接口（DataSetKey=pc_home_roi2）。
+   * 鉴权 Cookie 从 process.env.OCEANENGINE_LOCALADS_COOKIE 读，不硬编码。
+   * 如未配置直接抛出，让调用方打日志/记 errors，不要静默返回 0。
+   */
+  static async fetchHomeRoi2StatQuery(
+    advid: string,
+    startTime: string,  // 'YYYY-MM-DD HH:mm:ss'
+    endTime:   string,
+  ): Promise<{
+    spent:      number;  // Totals.stat_cost.Value          全域总消耗
+    liveSpent:  number;  // Totals.live_stat_cost_for_roi2.Value
+    videoSpent: number;  // Totals.video_stat_cost_for_roi2.Value
+    liveGmv:    number;  // Totals.live_oto_pay_order_stat_amount_for_roi2.Value
+    videoGmv:   number;  // Totals.video_oto_pay_order_stat_amount_for_roi2.Value
+    gmv:        number;  // liveGmv + videoGmv
+    liveRoi:    number;  // Totals.live_oto_pay_order_roi2_new.Value
+    videoRoi:   number;  // Totals.video_oto_pay_order_roi2_new.Value
+    roi:        number;  // gmv / spent（前端展示用，避免后台加权 ROI 口径差异）
+    source: 'statQuery_pc_home_roi2';
+  }> {
+    const cookie = process.env.OCEANENGINE_LOCALADS_COOKIE;
+    if (!cookie) throw new Error('[statQuery] 未配置 OCEANENGINE_LOCALADS_COOKIE，请在本地 .env 设置后台 Cookie');
+
+    // 可选补充 csrf / agw 等风控头（OCEANENGINE_LOCALADS_HEADERS 为 JSON 字符串）
+    let extraHeaders: Record<string, string> = {};
+    try {
+      if (process.env.OCEANENGINE_LOCALADS_HEADERS)
+        extraHeaders = JSON.parse(process.env.OCEANENGINE_LOCALADS_HEADERS) as Record<string, string>;
+    } catch { /* ignore malformed */ }
+
+    // 对比时段：startTime 前一天同时间段
+    const prev = (ts: string) => {
+      const d = new Date(ts.replace(' ', 'T') + '+08:00');
+      d.setDate(d.getDate() - 1);
+      return d.toISOString().replace('T', ' ').slice(0, 19);
+    };
+
+    const payload = {
+      StartTime: startTime,
+      EndTime:   endTime,
+      ComparisonParams: {
+        RatioStartTime: prev(startTime),
+        RatioEndTime:   prev(endTime),
+      },
+      DataSetKey: 'pc_home_roi2',
+      Dimensions: ['stat_time_hour'],
+      Filters: {
+        ConditionRelationshipType: 1,
+        Conditions: [
+          { Field: 'advertiser_id', Operator: 7, Values: [advid] },
+          { Field: 'adlab_mode',    Operator: 7, Values: ['1'] },
+          { Field: 'create_channel', Operator: 7, Values: ['64'] },
+        ],
+      },
+      FrameId:  '7289039319510155321',
+      ModuleId: '7396885770868375562',
+      Metrics: [
+        'live_stat_cost_for_roi2',
+        'video_stat_cost_for_roi2',
+        'live_oto_pay_order_stat_amount_for_roi2',
+        'live_oto_pay_order_roi2_new',
+        'video_oto_pay_order_stat_amount_for_roi2',
+        'video_oto_pay_order_roi2_new',
+        'stat_cost',
+      ],
+      OrderBy: [{ Field: 'stat_time_hour', Type: 1 }],
+    };
+
+    const url = `https://localads.chengzijianzhan.cn/api/lamp/pc/v2/statistics/data/statQuery?advid=${encodeURIComponent(advid)}`;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Cookie': cookie,
+      'Accept': 'application/json, text/plain, */*',
+      'Origin': 'https://localads.chengzijianzhan.cn',
+      'Referer': 'https://localads.chengzijianzhan.cn/',
+      'User-Agent': 'Mozilla/5.0',
+      ...extraHeaders,
+    };
+
+    console.log(`[statQuery] ${advid} ${startTime} ~ ${endTime}`);
+    const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
+    const text = await res.text();
+    let json: Record<string, unknown>;
+    try {
+      json = safeJsonParse<Record<string, unknown>>(text);
+    } catch {
+      throw new Error(`[statQuery] 响应非 JSON (HTTP ${res.status}): ${text.slice(0, 120)}`);
+    }
+
+    // 后台接口错误码非 0 表示鉴权失败或参数错误
+    const code = json.code ?? (json.data as Record<string, unknown>)?.code;
+    if (code !== 0 && code !== undefined) {
+      throw new Error(`[statQuery] 接口错误 code=${code} message=${json.message ?? JSON.stringify(json).slice(0, 120)}`);
+    }
+
+    // 解析 Totals
+    const data    = (json.data ?? json) as Record<string, unknown>;
+    const stats   = (data.StatsData ?? data) as Record<string, unknown>;
+    const totals  = (stats.Totals  ?? stats.Total ?? {}) as Record<string, Record<string, unknown>>;
+
+    const tv = (key: string) => Number((totals[key]?.Value ?? totals[key] ?? 0));
+
+    const liveSpent  = tv('live_stat_cost_for_roi2');
+    const videoSpent = tv('video_stat_cost_for_roi2');
+    const liveGmv    = tv('live_oto_pay_order_stat_amount_for_roi2');
+    const videoGmv   = tv('video_oto_pay_order_stat_amount_for_roi2');
+    const spent      = tv('stat_cost') || (liveSpent + videoSpent);
+    const gmv        = liveGmv + videoGmv;
+
+    console.log(`[statQuery] ✅ ${advid} 今日消耗¥${spent} 直播¥${liveSpent} 视频¥${videoSpent} 成交¥${gmv}`);
+    return {
+      spent, liveSpent, videoSpent, liveGmv, videoGmv, gmv,
+      liveRoi:  tv('live_oto_pay_order_roi2_new'),
+      videoRoi: tv('video_oto_pay_order_roi2_new'),
+      roi: spent > 0 ? gmv / spent : 0,
+      source: 'statQuery_pc_home_roi2',
+    };
+  }
+
   async fetchCampaignStats(externalId: string, advertiserId: string): Promise<CampaignStats> {
     advertiserId = normalizeOceanEngineAccountId(advertiserId);
     const rows = await this.fetchProjectReport(advertiserId, [externalId]);

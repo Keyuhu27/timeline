@@ -26,18 +26,17 @@ export const GET: RouteHandler = (req, res) => {
     lastSyncAt:   all.length ? Math.max(...all.map(c => c.lastSyncAt ?? 0)) || null : null,
   };
 
-  // 全域投放账户报表：当按 brand 查询时，附带该品牌账户的账户级报表（全域消耗/成交/ROI），
-  // 供品牌详情页顶部优先展示。全域投放消耗不在项目报表里，只在账户报表。
+  // 今日消耗：优先 statQuery（后台首页全域口径）> globalReport > null
+  let statQueryReport: (NonNullable<import('../../../types/index').Account['statQueryReport']> & { localAccountId?: string }) | null = null;
   let accountReport: (NonNullable<import('../../../types/index').Account['globalReport']> & { localAccountId?: string }) | null = null;
   if (brand) {
-    const acct = accounts.find(a => a.brand === brand && a.globalReport);
-    if (acct?.globalReport) {
-      accountReport = { ...acct.globalReport, localAccountId: acct.externalId };
-    }
+    const acct = accounts.find(a => a.brand === brand);
+    if (acct?.statQueryReport) statQueryReport = { ...acct.statQueryReport, localAccountId: acct.externalId };
+    if (acct?.globalReport)    accountReport   = { ...acct.globalReport,   localAccountId: acct.externalId };
   }
 
   const { items, total, page, pageSize } = paginate(filtered, req.query);
-  ok(res, { campaigns: items, summary, accountReport }, { total, page, pageSize });
+  ok(res, { campaigns: items, summary, statQueryReport, accountReport }, { total, page, pageSize });
 };
 
 export const POST: RouteHandler = async (req, res) => {

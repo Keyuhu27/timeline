@@ -5,6 +5,7 @@ window.TL = window.TL || {};
 const BrandDetail = function BrandDetail({ brandId, onBack }) {
   const { useState, useEffect, useCallback } = React;
   const [campaigns, setCampaigns] = useState([]);
+  const [statQueryReport, setStatQueryReport] = useState(null);
   const [accountReport, setAccountReport] = useState(null);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -22,6 +23,7 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
       fetch('/api/logs').then(r => r.json()).catch(() => null),
     ]).then(([a, l]) => {
       setCampaigns(a?.data?.campaigns || []);
+      setStatQueryReport(a?.data?.statQueryReport || null);
       setAccountReport(a?.data?.accountReport || null);
       setLogs(l?.data?.logs || []);
     }).finally(() => setLoading(false));
@@ -79,18 +81,34 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
   // 只要有项目就展示列表+状态（即便今日消耗为 0，例如全域投放品牌）；仅当完全没有项目时才显示空态
   const hasData = campaigns.length > 0;
 
-  // 数据来源：账户级报表只有在确实拿到消耗（spent>0）时才作为今日消耗来源。
-  // 实测开放平台 account/project/promotion 报表对「全域投放」账户均返回 0/空，
-  // 与巨量后台首页「全域投放消耗」口径不一致，因此 spent=0 时不让它冒充权威今日消耗，
-  // 回退到项目报表聚合，等后台 statQuery 真实来源接入后再切换。
-  const ar = (accountReport && accountReport.spent > 0) ? accountReport : null;
-  const dataSource = ar ? 'account_report' : (campaigns.length ? 'project_report_aggregated' : null);
+  // 今日消耗数据来源优先级：
+  //   1. statQuery_pc_home_roi2（后台首页全域口径，与巨量后台数字一致）
+  //   2. project_report_aggregated（开放平台项目报表聚合，标准投放有效）
+  //   3. account_report（开放平台账户报表，实测全域账户返回 0，仅备用）
+  const sq = statQueryReport;
+  const ar = (!sq && accountReport && accountReport.spent > 0) ? accountReport : null;
+  const dataSource = sq ? 'statQuery_pc_home_roi2'
+    : ar ? 'account_report'
+    : campaigns.length ? 'project_report_aggregated'
+    : null;
   const dataSourceLabel = {
-    account_report:             '全域投放报表（account_report）',
+    statQuery_pc_home_roi2:     '后台首页全域投放（statQuery）',
+    account_report:             '开放平台账户报表（account_report）',
     project_report_aggregated:  '项目报表聚合（project_report_aggregated）',
   }[dataSource] || null;
 
-  const overview = ar ? [
+  const overview = sq ? [
+    { label: '今日消耗',       value: `¥ ${TL.fmtMoney(sq.spent)}` },
+    { label: '直播全域消耗',   value: `¥ ${TL.fmtMoney(sq.liveSpent)}` },
+    { label: '短视频全域消耗', value: `¥ ${TL.fmtMoney(sq.videoSpent)}` },
+    { label: '全域成交金额',   value: `¥ ${TL.fmtMoney(sq.gmv)}` },
+    { label: '全域支付ROI',    value: sq.roi > 0 ? sq.roi.toFixed(2) : '—' },
+    { label: '直播成交金额',   value: `¥ ${TL.fmtMoney(sq.liveGmv)}` },
+    { label: '直播全域ROI',    value: sq.liveRoi > 0 ? sq.liveRoi.toFixed(2) : '—' },
+    { label: '短视频成交金额', value: `¥ ${TL.fmtMoney(sq.videoGmv)}` },
+    { label: '活跃计划',       value: agg.active },
+    { label: '暂停计划',       value: agg.paused },
+  ] : ar ? [
     { label: '今日消耗',     value: `¥ ${TL.fmtMoney(ar.spent)}` },
     { label: '全域成交金额', value: `¥ ${TL.fmtMoney(ar.gmv)}` },
     { label: '全域成交订单', value: ar.orders },
@@ -160,7 +178,7 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
               <div className="row" style={{ alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <SectionTitle title="当日数据概览" />
                 {dataSourceLabel && (
-                  <Chip tone={dataSource === 'account_report' ? 'success' : ''}>
+                  <Chip tone={dataSource === 'statQuery_pc_home_roi2' ? 'success' : dataSource === 'account_report' ? '' : ''}>
                     数据来源：{dataSourceLabel}
                   </Chip>
                 )}
