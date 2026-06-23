@@ -461,6 +461,21 @@ export interface DailyReport {
     endDate: string;
     fetchedAt: string;
   };
+
+  // 生意经营销概览（coupon_pay_gmv / pay_ord_plat_amt / pay_ord_mer_amt）
+  // 单位：分→元。不覆盖总GMV/达播GMV/POI GMV。
+  businessMarketing?: {
+    couponPayGmv: number;   // 营销成交金额（元）
+    platAmt: number;        // 营销平台补贴金额（元）
+    merAmt: number;         // 营销商家补贴金额（元）
+    compare?: {             // 环比（来自 DeriveData）
+      value: number;        // hb_value：上周期绝对值
+      diff: number;         // hb_diff：变化量
+      ratio: number;        // hb_ratio：变化率（小数，如 0.12 = 12%）
+    };
+    trend: Array<{ date: string; gmv: number }>; // 营销成交趋势（元）
+    fetchedAt: string;
+  };
 }
 
 // ─── API 响应 ─────────────────────────────────────────────────────────────

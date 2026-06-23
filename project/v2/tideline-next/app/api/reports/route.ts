@@ -149,11 +149,14 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
   let businessTrade: DailyReport['businessTrade'] | undefined;
   let businessExposure: DailyReport['businessExposure'] | undefined;
   let businessInsight: DailyReport['businessInsight'] | undefined;
+  let businessMarketing: DailyReport['businessMarketing'] | undefined;
   if (poiId && process.env.BUSINESS_COMPASS_COOKIE) {
-    const [trade, exposure, bIns] = await Promise.all([
+    const [trade, exposure, bIns, mktOv, mktTrend] = await Promise.all([
       BusinessCompassAdapter.fetchTradeSplit(poiId, yesterday, yesterday).catch(() => null),
       BusinessCompassAdapter.fetchExposureSplit(poiId, yesterday, yesterday).catch(() => null),
       BusinessCompassAdapter.fetchInsights(poiId, yesterday, date).catch(() => null),
+      BusinessCompassAdapter.fetchMarketingOverview(poiId, yesterday, yesterday).catch(() => null),
+      BusinessCompassAdapter.fetchMarketingTrend(poiId, yesterday, date).catch(() => null),
     ]);
     if (trade) {
       businessTrade = trade;
@@ -166,6 +169,11 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
     }
     if (bIns) {
       businessInsight = { ...bIns, fetchedAt: now };
+      seeded = true;
+    }
+    if (mktOv) {
+      businessMarketing = { ...mktOv, trend: mktTrend ?? [] };
+      sourceLines.push(`生意经营销成交（${yesterday}）：营销成交 ¥${mktOv.couponPayGmv} / 平台补贴 ¥${mktOv.platAmt} / 商家补贴 ¥${mktOv.merAmt}`);
       seeded = true;
     }
   }
@@ -194,9 +202,10 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
     ...(laikeSales  ? { laikeSales }  : {}),
     ...(laikeOverview ? { laikeOverview } : {}),
     ...(laikeInsight  ? { laikeInsight }  : {}),
-    ...(businessTrade    ? { businessTrade }    : {}),
-    ...(businessExposure ? { businessExposure } : {}),
-    ...(businessInsight  ? { businessInsight }  : {}),
+    ...(businessTrade     ? { businessTrade }     : {}),
+    ...(businessExposure  ? { businessExposure }  : {}),
+    ...(businessInsight   ? { businessInsight }   : {}),
+    ...(businessMarketing ? { businessMarketing } : {}),
   };
 }
 

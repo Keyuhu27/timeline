@@ -275,6 +275,61 @@ TL.openDailyReport = function (brandId, date) {
     );
   }
 
+  // ── 生意经营销表现 ────────────────────────────────────────────────────────────
+  function BusinessMarketingCard({ businessMarketing }) {
+    if (!businessMarketing) return (
+      <section style={{ marginBottom: 16 }}>
+        <SectionTitle title="生意经营销表现" sub="coupon_pay_gmv / 平台补贴 / 商家补贴" badge="business" />
+        <div style={{ padding: '10px 14px', background: '#fafafa', borderRadius: 8, fontSize: 12, color: '#8c8c8c' }}>
+          待接入 — 未配置生意经营销概览接口（BUSINESS_FLOW_MARKETING_OVERVIEW_URL）
+        </div>
+      </section>
+    );
+    const m = businessMarketing;
+    const fmt = (v) => isNil(v) ? '待接入' : `¥${Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const cmp = m.compare;
+    const ratioTxt = cmp ? ((cmp.ratio >= 0 ? '+' : '') + (cmp.ratio * 100).toFixed(1) + '%') : null;
+    return (
+      <section style={{ marginBottom: 16 }}>
+        <SectionTitle title="生意经营销表现" sub="coupon_pay_gmv · 不含总GMV/达播GMV/POI GMV" badge="business" />
+        <div className="card" style={{ padding: '14px 16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: cmp || (m.trend?.length > 0) ? 12 : 0 }}>
+            <div>
+              <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2 }}>生意经营销成交金额</div>
+              <div style={{ fontSize: 20, fontWeight: 600, color: 'var(--text)' }}>{fmt(m.couponPayGmv)}</div>
+              {cmp && <div style={{ fontSize: 11, color: cmp.ratio >= 0 ? '#389e0d' : '#cf1322', marginTop: 2 }}>
+                较上周期 {ratioTxt}（{cmp.diff >= 0 ? '+' : ''}{fmt(cmp.diff)}）
+              </div>}
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2 }}>营销平台补贴金额</div>
+              <div style={{ fontSize: 20, fontWeight: 600, color: '#0958d9' }}>{fmt(m.platAmt)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2 }}>营销商家补贴金额</div>
+              <div style={{ fontSize: 20, fontWeight: 600, color: '#531dab' }}>{fmt(m.merAmt)}</div>
+            </div>
+          </div>
+          {m.trend?.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 6 }}>营销成交趋势</div>
+              <div style={{ overflowX: 'auto' }}>
+                <table className="tbl">
+                  <thead><tr>
+                    {m.trend.map(r => <th key={r.date} className="num" style={{ fontSize: 11 }}>{r.date.slice(5)}</th>)}
+                  </tr></thead>
+                  <tbody><tr>
+                    {m.trend.map(r => <td key={r.date} className="num" style={{ fontSize: 12 }}>{fmt(r.gmv)}</td>)}
+                  </tr></tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  }
+
   // ── 平台经营洞察（来客 + 生意经）─────────────────────────────────────────────
   function InsightBlock({ laikeInsight, businessInsight }) {
     const items = [];
@@ -454,6 +509,13 @@ TL.openDailyReport = function (brandId, date) {
     };
     sectorText('成交数据', rep.gmvRows, ['历史GMV', '昨日GMV', '本月GMV']);
     sectorText('核销数据', rep.redeemRows, ['历史核销', '昨日核销', '本月核销']);
+    if (rep.businessMarketing) {
+      const mk = rep.businessMarketing;
+      L.push(`\n【生意经营销表现】`);
+      L.push(`· 生意经营销成交金额：¥${fen(mk.couponPayGmv)}`);
+      L.push(`· 营销平台补贴：¥${fen(mk.platAmt)} / 营销商家补贴：¥${fen(mk.merAmt)}`);
+      if (mk.compare) L.push(`· 较上周期：${mk.compare.ratio >= 0 ? '+' : ''}${(mk.compare.ratio * 100).toFixed(1)}%`);
+    }
     if (rep.businessTrade) {
       const t = rep.businessTrade;
       L.push(`\n【生意经流量成交拆分】`);
@@ -573,6 +635,9 @@ TL.openDailyReport = function (brandId, date) {
 
               {/* 商品排行 */}
               <ProductCard laikeSales={rep.laikeSales} />
+
+              {/* 生意经营销表现 */}
+              <BusinessMarketingCard businessMarketing={rep.businessMarketing} />
 
               {/* 生意经流量成交拆分 */}
               <BusinessTradeCard businessTrade={rep.businessTrade} />

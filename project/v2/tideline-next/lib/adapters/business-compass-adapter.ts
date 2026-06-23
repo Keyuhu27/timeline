@@ -152,6 +152,65 @@ export class BusinessCompassAdapter {
     return { ...parseExposureSplit(data), fetchedAt: new Date().toISOString() };
   }
 
+  /** 营销概览（coupon_pay_gmv / pay_ord_plat_amt / pay_ord_mer_amt + DeriveData 环比） */
+  static async fetchMarketingOverview(poiId: string, startDate: string, endDate: string): Promise<{
+    couponPayGmv: number; platAmt: number; merAmt: number;
+    compare?: { value: number; diff: number; ratio: number };
+    fetchedAt: string;
+  } | null> {
+    if (!cookie() || !poiId) return null;
+    const url = process.env.BUSINESS_FLOW_MARKETING_OVERVIEW_URL || (base() + '/api/compass/marketing/overview');
+    if (!url.startsWith('http')) { console.warn('[BusinessCompass] 未配置营销概览 URL，跳过'); return null; }
+
+    const json = await postJson<{
+      code?: number;
+      data?: Array<{
+        coupon_pay_gmv?: number;
+        pay_ord_plat_amt?: number;
+        pay_ord_mer_amt?: number;
+        coupon_pay_gmvDeriveData?: { hb_value?: number; hb_diff?: number; hb_ratio?: number };
+      }>;
+      responseData?: { data?: unknown[] };
+    }>(url, { poi_id: poiId, start_date: startDate, end_date: endDate });
+
+    const rows = json?.data ?? (json?.responseData?.data as typeof json['data']);
+    const row = Array.isArray(rows) ? rows[0] : null;
+    if (!row) { console.log(`[BusinessCompass] 营销概览无数据 poi=${poiId}`); return null; }
+
+    const dd = row.coupon_pay_gmvDeriveData;
+    return {
+      couponPayGmv: fen2yuan(row.coupon_pay_gmv),
+      platAmt: fen2yuan(row.pay_ord_plat_amt),
+      merAmt: fen2yuan(row.pay_ord_mer_amt),
+      ...(dd ? { compare: {
+        value: fen2yuan(dd.hb_value),
+        diff: fen2yuan(dd.hb_diff),
+        ratio: Number(dd.hb_ratio ?? 0),
+      }} : {}),
+      fetchedAt: new Date().toISOString(),
+    };
+  }
+
+  /** 营销成交趋势（date × coupon_pay_gmv 时间序列） */
+  static async fetchMarketingTrend(poiId: string, startDate: string, endDate: string): Promise<Array<{ date: string; gmv: number }> | null> {
+    if (!cookie() || !poiId) return null;
+    const url = process.env.BUSINESS_FLOW_MARKETING_TREND_URL || (base() + '/api/compass/marketing/trend');
+    if (!url.startsWith('http')) { console.warn('[BusinessCompass] 未配置营销趋势 URL，跳过'); return null; }
+
+    const json = await postJson<{
+      code?: number;
+      data?: Array<{ date?: string; coupon_pay_gmv?: number }>;
+      responseData?: { data?: unknown[] };
+    }>(url, { poi_id: poiId, start_date: startDate, end_date: endDate });
+
+    const rows = json?.data ?? (json?.responseData?.data as typeof json['data']);
+    if (!Array.isArray(rows) || !rows.length) { console.log(`[BusinessCompass] 营销趋势无数据 poi=${poiId}`); return null; }
+    return rows
+      .filter(r => r.date)
+      .map(r => ({ date: r.date!, gmv: fen2yuan(r.coupon_pay_gmv) }))
+      .sort((a, b) => a.date < b.date ? -1 : 1);
+  }
+
   /** 生意经经营洞察（data_conclusion / data_explain） */
   static async fetchInsights(poiId: string, startDate: string, endDate: string): Promise<BusinessInsightResult | null> {
     if (!cookie() || !poiId) return null;
