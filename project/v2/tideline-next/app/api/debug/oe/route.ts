@@ -1,7 +1,7 @@
 // 巨量本地推报表接口探测——不硬编码字段，完整透传原始响应
 import { IncomingMessage, ServerResponse } from 'http';
 import { tokenManager } from '../../../../lib/adapters/index';
-import { safeJsonParse } from '../../../../lib/adapters/oceanengine-adapter';
+import { safeJsonParse, OceanEngineAdapter } from '../../../../lib/adapters/oceanengine-adapter';
 
 const LOCAL_BASE = 'https://api.oceanengine.com/open_api/v3.0/local/';
 
@@ -236,4 +236,56 @@ export async function statQuery(req: IncomingMessage, res: ServerResponse) {
 
 function safeTryParse(s: string): unknown {
   try { return JSON.parse(s); } catch { return s; }
+}
+
+// ─── GET /api/debug/oe/stat-query?advid=...&date=2026-06-23 ────────────────────
+// 直接用适配器的 fetchHomeRoi2StatQuery 跑一遍，返回 parsed 字段 + 原始 Totals，
+// 方便核对 Tideline 后端到底有没有拿到后台首页的真实全域消耗（如 2061.65）。
+export async function statQueryAuto(req: IncomingMessage, res: ServerResponse) {
+  const url = new URL('http://x' + req.url!);
+  const advid = url.searchParams.get('advid') ?? url.searchParams.get('local_account_id') ?? '';
+  if (!advid) return sendErr(res, '缺少 advid 参数');
+
+  // date 默认今天（北京时间）；StartTime=00:00:00，EndTime=当前时刻
+  const today8 = new Date(Date.now() + 8 * 3600_000);
+  const dateStr = url.searchParams.get('date') ?? today8.toISOString().slice(0, 10);
+  const startTime = `${dateStr} 00:00:00`;
+  const endTime = url.searchParams.get('end_time')
+    ?? (dateStr === today8.toISOString().slice(0, 10)
+        ? today8.toISOString().replace('T', ' ').slice(0, 19)
+        : `${dateStr} 23:59:59`);
+
+  if (!process.env.OCEANENGINE_LOCALADS_COOKIE) {
+    return ok(res, {
+      probe: 'statQuery_pc_home_roi2',
+      success: false,
+      error: '未配置 OCEANENGINE_LOCALADS_COOKIE（请在本地 .env 设置后台 Cookie，勿提交）',
+      request: { advid, startTime, endTime },
+    });
+  }
+
+  try {
+    const sq = await OceanEngineAdapter.fetchHomeRoi2StatQuery(advid, startTime, endTime);
+    ok(res, {
+      probe: 'statQuery_pc_home_roi2',
+      success: true,
+      request: { advid, startTime, endTime },
+      http_status: sq.httpStatus,
+      totals: sq.rawTotals,
+      totals_keys: sq.totalsKeys,
+      parsed: {
+        spent: sq.spent, liveSpent: sq.liveSpent, videoSpent: sq.videoSpent,
+        gmv: sq.gmv, liveGmv: sq.liveGmv, videoGmv: sq.videoGmv,
+        roi: sq.roi, liveRoi: sq.liveRoi, videoRoi: sq.videoRoi,
+        orders: sq.orders, orderCost: sq.orderCost,
+      },
+    });
+  } catch (e) {
+    ok(res, {
+      probe: 'statQuery_pc_home_roi2',
+      success: false,
+      error: String(e),
+      request: { advid, startTime, endTime },
+    });
+  }
 }

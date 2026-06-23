@@ -522,6 +522,11 @@ export class OceanEngineAdapter implements IAdAdapter {
     liveRoi:    number;  // Totals.live_oto_pay_order_roi2_new.Value
     videoRoi:   number;  // Totals.video_oto_pay_order_roi2_new.Value
     roi:        number;  // gmv / spent（前端展示用，避免后台加权 ROI 口径差异）
+    orders:     number;  // 全域成交订单数（如该数据集返回则带出，否则 0）
+    orderCost:  number;  // 全域成交订单成本（spent/orders，无订单则 0）
+    rawTotals:  Record<string, unknown>;  // 原始 Totals，供 debug
+    totalsKeys: string[];
+    httpStatus: number;
     source: 'statQuery_pc_home_roi2';
   }> {
     const cookie = process.env.OCEANENGINE_LOCALADS_COOKIE;
@@ -583,28 +588,50 @@ export class OceanEngineAdapter implements IAdAdapter {
       ...extraHeaders,
     };
 
-    console.log(`[statQuery] ${advid} ${startTime} ~ ${endTime}`);
+    console.log(`[statQuery] 请求 advid=${advid} ${startTime} ~ ${endTime}`);
     const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
     const text = await res.text();
     let json: Record<string, unknown>;
     try {
       json = safeJsonParse<Record<string, unknown>>(text);
     } catch {
-      throw new Error(`[statQuery] 响应非 JSON (HTTP ${res.status}): ${text.slice(0, 120)}`);
+      // 非 JSON 多半是登录页/风控拦截（cookie 失效或缺 msToken/a_bogus）
+      throw new Error(`[statQuery] 响应非 JSON (HTTP ${res.status})，疑似 cookie 失效/风控拦截: ${text.slice(0, 160)}`);
     }
 
     // 后台接口错误码非 0 表示鉴权失败或参数错误
     const code = json.code ?? (json.data as Record<string, unknown>)?.code;
     if (code !== 0 && code !== undefined) {
-      throw new Error(`[statQuery] 接口错误 code=${code} message=${json.message ?? JSON.stringify(json).slice(0, 120)}`);
+      throw new Error(`[statQuery] 接口错误 code=${code} message=${json.message ?? JSON.stringify(json).slice(0, 160)}`);
     }
 
-    // 解析 Totals
-    const data    = (json.data ?? json) as Record<string, unknown>;
-    const stats   = (data.StatsData ?? data) as Record<string, unknown>;
-    const totals  = (stats.Totals  ?? stats.Total ?? {}) as Record<string, Record<string, unknown>>;
+    // 递归定位 Totals 对象（兼容 data.StatsData.Totals / StatsData.Totals / 其它包裹）
+    const findTotals = (o: unknown): Record<string, unknown> | null => {
+      if (!o || typeof o !== 'object') return null;
+      const rec = o as Record<string, unknown>;
+      for (const key of ['Totals', 'Total', 'totals']) {
+        if (rec[key] && typeof rec[key] === 'object') return rec[key] as Record<string, unknown>;
+      }
+      for (const v of Object.values(rec)) {
+        const f = findTotals(v);
+        if (f) return f;
+      }
+      return null;
+    };
+    const totals = findTotals(json) ?? {};
+    const totalsKeys = Object.keys(totals);
 
-    const tv = (key: string) => Number((totals[key]?.Value ?? totals[key] ?? 0));
+    if (totalsKeys.length === 0) {
+      throw new Error(`[statQuery] 响应未找到 Totals（cookie 可能失效）: ${JSON.stringify(json).slice(0, 200)}`);
+    }
+
+    // 单字段取值：兼容 {Value: x} 包裹与裸值
+    const tv = (key: string) => {
+      const cell = (totals as Record<string, unknown>)[key];
+      if (cell == null) return 0;
+      if (typeof cell === 'object') return Number((cell as Record<string, unknown>).Value ?? 0);
+      return Number(cell);
+    };
 
     const liveSpent  = tv('live_stat_cost_for_roi2');
     const videoSpent = tv('video_stat_cost_for_roi2');
@@ -612,13 +639,30 @@ export class OceanEngineAdapter implements IAdAdapter {
     const videoGmv   = tv('video_oto_pay_order_stat_amount_for_roi2');
     const spent      = tv('stat_cost') || (liveSpent + videoSpent);
     const gmv        = liveGmv + videoGmv;
+    // 订单数：pc_home_roi2 数据集通常不返回订单数；如存在同名口径则带出
+    const orders = tv('oto_pay_order_count')
+      || tv('live_oto_pay_order_count_for_roi2')
+      || tv('video_oto_pay_order_count_for_roi2');
+    const orderCost = orders > 0 ? spent / orders : 0;
 
-    console.log(`[statQuery] ✅ ${advid} 今日消耗¥${spent} 直播¥${liveSpent} 视频¥${videoSpent} 成交¥${gmv}`);
+    console.log(
+      `[statQuery_pc_home_roi2] advid=${advid}\n` +
+      `  spent=${spent}\n  liveSpent=${liveSpent}\n  videoSpent=${videoSpent}\n` +
+      `  gmv=${gmv}  liveGmv=${liveGmv}  videoGmv=${videoGmv}\n` +
+      `  orders=${orders}  orderCost=${orderCost}\n` +
+      `  liveRoi=${tv('live_oto_pay_order_roi2_new')}  videoRoi=${tv('video_oto_pay_order_roi2_new')}\n` +
+      `  rawTotalsKeys=[${totalsKeys.join(', ')}]`,
+    );
+
     return {
       spent, liveSpent, videoSpent, liveGmv, videoGmv, gmv,
       liveRoi:  tv('live_oto_pay_order_roi2_new'),
       videoRoi: tv('video_oto_pay_order_roi2_new'),
       roi: spent > 0 ? gmv / spent : 0,
+      orders, orderCost,
+      rawTotals: totals,
+      totalsKeys,
+      httpStatus: res.status,
       source: 'statQuery_pc_home_roi2',
     };
   }

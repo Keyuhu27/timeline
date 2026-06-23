@@ -85,7 +85,7 @@ const ROUTES: Record<string, RouteModule> = {
   '/api/debug/oe/account-report':   { GET: routeDebugOE.accountReport },
   '/api/debug/oe/project-report':   { GET: routeDebugOE.projectReport },
   '/api/debug/oe/promotion-report': { GET: routeDebugOE.promotionReport },
-  '/api/debug/oe/stat-query':       { POST: routeDebugOE.statQuery },
+  '/api/debug/oe/stat-query':       { GET: routeDebugOE.statQueryAuto, POST: routeDebugOE.statQuery },
 };
 
 const PUBLIC_ROUTES = new Set(['/api/auth/login', '/api/auth', '/api/auth/callback']);

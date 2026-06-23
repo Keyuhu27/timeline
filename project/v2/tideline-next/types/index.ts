@@ -59,6 +59,8 @@ export interface Account {
     liveRoi:    number;
     videoRoi:   number;
     roi:        number;
+    orders:     number;
+    orderCost:  number;
     syncedAt:   number;
     source: 'statQuery_pc_home_roi2';
   };

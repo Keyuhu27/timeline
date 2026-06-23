@@ -103,6 +103,8 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
     { label: '短视频全域消耗', value: `¥ ${TL.fmtMoney(sq.videoSpent)}` },
     { label: '全域成交金额',   value: `¥ ${TL.fmtMoney(sq.gmv)}` },
     { label: '全域支付ROI',    value: sq.roi > 0 ? sq.roi.toFixed(2) : '—' },
+    { label: '全域成交订单',   value: sq.orders > 0 ? sq.orders : '—' },
+    { label: '订单成本',       value: sq.orderCost > 0 ? `¥ ${sq.orderCost.toFixed(1)}` : '—' },
     { label: '直播成交金额',   value: `¥ ${TL.fmtMoney(sq.liveGmv)}` },
     { label: '直播全域ROI',    value: sq.liveRoi > 0 ? sq.liveRoi.toFixed(2) : '—' },
     { label: '短视频成交金额', value: `¥ ${TL.fmtMoney(sq.videoGmv)}` },

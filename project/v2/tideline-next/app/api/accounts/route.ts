@@ -204,6 +204,7 @@ export async function syncLocalAccounts(
 
       // 后台首页 statQuery——优先级最高的今日消耗来源（全域投放口径）
       if (!process.env.OCEANENGINE_LOCALADS_COOKIE) {
+        delete account.statQueryReport;   // 没鉴权就别留旧值冒充
         console.warn(`[AccountSync] ⚠️ 后台 statQuery 未配置鉴权（OCEANENGINE_LOCALADS_COOKIE），跳过全域消耗拉取（${account.name}）`);
       } else {
         try {
@@ -212,9 +213,17 @@ export async function syncLocalAccounts(
           const startTime = `${todayStr} 00:00:00`;
           const endTime   = today8.toISOString().replace('T', ' ').slice(0, 19);
           const sq = await OceanEngineAdapter.fetchHomeRoi2StatQuery(account.externalId!, startTime, endTime);
-          account.statQueryReport = { ...sq, syncedAt: now };
+          account.statQueryReport = {
+            spent: sq.spent, liveSpent: sq.liveSpent, videoSpent: sq.videoSpent,
+            liveGmv: sq.liveGmv, videoGmv: sq.videoGmv, gmv: sq.gmv,
+            liveRoi: sq.liveRoi, videoRoi: sq.videoRoi, roi: sq.roi,
+            orders: sq.orders, orderCost: sq.orderCost,
+            syncedAt: now, source: 'statQuery_pc_home_roi2',
+          };
           console.log(`[AccountSync] ${account.name} statQuery: 消耗¥${sq.spent} 直播¥${sq.liveSpent} 视频¥${sq.videoSpent} 成交¥${sq.gmv}`);
         } catch (e) {
+          // 失败：清掉旧的 statQueryReport，避免前端显示陈旧的 0 并误标 source=statQuery
+          delete account.statQueryReport;
           console.error(`[AccountSync] ❌ statQuery 失败 ${account.name}: ${String(e)}`);
           errors.push(`statQuery失败 ${account.name}: ${String(e)}`);
         }
@@ -649,6 +658,7 @@ export const syncStatus: RouteHandler = async (req, res) => {
       }
       // 后台首页 statQuery——优先级最高的今日消耗来源（全域投放口径）
       if (!process.env.OCEANENGINE_LOCALADS_COOKIE) {
+        delete account.statQueryReport;   // 没鉴权就别留旧值冒充
         console.warn(`[SyncStatus] ⚠️ 后台 statQuery 未配置鉴权（OCEANENGINE_LOCALADS_COOKIE），跳过全域消耗拉取（${account.name}）`);
       } else {
         try {
@@ -657,9 +667,17 @@ export const syncStatus: RouteHandler = async (req, res) => {
           const startTime = `${todayStr} 00:00:00`;
           const endTime   = today8.toISOString().replace('T', ' ').slice(0, 19);
           const sq = await OceanEngineAdapter.fetchHomeRoi2StatQuery(account.externalId!, startTime, endTime);
-          account.statQueryReport = { ...sq, syncedAt: now };
+          account.statQueryReport = {
+            spent: sq.spent, liveSpent: sq.liveSpent, videoSpent: sq.videoSpent,
+            liveGmv: sq.liveGmv, videoGmv: sq.videoGmv, gmv: sq.gmv,
+            liveRoi: sq.liveRoi, videoRoi: sq.videoRoi, roi: sq.roi,
+            orders: sq.orders, orderCost: sq.orderCost,
+            syncedAt: now, source: 'statQuery_pc_home_roi2',
+          };
           console.log(`[SyncStatus] ${account.name} statQuery: 消耗¥${sq.spent} 直播¥${sq.liveSpent} 视频¥${sq.videoSpent} 成交¥${sq.gmv}`);
         } catch (e) {
+          // 失败：清掉旧的 statQueryReport，避免前端显示陈旧的 0 并误标 source=statQuery
+          delete account.statQueryReport;
           console.error(`[SyncStatus] ❌ statQuery 失败 ${account.name}: ${String(e)}`);
           errors.push(`statQuery失败 ${account.name}: ${String(e)}`);
         }
