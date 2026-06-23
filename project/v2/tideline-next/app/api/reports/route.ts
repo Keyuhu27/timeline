@@ -7,9 +7,10 @@
 // 平台 statQuery 只覆盖「昨日」全域口径的直播/短视频成交，回填到对应单元格；
 // 目标/历史/本月累计/核销等平台无数据，留作可编辑字段，由运营补充后保存。
 
-import { dailyReports, brands, accounts, brandById } from '../../../lib/db';
+import { dailyReports, accounts, brandById } from '../../../lib/db';
 import { ok, err }            from '../../../lib/api';
 import { saveSnapshot }       from '../../../lib/persist';
+import { OceanEngineAdapter } from '../../../lib/adapters/oceanengine-adapter';
 import type { RouteHandler }  from '../../../lib/api';
 import type { DailyReport, DailyReportRow, DailyReportLiveBlock } from '../../../types/index';
 
@@ -37,27 +38,72 @@ function timeProgressOf(date: string): number {
   return Math.round((day / daysInMonth) * 100);
 }
 
-/** 按品牌+日期生成一份新日报，回填平台 statQuery 数据（不落盘） */
-export function buildReport(brandId: string, date: string): DailyReport {
+// 北京时间（UTC+8）日期工具
+function bjDateStr(date: string, offsetDays = 0): string {
+  const d = new Date(date + 'T00:00:00+08:00');
+  d.setDate(d.getDate() + offsetDays);
+  return d.toISOString().slice(0, 10);
+}
+function bjMonthStartStr(date: string): string {
+  return date.slice(0, 8) + '01';
+}
+function sq(dt: string, hms: string) { return `${dt} ${hms}`; }
+
+/** 按品牌+日期生成一份新日报，尝试从 statQuery 按精确日期区间回填数据（不落盘） */
+export async function buildReport(brandId: string, date: string): Promise<DailyReport> {
   const brand = brandById(brandId);
   const account = accounts.find(a => a.brand === brandId);
-  const sq = account?.statQueryReport;
   const now = new Date().toISOString();
 
   const gmvRows = emptyRows();
   const liveDetail = { zibo: emptyLiveBlock(), dabo: emptyLiveBlock() };
   let seeded = false;
-  let seedNote = '未检测到该品牌的巨量后台全域数据（statQuery 未同步）。所有数字为空，请手动填写或先在品牌详情页「同步状态」。';
+  let seedNote = '未检测到该品牌的巨量后台全域数据（statQuery 无法访问）。所有数字为空，请手动填写。';
 
-  if (sq) {
-    seeded = true;
-    // 直播全域成交 → 自播；短视频全域成交 → 短视频（昨日列）
-    const zibo = gmvRows.find(r => r.key === 'zibo')!;
-    const video = gmvRows.find(r => r.key === 'video')!;
-    zibo.yesterday = Math.round(sq.liveGmv || 0);
-    video.yesterday = Math.round(sq.videoGmv || 0);
-    liveDetail.zibo.yesterday.gmv = Math.round(sq.liveGmv || 0);
-    seedNote = `已回填巨量后台全域口径「昨日」成交：直播自播 ¥${Math.round(sq.liveGmv || 0)}、短视频 ¥${Math.round(sq.videoGmv || 0)}（数据来源：statQuery pc_home_roi2，同步于 ${new Date(sq.syncedAt).toLocaleString('zh')}）。达播/POI、核销、目标、历史与本月累计平台无对应口径，请手动补充。`;
+  if (account?.externalId && process.env.OCEANENGINE_LOCALADS_COOKIE) {
+    const yesterday   = bjDateStr(date, -1);
+    const monthStart  = bjMonthStartStr(date);
+
+    try {
+      const [sqYday, sqMonth] = await Promise.all([
+        OceanEngineAdapter.fetchHomeRoi2StatQuery(
+          account.externalId,
+          sq(yesterday, '00:00:00'),
+          sq(yesterday, '23:59:59'),
+        ).catch(() => null),
+        OceanEngineAdapter.fetchHomeRoi2StatQuery(
+          account.externalId,
+          sq(monthStart, '00:00:00'),
+          sq(date, '23:59:59'),
+        ).catch(() => null),
+      ]);
+
+      const zibo  = gmvRows.find(r => r.key === 'zibo')!;
+      const video = gmvRows.find(r => r.key === 'video')!;
+
+      if (sqYday) {
+        zibo.yesterday  = Math.round(sqYday.liveGmv  || 0);
+        video.yesterday = Math.round(sqYday.videoGmv || 0);
+        liveDetail.zibo.yesterday.gmv = Math.round(sqYday.liveGmv || 0);
+        seeded = true;
+      }
+      if (sqMonth) {
+        zibo.month  = Math.round(sqMonth.liveGmv  || 0);
+        video.month = Math.round(sqMonth.videoGmv || 0);
+        liveDetail.zibo.month.gmv = Math.round(sqMonth.liveGmv || 0);
+        seeded = true;
+      }
+
+      if (seeded) {
+        seedNote = [
+          `昨日数据（${yesterday} 全天 statQuery）：自播 ¥${zibo.yesterday}、短视频 ¥${video.yesterday}。`,
+          `本月数据（${monthStart}～${date} statQuery）：自播 ¥${zibo.month}、短视频 ¥${video.month}。`,
+          `达播/POI、核销、目标、历史平台无对应口径，请手动补充。`,
+        ].join('');
+      }
+    } catch {
+      seedNote = 'statQuery 请求失败，所有数字为空，请手动填写。';
+    }
   }
 
   return {
@@ -79,7 +125,7 @@ export function buildReport(brandId: string, date: string): DailyReport {
   };
 }
 
-export const GET: RouteHandler = (req, res) => {
+export const GET: RouteHandler = async (req, res) => {
   const id = (req.query.id ?? '').trim();
   if (id) {
     const found = dailyReports.find(r => r.id === id);
@@ -93,7 +139,8 @@ export const GET: RouteHandler = (req, res) => {
     const saved = dailyReports.find(r => r.brandId === brand && r.date === date);
     if (saved) return ok(res, { ...saved, saved: true });
     // 没有已保存的 → 实时生成一份（不落盘），前端编辑后再 POST 保存
-    return ok(res, { ...buildReport(brand, date), saved: false });
+    const generated = await buildReport(brand, date);
+    return ok(res, { ...generated, saved: false });
   }
 
   // 列表：按日期倒序返回摘要
@@ -109,7 +156,7 @@ export const GET: RouteHandler = (req, res) => {
   return ok(res, list);
 };
 
-export const POST: RouteHandler = (req, res) => {
+export const POST: RouteHandler = async (req, res) => {
   const body = req.body as Partial<DailyReport>;
   if (!body || !body.brandId || !body.date) {
     return err(res, 'brandId 和 date 为必填项');
@@ -118,8 +165,9 @@ export const POST: RouteHandler = (req, res) => {
   const id = `rpt_${body.brandId}_${body.date}`;
   const existingIdx = dailyReports.findIndex(r => r.id === id);
 
+  const base = existingIdx >= 0 ? dailyReports[existingIdx] : await buildReport(body.brandId, body.date);
   const merged: DailyReport = {
-    ...(existingIdx >= 0 ? dailyReports[existingIdx] : buildReport(body.brandId, body.date)),
+    ...base,
     ...body,
     id,
     source: 'manual',
