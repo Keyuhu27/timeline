@@ -183,15 +183,17 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
   let businessMarketing: DailyReport['businessMarketing'] | undefined;
   let businessLive: DailyReport['businessLive'] | undefined;
   if (poiId && process.env.BUSINESS_COMPASS_COOKIE) {
+    console.log(`[buildReport] 生意经 poiId=${poiId} yesterday=${yesterday} monthStart=${monthStart} date=${date}`);
     const [trade, exposure, bIns, mktOv, mktTrend, liveYday, liveMonth] = await Promise.all([
-      BusinessCompassAdapter.fetchTradeSplit(poiId, yesterday, yesterday).catch(() => null),
-      BusinessCompassAdapter.fetchExposureSplit(poiId, yesterday, yesterday).catch(() => null),
-      BusinessCompassAdapter.fetchInsights(poiId, yesterday, date).catch(() => null),
-      BusinessCompassAdapter.fetchMarketingOverview(poiId, yesterday, yesterday).catch(() => null),
-      BusinessCompassAdapter.fetchMarketingTrend(poiId, yesterday, date).catch(() => null),
-      BusinessCompassAdapter.fetchLiveAnalysis(poiId, yesterday, yesterday).catch(() => null),
-      BusinessCompassAdapter.fetchLiveAnalysis(poiId, monthStart, date).catch(() => null),
+      BusinessCompassAdapter.fetchTradeSplit(poiId, yesterday, yesterday).catch((e) => { console.error('[buildReport] tradeSplit err', String(e)); return null; }),
+      BusinessCompassAdapter.fetchExposureSplit(poiId, yesterday, yesterday).catch((e) => { console.error('[buildReport] exposureSplit err', String(e)); return null; }),
+      BusinessCompassAdapter.fetchInsights(poiId, yesterday, date).catch((e) => { console.error('[buildReport] insights err', String(e)); return null; }),
+      BusinessCompassAdapter.fetchMarketingOverview(poiId, yesterday, yesterday).catch((e) => { console.error('[buildReport] mktOv err', String(e)); return null; }),
+      BusinessCompassAdapter.fetchMarketingTrend(poiId, yesterday, date).catch((e) => { console.error('[buildReport] mktTrend err', String(e)); return null; }),
+      BusinessCompassAdapter.fetchLiveAnalysis(poiId, yesterday, yesterday).catch((e) => { console.error('[buildReport] liveYday err', String(e)); return null; }),
+      BusinessCompassAdapter.fetchLiveAnalysis(poiId, monthStart, date).catch((e) => { console.error('[buildReport] liveMonth err', String(e)); return null; }),
     ]);
+    console.log(`[buildReport] liveYday=${liveYday ? `gmv=${liveYday.daboGmv} cnt=${liveYday.daboCnt}` : 'null'} liveMonth=${liveMonth ? `gmv=${liveMonth.daboGmv}` : 'null'}`);
     if (trade) {
       businessTrade = trade;
       sourceLines.push(`生意经流量成交（${yesterday}）：直播渠道 ¥${trade.liveGmv} / 视频渠道 ¥${trade.videoGmv} / 搜索场景 ¥${trade.searchSceneGmv}`);

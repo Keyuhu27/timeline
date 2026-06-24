@@ -212,8 +212,8 @@ export class BusinessCompassAdapter {
   }
 
   /** 生意经直播分析（达播 GMV / 场次 / 时长 / 达人数量）
-   *  使用真实 payload 结构：dito/query + path=/flow/content/analysis/live
-   *  measureDataV2.data[0] → 区间汇总；FlowSourceV2.data[] → 每日趋势（可按 date 过滤单日）
+   *  payload 对齐抓包真实结构：dito/query + path=/flow/content/analysis/live
+   *  measureDataV2.data[0] → 区间汇总；FlowSourceV2.data[] → 每日趋势
    */
   static async fetchLiveAnalysis(poiId: string, startDate: string, endDate: string): Promise<{
     daboGmv: number; daboCnt: number; daboDurationSec: number; authorCnt: number;
@@ -222,25 +222,30 @@ export class BusinessCompassAdapter {
     dailyTrend: Array<{ date: string; gmv: number; durationSec: number; liveCnt: number; authorCnt: number; verifyAmount: number }>;
     fetchedAt: string;
   } | null> {
-    if (!cookie() || !poiId) return null;
+    if (!cookie() || !poiId) {
+      console.log(`[BusinessLive] skip: cookie=${!!cookie()} poiId=${poiId}`);
+      return null;
+    }
     const url = process.env.BUSINESS_FLOW_LIVE_URL || (base() + '/api/dito/query');
-    if (!url.startsWith('http')) { console.warn('[BusinessCompass] 未配置直播分析 URL，跳过'); return null; }
+    if (!url.startsWith('http')) {
+      console.warn(`[BusinessLive] 未配置 URL (BUSINESS_FLOW_LIVE_URL)，base=${base()}`);
+      return null;
+    }
+    console.log(`[BusinessLive] request ${startDate}~${endDate} → ${url}`);
 
-    interface LiveMeasureItem { gmv?: number; duration?: number; live_cnt?: number; author_cnt?: number; verify_amount?: number; verify_cert_cnt?: number; }
-    interface LiveFlowRow { date?: string; room_type_filter_name?: string; gmv?: number; duration?: number; live_cnt?: number; author_cnt?: number; verify_amount?: number; verify_cert_cnt?: number; }
-    interface LiveRoomItem { room_type_tag?: string; gmv?: number; duration?: number; room_verify_order_amt_td?: number; room_verify_cert_num_td?: number; room_pay_cert_num_td?: number; room_pay_user_td?: number; }
-    interface LiveSection { measureDataV2?: { data?: LiveMeasureItem[] }; FlowSourceV2?: { data?: LiveFlowRow[] }; flowSourceV2?: { data?: LiveFlowRow[] }; roomRank?: { data?: LiveRoomItem[] }; }
-    interface LiveApiResp { layout?: Array<{ data?: LiveSection }> }
-
-    const json = await postJson<LiveApiResp>(url, {
+    const payload = {
       biz_params: {
         path: '/flow/content/analysis/live',
+        query: {},
+        first_render: false,
         common_params: {
+          is_sub_account: false,
           poi_id: poiId,
           start_date: startDate,
           end_date: endDate,
           date_type: 'custom',
           time_type: 'trade_date',
+          is_gray_live_trade_date: true,
           room_type_filter: 'TALENT',
           author_id: [],
         },
@@ -252,23 +257,63 @@ export class BusinessCompassAdapter {
           UserFeature:  {},
         },
       },
-      dito_params: { node_update_map: {} },
-    });
+      dito_params: {
+        is_event: true,
+        node_update_map: [
+          { type: 'refresh', node: 'LiveSelect_2' },
+          { type: 'refresh', node: 'VideoCoreDataCard_1' },
+          { type: 'refresh', node: 'LiveDealGoodsCard_1' },
+          { type: 'refresh', node: 'LiveListTable_1' },
+        ],
+      },
+    };
 
-    const layout = json?.layout ?? [];
+    let rawText = '';
+    try {
+      const res = await fetch(url, { method: 'POST', headers: headers(), body: JSON.stringify(payload) });
+      rawText = await res.text();
+      if (!res.ok) {
+        console.error(`[BusinessLive] HTTP ${res.status} ${startDate}~${endDate}: ${rawText.slice(0, 300)}`);
+        return null;
+      }
+    } catch (e) {
+      console.error(`[BusinessLive] 请求异常 ${startDate}~${endDate}:`, String(e));
+      return null;
+    }
+
+    interface LiveMeasureItem { gmv?: number; duration?: number; live_cnt?: number; author_cnt?: number; verify_amount?: number; verify_cert_cnt?: number; }
+    interface LiveFlowRow { date?: string; gmv?: number; duration?: number; live_cnt?: number; author_cnt?: number; verify_amount?: number; verify_cert_cnt?: number; }
+    interface LiveRoomItem { room_type_tag?: string; gmv?: number; duration?: number; room_verify_order_amt_td?: number; room_verify_cert_num_td?: number; room_pay_cert_num_td?: number; room_pay_user_td?: number; }
+    // key 可能是 measureDataV2 或 MeasureDataV2 — 用 any 后再查
+    interface LiveApiResp { layout?: Array<{ id?: string; subType?: string; data?: Record<string, unknown> }> }
+
+    let json: LiveApiResp | null = null;
+    try { json = JSON.parse(rawText) as LiveApiResp; }
+    catch { console.error(`[BusinessLive] 响应非 JSON ${startDate}~${endDate}: ${rawText.slice(0, 300)}`); return null; }
+
+    if (!json?.layout?.length) {
+      console.error(`[BusinessLive] layout 为空 ${startDate}~${endDate}: ${rawText.slice(0, 300)}`);
+      return null;
+    }
+
     let measure: LiveMeasureItem | null = null;
     const rooms: Array<{ roomTypeTag: string; gmv: number; durationSec: number; verifyOrderAmt: number; verifyCertNum: number; payCertNum: number; payUser: number }> = [];
     const dailyTrend: Array<{ date: string; gmv: number; durationSec: number; liveCnt: number; authorCnt: number; verifyAmount: number }> = [];
 
-    for (const section of layout) {
-      const d = section?.data;
-      if (!measure && d?.measureDataV2?.data?.[0]) {
-        measure = d.measureDataV2.data[0];
+    for (const section of json.layout ?? []) {
+      const d = section?.data ?? {};
+      // measureDataV2 大小写兼容
+      const mdv2Key = Object.keys(d).find(k => k.toLowerCase() === 'measuredatav2');
+      if (!measure && mdv2Key) {
+        const mdv2 = d[mdv2Key] as { data?: LiveMeasureItem[] } | undefined;
+        if (mdv2?.data?.[0]) measure = mdv2.data[0];
       }
-      const flowRows = d?.FlowSourceV2?.data ?? d?.flowSourceV2?.data ?? [];
-      for (const r of flowRows) {
-        if (r.date) {
-          dailyTrend.push({
+      // FlowSourceV2 每日趋势
+      const flowKey = Object.keys(d).find(k => k.toLowerCase() === 'flowsourcev2');
+      if (flowKey) {
+        const flow = d[flowKey] as { data?: LiveFlowRow[] } | undefined;
+        for (const r of flow?.data ?? []) {
+          if (r.date) dailyTrend.push({
             date: r.date,
             gmv: fen2yuan(r.gmv),
             durationSec: Number(r.duration ?? 0),
@@ -278,8 +323,11 @@ export class BusinessCompassAdapter {
           });
         }
       }
-      if (d?.roomRank?.data?.length) {
-        for (const r of d.roomRank.data) {
+      // roomRank 大小写兼容
+      const rrKey = Object.keys(d).find(k => k.toLowerCase() === 'roomrank');
+      if (rrKey) {
+        const rr = d[rrKey] as { data?: LiveRoomItem[] } | undefined;
+        for (const r of rr?.data ?? []) {
           rooms.push({
             roomTypeTag: r.room_type_tag ?? '',
             gmv: fen2yuan(r.gmv),
@@ -293,8 +341,14 @@ export class BusinessCompassAdapter {
       }
     }
 
-    if (!measure) { console.log(`[BusinessCompass] 直播分析无数据 poi=${poiId} ${startDate}~${endDate}`); return null; }
-    return {
+    if (!measure) {
+      // 打印 layout 节点的 key 列表，帮助定位真实路径
+      const layoutKeys = (json.layout ?? []).map(s => `[id=${s.id ?? s.subType ?? '?'} keys=${Object.keys(s.data ?? {}).join(',')}]`).join(' ');
+      console.error(`[BusinessLive] measureDataV2 未找到 ${startDate}~${endDate}. layout节点: ${layoutKeys}`);
+      return null;
+    }
+
+    const result = {
       daboGmv: fen2yuan(measure.gmv),
       daboCnt: Number(measure.live_cnt ?? 0),
       daboDurationSec: Number(measure.duration ?? 0),
@@ -305,6 +359,8 @@ export class BusinessCompassAdapter {
       dailyTrend: dailyTrend.sort((a, b) => a.date < b.date ? -1 : 1),
       fetchedAt: new Date().toISOString(),
     };
+    console.log(`[BusinessLive] parsed ${startDate}~${endDate}: gmv=${result.daboGmv} cnt=${result.daboCnt} dur=${result.daboDurationSec}s author=${result.authorCnt} verifyAmt=${result.verifyAmount}`);
+    return result;
   }
 
   /** 生意经经营洞察（data_conclusion / data_explain） */
