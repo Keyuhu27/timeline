@@ -183,13 +183,14 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
   let businessMarketing: DailyReport['businessMarketing'] | undefined;
   let businessLive: DailyReport['businessLive'] | undefined;
   if (poiId && process.env.BUSINESS_COMPASS_COOKIE) {
-    const [trade, exposure, bIns, mktOv, mktTrend, liveA] = await Promise.all([
+    const [trade, exposure, bIns, mktOv, mktTrend, liveYday, liveMonth] = await Promise.all([
       BusinessCompassAdapter.fetchTradeSplit(poiId, yesterday, yesterday).catch(() => null),
       BusinessCompassAdapter.fetchExposureSplit(poiId, yesterday, yesterday).catch(() => null),
       BusinessCompassAdapter.fetchInsights(poiId, yesterday, date).catch(() => null),
       BusinessCompassAdapter.fetchMarketingOverview(poiId, yesterday, yesterday).catch(() => null),
       BusinessCompassAdapter.fetchMarketingTrend(poiId, yesterday, date).catch(() => null),
       BusinessCompassAdapter.fetchLiveAnalysis(poiId, yesterday, yesterday).catch(() => null),
+      BusinessCompassAdapter.fetchLiveAnalysis(poiId, monthStart, date).catch(() => null),
     ]);
     if (trade) {
       businessTrade = trade;
@@ -209,15 +210,30 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
       sourceLines.push(`生意经营销成交（${yesterday}）：营销成交 ¥${mktOv.couponPayGmv} / 平台补贴 ¥${mktOv.platAmt} / 商家补贴 ¥${mktOv.merAmt}`);
       seeded = true;
     }
-    if (liveA) {
-      businessLive = liveA;
+    if (liveYday || liveMonth) {
+      const base = liveYday ?? liveMonth!;
+      businessLive = {
+        ...base,
+        ...(liveMonth ? { monthGmv: Math.round(liveMonth.daboGmv), monthCnt: liveMonth.daboCnt, monthDurationSec: liveMonth.daboDurationSec, monthAuthorCnt: liveMonth.authorCnt } : {}),
+      };
       const dabo = gmvRows.find(r => r.key === 'dabo')!;
-      dabo.yesterday = Math.round(liveA.daboGmv);
-      dabo.src = { ...dabo.src, yesterday: 'platform' };
-      liveDetail.dabo.yesterday.gmv = Math.round(liveA.daboGmv);
-      liveDetail.dabo.yesterday.sessions = liveA.daboCnt || null;
-      liveDetail.dabo.yesterday.duration = liveA.daboDurationSec || null;
-      sourceLines.push(`生意经达播（${yesterday}）：GMV ¥${liveA.daboGmv} / ${liveA.daboCnt} 场 / 时长 ${Math.round(liveA.daboDurationSec / 60)} 分钟 / ${liveA.authorCnt} 达人`);
+      if (liveYday) {
+        dabo.yesterday = Math.round(liveYday.daboGmv);
+        dabo.src = { ...dabo.src, yesterday: 'platform' };
+        liveDetail.dabo.yesterday.gmv = Math.round(liveYday.daboGmv);
+        liveDetail.dabo.yesterday.sessions = liveYday.daboCnt || null;
+        liveDetail.dabo.yesterday.duration = liveYday.daboDurationSec || null;
+      }
+      if (liveMonth) {
+        dabo.month = Math.round(liveMonth.daboGmv);
+        dabo.src = { ...dabo.src, month: 'platform' };
+        liveDetail.dabo.month.gmv = Math.round(liveMonth.daboGmv);
+        liveDetail.dabo.month.sessions = liveMonth.daboCnt || null;
+        liveDetail.dabo.month.duration = liveMonth.daboDurationSec || null;
+      }
+      const yd = liveYday ? `昨日 GMV ¥${liveYday.daboGmv} / ${liveYday.daboCnt} 场 / ${liveYday.authorCnt} 达人` : '';
+      const mo = liveMonth ? `本月 GMV ¥${liveMonth.daboGmv}` : '';
+      sourceLines.push(`生意经达播（${[yd, mo].filter(Boolean).join('，')}）`);
       seeded = true;
     }
   }

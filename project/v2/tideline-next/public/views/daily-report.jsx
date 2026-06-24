@@ -384,11 +384,15 @@ TL.openDailyReport = function (brandId, date) {
       const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
       return h > 0 ? `${h}h ${m}m` : `${m}m`;
     };
+    const hasMonth = !isNil(bl.monthGmv);
+    const hasTrend = bl.dailyTrend?.length > 0;
     return (
       <section style={{ marginBottom: 16 }}>
         <SectionTitle title="生意经达播分析" sub={`来源：生意经 dito/query TALENT · ${bl.fetchedAt?.slice(0,10) ?? ''}`} badge="business" />
         <div className="card" style={{ padding: '14px 16px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12, marginBottom: bl.rooms?.length ? 12 : 0 }}>
+          {/* 昨日汇总 */}
+          <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 6, fontWeight: 500 }}>昨日</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 12, marginBottom: 14 }}>
             <div>
               <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2 }}>达播成交 GMV</div>
               <div style={{ fontSize: 20, fontWeight: 600, color: 'var(--text)' }}>{fmtY(bl.daboGmv)}</div>
@@ -406,14 +410,69 @@ TL.openDailyReport = function (brandId, date) {
               <div style={{ fontSize: 20, fontWeight: 600, color: '#0958d9' }}>{fmtN(bl.authorCnt)}</div>
             </div>
             <div>
-              <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2 }}>成交券数</div>
-              <div style={{ fontSize: 18, fontWeight: 500, color: 'var(--text)' }}>{fmtN(bl.payCertCnt)}</div>
+              <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2 }}>直播间核销金额</div>
+              <div style={{ fontSize: 18, fontWeight: 500, color: 'var(--text)' }}>{fmtY(bl.verifyAmount)}</div>
             </div>
             <div>
-              <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2 }}>退款金额</div>
-              <div style={{ fontSize: 18, fontWeight: 500, color: bl.refundAmount > 0 ? '#cf1322' : '#8c8c8c' }}>{fmtY(bl.refundAmount)}</div>
+              <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2 }}>核销券数</div>
+              <div style={{ fontSize: 18, fontWeight: 500, color: 'var(--text)' }}>{fmtN(bl.verifyCertCnt)}</div>
             </div>
           </div>
+          {/* 本月汇总 */}
+          {hasMonth && (
+            <>
+              <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 6, fontWeight: 500 }}>本月累计</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 12, marginBottom: 14 }}>
+                <div>
+                  <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2 }}>达播成交 GMV</div>
+                  <div style={{ fontSize: 20, fontWeight: 600, color: 'var(--text)' }}>{fmtY(bl.monthGmv)}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2 }}>达播场次</div>
+                  <div style={{ fontSize: 20, fontWeight: 600, color: 'var(--text)' }}>{fmtN(bl.monthCnt)}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2 }}>达播时长</div>
+                  <div style={{ fontSize: 20, fontWeight: 600, color: 'var(--text)' }}>{fmtDur(bl.monthDurationSec)}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2 }}>达人数量</div>
+                  <div style={{ fontSize: 20, fontWeight: 600, color: '#0958d9' }}>{fmtN(bl.monthAuthorCnt)}</div>
+                </div>
+              </div>
+            </>
+          )}
+          {/* 每日趋势 */}
+          {hasTrend && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 6 }}>每日达播趋势</div>
+              <div style={{ overflowX: 'auto' }}>
+                <table className="tbl">
+                  <thead><tr>
+                    <th>日期</th>
+                    <th className="num">达播 GMV</th>
+                    <th className="num">场次</th>
+                    <th className="num">时长</th>
+                    <th className="num">达人数</th>
+                    <th className="num">核销金额</th>
+                  </tr></thead>
+                  <tbody>
+                    {bl.dailyTrend.map((r) => (
+                      <tr key={r.date}>
+                        <td style={{ fontSize: 12 }}>{r.date}</td>
+                        <td className="num" style={{ fontSize: 12 }}>{fmtY(r.gmv)}</td>
+                        <td className="num" style={{ fontSize: 12 }}>{fmtN(r.liveCnt)}</td>
+                        <td className="num" style={{ fontSize: 12 }}>{fmtDur(r.durationSec)}</td>
+                        <td className="num" style={{ fontSize: 12 }}>{fmtN(r.authorCnt)}</td>
+                        <td className="num" style={{ fontSize: 12 }}>{fmtY(r.verifyAmount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {/* 场次明细 */}
           {bl.rooms?.length > 0 && (
             <div>
               <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 6 }}>达播场次明细（Top {bl.rooms.length}）</div>

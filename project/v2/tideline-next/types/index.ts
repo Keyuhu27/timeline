@@ -489,14 +489,23 @@ export interface DailyReport {
   };
 
   // 生意经直播分析（达播口径：room_type_filter=TALENT）
+  // 昨日区间请求 → yesterday 汇总；本月区间请求 → month 汇总（分别存两个字段）
   businessLive?: {
+    // 区间汇总（measureDataV2.data[0]）
     daboGmv: number;          // 达播成交 GMV（元）
     daboCnt: number;          // 达播场次
     daboDurationSec: number;  // 达播时长（秒）
     authorCnt: number;        // 达人数量
-    payCertCnt: number;       // 成交券数
-    payUv: number;            // 成交 UV
-    refundAmount: number;     // 退款金额（元）
+    verifyAmount: number;     // 直播间核销金额（元）
+    verifyCertCnt: number;    // 直播间核销券数/辅助
+    // 本月汇总（由 monthResult 回填，避免两次请求都存在 businessLive 时覆盖）
+    monthGmv?: number;
+    monthCnt?: number;
+    monthDurationSec?: number;
+    monthAuthorCnt?: number;
+    // 每日趋势（FlowSourceV2.data[]，按 date 升序）
+    dailyTrend: Array<{ date: string; gmv: number; durationSec: number; liveCnt: number; authorCnt: number; verifyAmount: number }>;
+    // 场次明细（roomRank.data[]）
     rooms: Array<{
       roomTypeTag: string;
       gmv: number;
