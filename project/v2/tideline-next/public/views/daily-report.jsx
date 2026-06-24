@@ -366,6 +366,88 @@ TL.openDailyReport = function (brandId, date) {
     );
   }
 
+  // ── 生意经直播分析（达播）──────────────────────────────────────────────────────
+  function BusinessLiveCard({ businessLive }) {
+    if (!businessLive) return (
+      <section style={{ marginBottom: 16 }}>
+        <SectionTitle title="生意经达播分析" sub="达播 GMV / 场次 / 时长 / 达人数量" badge="business" />
+        <div style={{ padding: '10px 14px', background: '#fafafa', borderRadius: 8, fontSize: 12, color: '#8c8c8c' }}>
+          待接入 — 未配置生意经直播分析接口（BUSINESS_FLOW_LIVE_URL）或暂无达播数据
+        </div>
+      </section>
+    );
+    const bl = businessLive;
+    const fmtY = (v) => isNil(v) ? '—' : `¥${Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const fmtN = (v) => isNil(v) ? '—' : Number(v).toLocaleString('zh-CN');
+    const fmtDur = (sec) => {
+      if (isNil(sec) || sec === 0) return '—';
+      const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+      return h > 0 ? `${h}h ${m}m` : `${m}m`;
+    };
+    return (
+      <section style={{ marginBottom: 16 }}>
+        <SectionTitle title="生意经达播分析" sub={`来源：生意经 dito/query TALENT · ${bl.fetchedAt?.slice(0,10) ?? ''}`} badge="business" />
+        <div className="card" style={{ padding: '14px 16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12, marginBottom: bl.rooms?.length ? 12 : 0 }}>
+            <div>
+              <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2 }}>达播成交 GMV</div>
+              <div style={{ fontSize: 20, fontWeight: 600, color: 'var(--text)' }}>{fmtY(bl.daboGmv)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2 }}>达播场次</div>
+              <div style={{ fontSize: 20, fontWeight: 600, color: 'var(--text)' }}>{fmtN(bl.daboCnt)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2 }}>达播时长</div>
+              <div style={{ fontSize: 20, fontWeight: 600, color: 'var(--text)' }}>{fmtDur(bl.daboDurationSec)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2 }}>达人数量</div>
+              <div style={{ fontSize: 20, fontWeight: 600, color: '#0958d9' }}>{fmtN(bl.authorCnt)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2 }}>成交券数</div>
+              <div style={{ fontSize: 18, fontWeight: 500, color: 'var(--text)' }}>{fmtN(bl.payCertCnt)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 2 }}>退款金额</div>
+              <div style={{ fontSize: 18, fontWeight: 500, color: bl.refundAmount > 0 ? '#cf1322' : '#8c8c8c' }}>{fmtY(bl.refundAmount)}</div>
+            </div>
+          </div>
+          {bl.rooms?.length > 0 && (
+            <div>
+              <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 6 }}>达播场次明细（Top {bl.rooms.length}）</div>
+              <div style={{ overflowX: 'auto' }}>
+                <table className="tbl">
+                  <thead><tr>
+                    <th>直播类型</th>
+                    <th className="num">GMV</th>
+                    <th className="num">时长</th>
+                    <th className="num">核销券数</th>
+                    <th className="num">成交券数</th>
+                    <th className="num">成交人数</th>
+                  </tr></thead>
+                  <tbody>
+                    {bl.rooms.map((r, i) => (
+                      <tr key={i}>
+                        <td style={{ fontSize: 12 }}>{r.roomTypeTag || '—'}</td>
+                        <td className="num" style={{ fontSize: 12 }}>{fmtY(r.gmv)}</td>
+                        <td className="num" style={{ fontSize: 12 }}>{fmtDur(r.durationSec)}</td>
+                        <td className="num" style={{ fontSize: 12 }}>{fmtN(r.verifyCertNum)}</td>
+                        <td className="num" style={{ fontSize: 12 }}>{fmtN(r.payCertNum)}</td>
+                        <td className="num" style={{ fontSize: 12 }}>{fmtN(r.payUser)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  }
+
   // ── 平台经营洞察（来客 + 生意经）─────────────────────────────────────────────
   function InsightBlock({ laikeInsight, businessInsight }) {
     const items = [];
@@ -677,6 +759,9 @@ TL.openDailyReport = function (brandId, date) {
 
               {/* 生意经营销表现 */}
               <BusinessMarketingCard businessMarketing={rep.businessMarketing} />
+
+              {/* 生意经达播分析 */}
+              <BusinessLiveCard businessLive={rep.businessLive} />
 
               {/* 生意经流量成交拆分 */}
               <BusinessTradeCard businessTrade={rep.businessTrade} />

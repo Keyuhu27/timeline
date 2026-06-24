@@ -181,13 +181,15 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
   let businessExposure: DailyReport['businessExposure'] | undefined;
   let businessInsight: DailyReport['businessInsight'] | undefined;
   let businessMarketing: DailyReport['businessMarketing'] | undefined;
+  let businessLive: DailyReport['businessLive'] | undefined;
   if (poiId && process.env.BUSINESS_COMPASS_COOKIE) {
-    const [trade, exposure, bIns, mktOv, mktTrend] = await Promise.all([
+    const [trade, exposure, bIns, mktOv, mktTrend, liveA] = await Promise.all([
       BusinessCompassAdapter.fetchTradeSplit(poiId, yesterday, yesterday).catch(() => null),
       BusinessCompassAdapter.fetchExposureSplit(poiId, yesterday, yesterday).catch(() => null),
       BusinessCompassAdapter.fetchInsights(poiId, yesterday, date).catch(() => null),
       BusinessCompassAdapter.fetchMarketingOverview(poiId, yesterday, yesterday).catch(() => null),
       BusinessCompassAdapter.fetchMarketingTrend(poiId, yesterday, date).catch(() => null),
+      BusinessCompassAdapter.fetchLiveAnalysis(poiId, yesterday, yesterday).catch(() => null),
     ]);
     if (trade) {
       businessTrade = trade;
@@ -205,6 +207,17 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
     if (mktOv) {
       businessMarketing = { ...mktOv, trend: mktTrend ?? [] };
       sourceLines.push(`生意经营销成交（${yesterday}）：营销成交 ¥${mktOv.couponPayGmv} / 平台补贴 ¥${mktOv.platAmt} / 商家补贴 ¥${mktOv.merAmt}`);
+      seeded = true;
+    }
+    if (liveA) {
+      businessLive = liveA;
+      const dabo = gmvRows.find(r => r.key === 'dabo')!;
+      dabo.yesterday = Math.round(liveA.daboGmv);
+      dabo.src = { ...dabo.src, yesterday: 'platform' };
+      liveDetail.dabo.yesterday.gmv = Math.round(liveA.daboGmv);
+      liveDetail.dabo.yesterday.sessions = liveA.daboCnt || null;
+      liveDetail.dabo.yesterday.duration = liveA.daboDurationSec || null;
+      sourceLines.push(`生意经达播（${yesterday}）：GMV ¥${liveA.daboGmv} / ${liveA.daboCnt} 场 / 时长 ${Math.round(liveA.daboDurationSec / 60)} 分钟 / ${liveA.authorCnt} 达人`);
       seeded = true;
     }
   }
@@ -238,6 +251,7 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
     ...(businessExposure  ? { businessExposure }  : {}),
     ...(businessInsight   ? { businessInsight }   : {}),
     ...(businessMarketing ? { businessMarketing } : {}),
+    ...(businessLive      ? { businessLive }      : {}),
   };
 }
 

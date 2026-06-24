@@ -211,6 +211,72 @@ export class BusinessCompassAdapter {
       .sort((a, b) => a.date < b.date ? -1 : 1);
   }
 
+  /** 生意经直播分析（达播 GMV / 场次 / 时长 / 达人数量） */
+  static async fetchLiveAnalysis(poiId: string, startDate: string, endDate: string): Promise<{
+    daboGmv: number; daboCnt: number; daboDurationSec: number; authorCnt: number;
+    payCertCnt: number; payUv: number; refundAmount: number;
+    rooms: Array<{ roomTypeTag: string; gmv: number; durationSec: number; verifyOrderAmt: number; verifyCertNum: number; payCertNum: number; payUser: number }>;
+    fetchedAt: string;
+  } | null> {
+    if (!cookie() || !poiId) return null;
+    const url = process.env.BUSINESS_FLOW_LIVE_URL || (base() + '/api/dito/query');
+    if (!url.startsWith('http')) { console.warn('[BusinessCompass] 未配置直播分析 URL，跳过'); return null; }
+
+    interface LiveMeasureItem { gmv?: number; duration?: number; live_cnt?: number; author_cnt?: number; pay_cert_cnt?: number; pay_uv?: number; refund_amount?: number; }
+    interface LiveRoomItem { room_type_tag?: string; gmv?: number; duration?: number; room_verify_order_amt_td?: number; room_verify_cert_num_td?: number; room_pay_cert_num_td?: number; room_pay_user_td?: number; }
+    interface LiveApiResp { layout?: Array<{ data?: { measureDataV2?: { data?: LiveMeasureItem[] }; roomRank?: { data?: LiveRoomItem[] } } }> }
+    const json = await postJson<LiveApiResp>(url, {
+      biz_params: {
+        path: '/flow/content/analysis/live',
+        common_params: {
+          poi_id: poiId, start_date: startDate, end_date: endDate,
+          room_type_filter: 'TALENT',
+        },
+        module_params: {
+          RoomRank: { limit: 100, order_by: 'gmv', order: 'desc' },
+        },
+      },
+      dito_params: { node_update_map: {} },
+    });
+
+    const layout = json?.layout ?? [];
+    let measure: { gmv?: number; duration?: number; live_cnt?: number; author_cnt?: number; pay_cert_cnt?: number; pay_uv?: number; refund_amount?: number } | null = null;
+    const rooms: Array<{ roomTypeTag: string; gmv: number; durationSec: number; verifyOrderAmt: number; verifyCertNum: number; payCertNum: number; payUser: number }> = [];
+
+    for (const section of layout) {
+      const d = section?.data;
+      if (!measure && d?.measureDataV2?.data?.[0]) {
+        measure = d.measureDataV2.data[0];
+      }
+      if (d?.roomRank?.data?.length) {
+        for (const r of d.roomRank.data) {
+          rooms.push({
+            roomTypeTag: r.room_type_tag ?? '',
+            gmv: fen2yuan(r.gmv),
+            durationSec: Number(r.duration ?? 0),
+            verifyOrderAmt: fen2yuan(r.room_verify_order_amt_td),
+            verifyCertNum: Number(r.room_verify_cert_num_td ?? 0),
+            payCertNum: Number(r.room_pay_cert_num_td ?? 0),
+            payUser: Number(r.room_pay_user_td ?? 0),
+          });
+        }
+      }
+    }
+
+    if (!measure) { console.log(`[BusinessCompass] 直播分析无数据 poi=${poiId}`); return null; }
+    return {
+      daboGmv: fen2yuan(measure.gmv),
+      daboCnt: Number(measure.live_cnt ?? 0),
+      daboDurationSec: Number(measure.duration ?? 0),
+      authorCnt: Number(measure.author_cnt ?? 0),
+      payCertCnt: Number(measure.pay_cert_cnt ?? 0),
+      payUv: Number(measure.pay_uv ?? 0),
+      refundAmount: fen2yuan(measure.refund_amount),
+      rooms,
+      fetchedAt: new Date().toISOString(),
+    };
+  }
+
   /** 生意经经营洞察（data_conclusion / data_explain） */
   static async fetchInsights(poiId: string, startDate: string, endDate: string): Promise<BusinessInsightResult | null> {
     if (!cookie() || !poiId) return null;

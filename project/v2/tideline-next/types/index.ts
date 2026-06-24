@@ -487,6 +487,27 @@ export interface DailyReport {
     trend: Array<{ date: string; gmv: number }>; // 营销成交趋势（元）
     fetchedAt: string;
   };
+
+  // 生意经直播分析（达播口径：room_type_filter=TALENT）
+  businessLive?: {
+    daboGmv: number;          // 达播成交 GMV（元）
+    daboCnt: number;          // 达播场次
+    daboDurationSec: number;  // 达播时长（秒）
+    authorCnt: number;        // 达人数量
+    payCertCnt: number;       // 成交券数
+    payUv: number;            // 成交 UV
+    refundAmount: number;     // 退款金额（元）
+    rooms: Array<{
+      roomTypeTag: string;
+      gmv: number;
+      durationSec: number;
+      verifyOrderAmt: number;
+      verifyCertNum: number;
+      payCertNum: number;
+      payUser: number;
+    }>;
+    fetchedAt: string;
+  };
 }
 
 // ─── API 响应 ─────────────────────────────────────────────────────────────
