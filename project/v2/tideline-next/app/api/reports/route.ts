@@ -213,25 +213,34 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
       seeded = true;
     }
     if (liveYday || liveMonth) {
-      const base = liveYday ?? liveMonth!;
+      const liveBase = liveYday ?? liveMonth!;
       businessLive = {
-        ...base,
-        ...(liveMonth ? { monthGmv: Math.round(liveMonth.daboGmv), monthCnt: liveMonth.daboCnt, monthDurationSec: liveMonth.daboDurationSec, monthAuthorCnt: liveMonth.authorCnt } : {}),
+        ...liveBase,
+        ...(liveMonth ? {
+          monthGmv: Math.round(liveMonth.daboGmv),
+          monthCnt: liveMonth.daboCnt,
+          monthDurationSec: liveMonth.daboDurationSec,
+          monthAuthorCnt: liveMonth.authorCnt,
+        } : {}),
       };
       const dabo = gmvRows.find(r => r.key === 'dabo')!;
       if (liveYday) {
         dabo.yesterday = Math.round(liveYday.daboGmv);
         dabo.src = { ...dabo.src, yesterday: 'platform' };
-        liveDetail.dabo.yesterday.gmv = Math.round(liveYday.daboGmv);
-        liveDetail.dabo.yesterday.sessions = liveYday.daboCnt || null;
-        liveDetail.dabo.yesterday.duration = liveYday.daboDurationSec || null;
+        liveDetail.dabo.yesterday.gmv      = Math.round(liveYday.daboGmv);
+        liveDetail.dabo.yesterday.sessions = liveYday.daboCnt   || null;
+        liveDetail.dabo.yesterday.duration = liveYday.daboDurationSec
+          ? Math.round(liveYday.daboDurationSec / 3600 * 10) / 10  // 秒→小时，保留1位小数
+          : null;
       }
       if (liveMonth) {
         dabo.month = Math.round(liveMonth.daboGmv);
         dabo.src = { ...dabo.src, month: 'platform' };
-        liveDetail.dabo.month.gmv = Math.round(liveMonth.daboGmv);
-        liveDetail.dabo.month.sessions = liveMonth.daboCnt || null;
-        liveDetail.dabo.month.duration = liveMonth.daboDurationSec || null;
+        liveDetail.dabo.month.gmv      = Math.round(liveMonth.daboGmv);
+        liveDetail.dabo.month.sessions = liveMonth.daboCnt   || null;
+        liveDetail.dabo.month.duration = liveMonth.daboDurationSec
+          ? Math.round(liveMonth.daboDurationSec / 3600 * 10) / 10
+          : null;
       }
       const yd = liveYday ? `昨日 GMV ¥${liveYday.daboGmv} / ${liveYday.daboCnt} 场 / ${liveYday.authorCnt} 达人` : '';
       const mo = liveMonth ? `本月 GMV ¥${liveMonth.daboGmv}` : '';
@@ -241,10 +250,10 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
   }
 
   const seedNote = sourceLines.length
-    ? `自动回填：${sourceLines.join('；')}。达播/POI、核销明细、直播场次/时长平台无接口，请手动补充。`
+    ? `自动回填：${sourceLines.join('；')}。POI、核销明细平台无接口，请手动补充。`
     : '未检测到可用的平台数据接口（未配置 statQuery Cookie 或 Laike Cookie）。所有字段为空，请手动填写。';
 
-  return {
+  const report = {
     id: `rpt_${brandId}_${date}`,
     brandId,
     brandName: brand?.name || (account?.name ?? brandId),
@@ -271,6 +280,13 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
     ...(businessMarketing ? { businessMarketing } : {}),
     ...(businessLive      ? { businessLive }      : {}),
   };
+
+  const daboRow = report.gmvRows.find(r => r.key === 'dabo');
+  console.log(`[ReportAPI] gmvRows dabo =`, JSON.stringify({ yesterday: daboRow?.yesterday, month: daboRow?.month, src: daboRow?.src }));
+  console.log(`[ReportAPI] businessLive =`, businessLive ? JSON.stringify({ daboGmv: businessLive.daboGmv, monthGmv: (businessLive as any).monthGmv, daboCnt: businessLive.daboCnt, daboDurationSec: businessLive.daboDurationSec }) : 'undefined');
+  console.log(`[ReportAPI] liveDetail.dabo =`, JSON.stringify({ yesterday: report.liveDetail.dabo.yesterday, month: report.liveDetail.dabo.month }));
+
+  return report;
 }
 
 export const GET: RouteHandler = async (req, res) => {

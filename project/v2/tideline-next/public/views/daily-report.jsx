@@ -598,7 +598,7 @@ TL.openDailyReport = function (brandId, date) {
   }
 
   // ── 直播板块明细 ─────────────────────────────────────────────────────────────
-  function LiveDetailTable({ liveDetail, onChange }) {
+  function LiveDetailTable({ liveDetail, onChange, businessLive }) {
     const COLS = [
       { block: 'zibo', period: 'history',   label: '历史数据' },
       { block: 'zibo', period: 'yesterday', label: '昨日数据' },
@@ -624,19 +624,27 @@ TL.openDailyReport = function (brandId, date) {
       const c = liveDetail[block][period];
       return (c.duration && c.gmv) ? Math.round(c.gmv / c.duration).toLocaleString() : '—';
     };
+    const daboHasPlatform = businessLive && (businessLive.daboGmv > 0 || businessLive.daboCnt > 0);
     return (
       <section style={{ marginBottom: 20 }}>
-        <SectionTitle title="直播板块明细" sub="场次 / GMV / 时长 / 单小时GMV" badge="pending" />
-        <div style={{ fontSize: 11.5, color: '#d48806', padding: '6px 10px', background: 'rgba(212,136,6,0.06)', borderRadius: 7, marginBottom: 8 }}>
-          直播场次、时长、达播数据暂无平台接口，请手动录入。
-        </div>
+        <SectionTitle title="直播板块明细" sub="场次 / GMV / 时长(h) / 单小时GMV" badge={daboHasPlatform ? 'platform' : 'pending'} />
+        {!daboHasPlatform && (
+          <div style={{ fontSize: 11.5, color: '#d48806', padding: '6px 10px', background: 'rgba(212,136,6,0.06)', borderRadius: 7, marginBottom: 8 }}>
+            自播场次/时长暂无平台接口，请手动录入。达播数据将从生意经自动拉取（需配置 BUSINESS_COMPASS_COOKIE）。
+          </div>
+        )}
+        {daboHasPlatform && (
+          <div style={{ fontSize: 11.5, color: '#389e0d', padding: '6px 10px', background: 'rgba(56,158,13,0.06)', borderRadius: 7, marginBottom: 8 }}>
+            达播数据已从生意经自动拉取（昨日 GMV ¥{businessLive.daboGmv?.toLocaleString?.() ?? '—'} / {businessLive.daboCnt} 场）。自播场次/时长请手动录入。
+          </div>
+        )}
         <div className="card" style={{ overflow: 'auto' }}>
           <table className="tbl">
             <thead>
               <tr>
                 <th rowSpan={2} style={{ width: 90 }}>项目</th>
                 <th colSpan={3} style={{ textAlign: 'center', background: 'var(--bg-subtle)' }}>自播板块</th>
-                <th colSpan={3} style={{ textAlign: 'center', background: 'var(--bg-subtle)' }}>达播板块 <SrcBadge src="pending" /></th>
+                <th colSpan={3} style={{ textAlign: 'center', background: 'var(--bg-subtle)' }}>达播板块 <SrcBadge src={daboHasPlatform ? 'platform' : 'pending'} /></th>
               </tr>
               <tr>{COLS.map((c, i) => <th key={i} className="num">{c.label}</th>)}</tr>
             </thead>
@@ -829,7 +837,7 @@ TL.openDailyReport = function (brandId, date) {
               <BusinessExposureCard businessExposure={rep.businessExposure} />
 
               {/* 直播板块明细 */}
-              <LiveDetailTable liveDetail={rep.liveDetail} onChange={liveChange} />
+              <LiveDetailTable liveDetail={rep.liveDetail} onChange={liveChange} businessLive={rep.businessLive} />
 
               {/* 平台经营洞察（来客 + 生意经）*/}
               <InsightBlock laikeInsight={rep.laikeInsight} businessInsight={rep.businessInsight} />
