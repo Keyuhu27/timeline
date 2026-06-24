@@ -222,16 +222,18 @@ export class BusinessCompassAdapter {
     dailyTrend: Array<{ date: string; gmv: number; durationSec: number; liveCnt: number; authorCnt: number; verifyAmount: number }>;
     fetchedAt: string;
   } | null> {
+    // 入口立即打印，确认函数被调用
+    console.log(`[BusinessLive] start fetch { startDate: "${startDate}", endDate: "${endDate}", room_type_filter: "TALENT", poiId: "${poiId}", hasCookie: ${!!cookie()} }`);
     if (!cookie() || !poiId) {
-      console.log(`[BusinessLive] skip: cookie=${!!cookie()} poiId=${poiId}`);
+      console.log(`[BusinessLive] skip: cookie=${!!cookie()} poiId="${poiId}"`);
       return null;
     }
     const url = process.env.BUSINESS_FLOW_LIVE_URL || (base() + '/api/dito/query');
     if (!url.startsWith('http')) {
-      console.warn(`[BusinessLive] 未配置 URL (BUSINESS_FLOW_LIVE_URL)，base=${base()}`);
+      console.warn(`[BusinessLive] 未配置 URL (BUSINESS_FLOW_LIVE_URL)，base="${base()}"，请在 .env 中设置 BUSINESS_COMPASS_API_BASE=https://www.life-data.cn`);
       return null;
     }
-    console.log(`[BusinessLive] request ${startDate}~${endDate} → ${url}`);
+    console.log(`[BusinessLive] POST ${url}`);
 
     const payload = {
       biz_params: {
@@ -272,8 +274,9 @@ export class BusinessCompassAdapter {
     try {
       const res = await fetch(url, { method: 'POST', headers: headers(), body: JSON.stringify(payload) });
       rawText = await res.text();
+      console.log(`[BusinessLive] HTTP status = ${res.status} len=${rawText.length}`);
       if (!res.ok) {
-        console.error(`[BusinessLive] HTTP ${res.status} ${startDate}~${endDate}: ${rawText.slice(0, 300)}`);
+        console.error(`[BusinessLive] HTTP ${res.status} body = ${rawText.slice(0, 500)}`);
         return null;
       }
     } catch (e) {

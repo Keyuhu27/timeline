@@ -182,6 +182,10 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
   let businessInsight: DailyReport['businessInsight'] | undefined;
   let businessMarketing: DailyReport['businessMarketing'] | undefined;
   let businessLive: DailyReport['businessLive'] | undefined;
+
+  // 诊断日志：无论条件是否满足都打印，方便排查
+  console.log(`[buildReport] pre-check brandId=${brandId} accountId=${account?.id ?? 'none'} poiId="${poiId}" hasBizCookie=${!!process.env.BUSINESS_COMPASS_COOKIE}`);
+
   if (poiId && process.env.BUSINESS_COMPASS_COOKIE) {
     console.log(`[buildReport] 生意经 poiId=${poiId} yesterday=${yesterday} monthStart=${monthStart} date=${date}`);
     const [trade, exposure, bIns, mktOv, mktTrend, liveYday, liveMonth] = await Promise.all([
