@@ -1,8 +1,37 @@
 // 诊断天鸿 statQuery：用 .env 的真实 cookie 直接打后台接口，打印原始 Totals。
 // 用法（在 project/v2/tideline-next 下）：
-//   node -r dotenv/config scripts/probe-tianhong-statquery.mjs
-// 或先 `export $(grep -v '^#' .env | xargs)` 再 `node scripts/probe-tianhong-statquery.mjs`
-// 不会写任何文件、不提交任何东西，只读 env + 打印响应。
+//   node scripts/probe-tianhong-statquery.mjs
+// 脚本自己解析同目录上层的 .env，无需 dotenv、无需 export。
+// 不会写任何文件、不提交任何东西，只读 .env + 打印响应。
+
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+// 解析 .env（支持值里含 = 和特殊字符；只按第一个 = 分割，不做 shell 展开）
+function loadEnv() {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const candidates = [join(here, '..', '.env'), join(process.cwd(), '.env')];
+  for (const p of candidates) {
+    try {
+      const raw = readFileSync(p, 'utf8');
+      for (const line of raw.split(/\r?\n/)) {
+        const s = line.trim();
+        if (!s || s.startsWith('#')) continue;
+        const eq = s.indexOf('=');
+        if (eq < 0) continue;
+        const k = s.slice(0, eq).trim();
+        let v = s.slice(eq + 1).trim();
+        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+        if (!(k in process.env)) process.env[k] = v;
+      }
+      console.log('已加载 .env:', p);
+      return;
+    } catch {}
+  }
+  console.warn('⚠️ 未找到 .env，将仅用现有环境变量');
+}
+loadEnv();
 
 const ADVID = '1844144155187404';
 
