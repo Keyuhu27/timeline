@@ -227,30 +227,130 @@ export class BusinessCompassAdapter {
       .sort((a, b) => a.date < b.date ? -1 : 1);
   }
 
-  /** 生意经直播分析（达播 GMV / 场次 / 时长 / 达人数量）
-   *  roomTypeFilter: 'TALENT'（达播/达人）| 'OFFICIAL'（自播/官号）
-   *  payload 对齐抓包真实结构：dito/query + path=/flow/content/analysis/live
+  /** 生意经经营概览 — 按来源（官号/达人）拆分 GMV
+   *  自播 = officialLiveGmv（官号直播），达播 = daboGmv（达人直播）
+   *  金额单位：分 → 元（÷100）
+   *  接口：dito/query + path=/flow/trade/overview，节点 PayOrderSourceAnalysis
+   *  可通过 BUSINESS_FLOW_TRADE_OVERVIEW_URL 覆盖完整 URL
    */
-  static async fetchLiveAnalysis(poiId: string, startDate: string, endDate: string, roomTypeFilter: 'TALENT' | 'OFFICIAL' = 'TALENT'): Promise<{
-    daboGmv: number; daboCnt: number; daboDurationSec: number; authorCnt: number;
-    verifyAmount: number; verifyCertCnt: number;
+  static async fetchPayOrderSourceSplit(poiId: string, startDate: string, endDate: string): Promise<{
+    liveTotalGmv: number;
+    daboGmv: number;
+    officialLiveGmv: number;
+    videoTotalGmv: number;
+    videoTalentGmv: number;
+    videoOfficialGmv: number;
+  } | null> {
+    if (!cookie() || !poiId) return null;
+    const url = process.env.BUSINESS_FLOW_TRADE_OVERVIEW_URL || (base() + '/api/dito/query');
+    if (!url.startsWith('http')) {
+      console.warn(`[BusinessSourceSplit] 未配置 URL，跳过 poiId=${poiId}`);
+      return null;
+    }
+
+    const payload = {
+      biz_params: {
+        path: '/flow/trade/overview',
+        query: {},
+        first_render: false,
+        common_params: {
+          is_sub_account: false,
+          poi_id: poiId,
+          start_date: startDate,
+          end_date: endDate,
+          date_type: 'custom',
+          time_type: 'trade_date',
+        },
+        module_params: {
+          PayOrderSourceAnalysis: {},
+        },
+      },
+      dito_params: {
+        is_event: true,
+        node_update_map: [
+          { type: 'refresh', node: 'PayOrderSourceAnalysis' },
+        ],
+      },
+    };
+
+    let rawText = '';
+    try {
+      const res = await fetch(url, { method: 'POST', headers: headers(), body: JSON.stringify(payload) });
+      rawText = await res.text();
+      console.log(`[BusinessSourceSplit] HTTP ${res.status} len=${rawText.length} ${startDate}~${endDate}`);
+      if (!res.ok) { console.error(`[BusinessSourceSplit] HTTP error body=${rawText.slice(0, 300)}`); return null; }
+    } catch (e) {
+      console.error(`[BusinessSourceSplit] 请求异常:`, String(e));
+      return null;
+    }
+
+    let json: Record<string, unknown> | null = null;
+    try { json = JSON.parse(rawText) as Record<string, unknown>; }
+    catch { console.error(`[BusinessSourceSplit] 非 JSON: ${rawText.slice(0, 200)}`); return null; }
+
+    // 路径：json.data.layout[i].data.data?.PayOrderSourceAnalysis?.Detail?.data
+    //    或：json.data.layout[i].data?.PayOrderSourceAnalysis?.Detail?.data
+    interface SourceRow {
+      first_order_source_name?: string;
+      second_order_source_name?: string;
+      levelPid?: number | null;
+      levelId?: number;
+      name?: string;
+      pay_gmv_1d?: number;
+    }
+    const dataObj = (json?.data ?? json) as Record<string, unknown>;
+    const layout = (Array.isArray(dataObj?.layout) ? dataObj.layout : []) as Array<{ id?: string; data?: Record<string, unknown> }>;
+
+    let rows: SourceRow[] = [];
+    for (const node of layout) {
+      const d = node?.data ?? {};
+      // 兼容两层 data 包装：d.data.PayOrderSourceAnalysis 或 d.PayOrderSourceAnalysis
+      const inner = (d?.data ?? d) as Record<string, unknown>;
+      const analysis = inner?.PayOrderSourceAnalysis as { Detail?: { data?: SourceRow[] } } | undefined;
+      if (Array.isArray(analysis?.Detail?.data)) {
+        rows = analysis!.Detail!.data!;
+        break;
+      }
+    }
+
+    console.log(`[BusinessSourceSplit] rows length = ${rows.length}`);
+
+    const liveTotal  = rows.find(r => r.name === '直播'  && (r.levelPid == null));
+    const dabo       = rows.find(r => r.first_order_source_name === '直播' && (r.second_order_source_name === '达人' || r.name === '达人' || r.levelId === 103));
+    const official   = rows.find(r => r.first_order_source_name === '直播' && (r.second_order_source_name === '官号' || r.name === '官号' || r.levelId === 101));
+    const videoTotal = rows.find(r => r.name === '短视频' && (r.levelPid == null));
+    const videoTalent  = rows.find(r => r.first_order_source_name === '短视频' && (r.second_order_source_name === '达人' || r.name === '达人' || r.levelId === 203));
+    const videoOfficial= rows.find(r => r.first_order_source_name === '短视频' && (r.second_order_source_name === '官号' || r.name === '官号' || r.levelId === 201));
+
+    console.log(`[BusinessSourceSplit] liveTotal=${JSON.stringify(liveTotal)}`);
+    console.log(`[BusinessSourceSplit] dabo=${JSON.stringify(dabo)}`);
+    console.log(`[BusinessSourceSplit] official=${JSON.stringify(official)}`);
+
+    const result = {
+      liveTotalGmv:    Number(liveTotal?.pay_gmv_1d   || 0) / 100,
+      daboGmv:         Number(dabo?.pay_gmv_1d         || 0) / 100,
+      officialLiveGmv: Number(official?.pay_gmv_1d     || 0) / 100,
+      videoTotalGmv:   Number(videoTotal?.pay_gmv_1d   || 0) / 100,
+      videoTalentGmv:  Number(videoTalent?.pay_gmv_1d  || 0) / 100,
+      videoOfficialGmv:Number(videoOfficial?.pay_gmv_1d|| 0) / 100,
+    };
+    console.log(`[BusinessSourceSplit] parsed officialLiveGmv=${result.officialLiveGmv} daboGmv=${result.daboGmv} liveTotalGmv=${result.liveTotalGmv} videoTotalGmv=${result.videoTotalGmv}`);
+    return result;
+  }
+
+  /** 生意经直播分析（场次 / 时长 / 达人数量）
+   *  GMV 来源已改为 fetchPayOrderSourceSplit，此处只取 measureDataV2 的 cnt/duration/authorCnt
+   *  payload：dito/query + path=/flow/content/analysis/live
+   */
+  static async fetchLiveAnalysis(poiId: string, startDate: string, endDate: string): Promise<{
+    daboCnt: number; daboDurationSec: number; authorCnt: number;
     rooms: Array<{ roomTypeTag: string; gmv: number; durationSec: number; verifyOrderAmt: number; verifyCertNum: number; payCertNum: number; payUser: number }>;
     dailyTrend: Array<{ date: string; gmv: number; durationSec: number; liveCnt: number; authorCnt: number; verifyAmount: number }>;
     fetchedAt: string;
   } | null> {
-    // 入口立即打印，确认函数被调用
-    console.log(`[BusinessLive] start fetch { startDate: "${startDate}", endDate: "${endDate}", room_type_filter: "${roomTypeFilter}", poiId: "${poiId}", hasCookie: ${!!cookie()} }`);
-    if (!cookie() || !poiId) {
-      console.log(`[BusinessLive] skip: cookie=${!!cookie()} poiId="${poiId}"`);
-      return null;
-    }
+    if (!cookie() || !poiId) return null;
     const url = process.env.BUSINESS_FLOW_LIVE_URL || (base() + '/api/dito/query');
-    if (!url.startsWith('http')) {
-      console.warn(`[BusinessLive] 未配置 URL (BUSINESS_FLOW_LIVE_URL)，base="${base()}"，请在 .env 中设置 BUSINESS_COMPASS_API_BASE=https://www.life-data.cn`);
-      return null;
-    }
-    const reqHeaders = headers();
-    console.log(`[BusinessLive] POST ${url} header-keys=[${Object.keys(reqHeaders).join(',')}] cookie-len=${(reqHeaders['Cookie'] ?? '').length} life-account-id="${reqHeaders['life-account-id'] ?? ''}"`);
+    if (!url.startsWith('http')) return null;
 
     const payload = {
       biz_params: {
@@ -265,7 +365,7 @@ export class BusinessCompassAdapter {
           date_type: 'custom',
           time_type: 'trade_date',
           is_gray_live_trade_date: true,
-          room_type_filter: roomTypeFilter,
+          room_type_filter: 'TALENT',
           author_id: [],
         },
         module_params: {
@@ -289,65 +389,30 @@ export class BusinessCompassAdapter {
 
     let rawText = '';
     try {
-      const res = await fetch(url, { method: 'POST', headers: reqHeaders, body: JSON.stringify(payload) });
+      const res = await fetch(url, { method: 'POST', headers: headers(), body: JSON.stringify(payload) });
       rawText = await res.text();
-      console.log(`[BusinessLive] HTTP status = ${res.status} len=${rawText.length}`);
-      if (!res.ok) {
-        console.error(`[BusinessLive] HTTP ${res.status} body = ${rawText.slice(0, 500)}`);
-        return null;
-      }
-    } catch (e) {
-      console.error(`[BusinessLive] 请求异常 ${startDate}~${endDate}:`, String(e));
-      return null;
-    }
-
-
-    interface AuthorRow { gmv?: number; live_cnt?: number; duration?: number; author_cnt?: number; verify_amount?: number; verify_cert_cnt?: number; }
-    interface AllAuthorNode { code?: number; data?: AuthorRow[]; total?: number; }
+      if (!res.ok) return null;
+    } catch { return null; }
 
     let parsed: Record<string, unknown> | null = null;
-    try { parsed = JSON.parse(rawText) as Record<string, unknown>; }
-    catch { console.error(`[BusinessLive] 响应非 JSON ${startDate}~${endDate}: ${rawText.slice(0, 300)}`); return null; }
+    try { parsed = JSON.parse(rawText) as Record<string, unknown>; } catch { return null; }
 
-    console.log(`[BusinessLive] top keys = ${Object.keys(parsed ?? {}).join(',')}`);
     const dataObj = (parsed?.data ?? parsed) as Record<string, unknown>;
-    console.log(`[BusinessLive] data keys = ${Object.keys(dataObj ?? {}).join(',')}`);
+    const layout = (Array.isArray(dataObj?.layout) ? dataObj.layout : []) as Array<{ id?: string; data?: Record<string, unknown> }>;
 
-    const layout = (Array.isArray(dataObj?.layout) ? dataObj.layout : (Array.isArray(parsed?.layout) ? parsed!.layout : [])) as Array<{ id?: string; subType?: string; data?: Record<string, unknown> }>;
-    console.log(`[BusinessLive] layout length = ${layout.length}`);
-    if (layout.length > 0) {
-      console.log(`[BusinessLive] first layout node data keys = ${Object.keys(layout[0]?.data ?? {}).join(',')}`);
-    }
-
-    if (!layout.length) {
-      console.error(`[BusinessLive] layout 为空 ${startDate}~${endDate}: ${rawText.slice(0, 300)}`);
-      return null;
-    }
-
-    // 从所有 layout 节点汇总 allAuthor.data[]
-    const authorRows: AuthorRow[] = [];
-    let authorTotal = 0;
+    interface MeasureRow { live_cnt?: number; room_cnt?: number; duration?: number; author_cnt?: number; verify_amount?: number; verify_cert_cnt?: number; gmv?: number; }
     const rooms: Array<{ roomTypeTag: string; gmv: number; durationSec: number; verifyOrderAmt: number; verifyCertNum: number; payCertNum: number; payUser: number }> = [];
     const dailyTrend: Array<{ date: string; gmv: number; durationSec: number; liveCnt: number; authorCnt: number; verifyAmount: number }> = [];
+    let measure: MeasureRow | null = null;
 
     for (const section of layout) {
       const d = section?.data ?? {};
 
-      // allAuthor — 达人汇总数据（可能大小写不同）
-      const aaKey = Object.keys(d).find(k => k.toLowerCase() === 'allauthor');
-      if (aaKey) {
-        const aa = d[aaKey] as AllAuthorNode | undefined;
-        if (Array.isArray(aa?.data)) {
-          authorRows.push(...aa!.data!);
-          if (aa?.total) authorTotal = Math.max(authorTotal, aa.total);
-        }
-      }
-
-      // measureDataV2（大小写兼容，备用）
+      // measureDataV2（VideoCoreDataCard_1）— 区间汇总 cnt/duration/authorCnt
       const mdv2Key = Object.keys(d).find(k => k.toLowerCase() === 'measuredatav2');
-      if (mdv2Key && !authorRows.length) {
-        const mdv2 = d[mdv2Key] as { data?: AuthorRow[] } | undefined;
-        if (Array.isArray(mdv2?.data) && mdv2!.data!.length) authorRows.push(...mdv2!.data!);
+      if (!measure && mdv2Key) {
+        const mdv2 = d[mdv2Key] as { data?: MeasureRow[] } | undefined;
+        if (mdv2?.data?.[0]) measure = mdv2.data[0];
       }
 
       // FlowSourceV2 每日趋势
@@ -366,7 +431,7 @@ export class BusinessCompassAdapter {
         }
       }
 
-      // roomRank 大小写兼容
+      // roomRank — 直播间明细
       const rrKey = Object.keys(d).find(k => k.toLowerCase() === 'roomrank');
       if (rrKey) {
         const rr = d[rrKey] as { data?: Array<{ room_type_tag?: string; gmv?: number; duration?: number; room_verify_order_amt_td?: number; room_verify_cert_num_td?: number; room_pay_cert_num_td?: number; room_pay_user_td?: number }> } | undefined;
@@ -384,51 +449,19 @@ export class BusinessCompassAdapter {
       }
     }
 
-    console.log(`[BusinessLive] allAuthor rows = ${authorRows.length}`);
-    // dump: VideoCoreDataCard_1 的 measureDataV2 + authorType 是真正的区间汇总入口
-    for (const section of layout) {
-      const d = section?.data ?? {};
-      const id = section.id ?? section.subType ?? '?';
-      if (id === 'VideoCoreDataCard_1') {
-        const mdv2Key = Object.keys(d).find(k => k.toLowerCase() === 'measuredatav2');
-        const atKey   = Object.keys(d).find(k => k.toLowerCase() === 'authortype');
-        const igKey   = Object.keys(d).find(k => k.toLowerCase() === 'itemgroup' || k.toLowerCase() === 'itemgroupv2');
-        if (mdv2Key) {
-          const m0 = (d[mdv2Key] as { data?: Array<Record<string, unknown>> })?.data?.[0] ?? {};
-          // 只打印标量字段（跳过 *DeriveData / *DeriveMeta），定位 gmv / live_cnt 真实字段名
-          const scalars: Record<string, unknown> = {};
-          for (const [k, v] of Object.entries(m0)) {
-            if (/DeriveData$|DeriveMeta$/.test(k)) continue;
-            if (typeof v === 'number' || typeof v === 'string') scalars[k] = v;
-          }
-          console.log(`[BusinessLive][dump] measureDataV2.data[0] scalars = ${JSON.stringify(scalars)}`);
-        }
-        if (igKey) void igKey; if (atKey) void atKey;
-      }
-    }
+    const daboCnt       = Number(measure?.live_cnt ?? measure?.room_cnt ?? 0);
+    const daboDurationSec = Number(measure?.duration ?? 0);
+    const authorCnt     = Number(measure?.author_cnt ?? 0);
+    console.log(`[BusinessLive] parsed ${startDate}~${endDate}: cnt=${daboCnt} dur=${daboDurationSec}s authorCnt=${authorCnt}`);
 
-    // 汇总 allAuthor rows（请求已过滤 room_type_filter=TALENT，直接全量汇总）
-    const daboGmv = authorRows.reduce((s, r) => s + fen2yuan(r.gmv), 0);
-    const daboCnt = authorRows.reduce((s, r) => s + Number(r.live_cnt ?? 0), 0);
-    const daboDurationSec = authorRows.reduce((s, r) => s + Number(r.duration ?? 0), 0);
-    const authorCnt = authorTotal || authorRows.reduce((s, r) => s + Number(r.author_cnt ?? 1), 0);
-    const verifyAmount = authorRows.reduce((s, r) => s + fen2yuan(r.verify_amount), 0);
-    const verifyCertCnt = authorRows.reduce((s, r) => s + Number(r.verify_cert_cnt ?? 0), 0);
-
-    console.log(`[BusinessLive] parsed ${startDate}~${endDate}: gmv=${daboGmv} cnt=${daboCnt} dur=${daboDurationSec}s authorCnt=${authorCnt} verifyAmt=${verifyAmount}`);
-
-    const result = {
-      daboGmv,
+    return {
       daboCnt,
       daboDurationSec,
       authorCnt,
-      verifyAmount,
-      verifyCertCnt,
       rooms,
       dailyTrend: dailyTrend.sort((a, b) => a.date < b.date ? -1 : 1),
       fetchedAt: new Date().toISOString(),
     };
-    return result;
   }
 
   /** 生意经经营洞察（data_conclusion / data_explain） */
