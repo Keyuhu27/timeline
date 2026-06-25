@@ -385,6 +385,14 @@ export class BusinessCompassAdapter {
     }
 
     console.log(`[BusinessLive] allAuthor rows = ${authorRows.length}`);
+    // 一次性 dump：打印每个 layout 节点完整 keys + 第一行 allAuthor 的完整字段，便于精确对字段
+    for (const section of layout) {
+      const d = section?.data ?? {};
+      console.log(`[BusinessLive][dump] node id=${section.id ?? section.subType ?? '?'} keys=[${Object.keys(d).join(',')}]`);
+    }
+    if (authorRows[0]) {
+      console.log(`[BusinessLive][dump] allAuthor[0] = ${JSON.stringify(authorRows[0]).slice(0, 1200)}`);
+    }
 
     // 汇总 allAuthor rows（请求已过滤 room_type_filter=TALENT，直接全量汇总）
     const daboGmv = authorRows.reduce((s, r) => s + fen2yuan(r.gmv), 0);
