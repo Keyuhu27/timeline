@@ -26,6 +26,16 @@ const ROW_DEFS: Array<{ key: string; label: string }> = [
 function emptyRows(): DailyReportRow[] {
   return ROW_DEFS.map(d => ({ key: d.key, label: d.label, history: null, yesterday: null, month: null, target: null }));
 }
+// 历史 = 本月 − 昨日（推算回填）。onlyEmpty=true 时仅填补空白行，保留人工录入值。
+function fillHistoryRows(rows: DailyReportRow[], onlyEmpty = false): void {
+  for (const r of rows) {
+    if (onlyEmpty && r.history != null) continue;  // 保留已有（手动/已存）历史值
+    if (r.month == null) continue;                 // 本月无数据则不推算，保持「待补充」
+    const hist = Math.round(r.month - (r.yesterday ?? 0));
+    r.history = hist < 0 ? 0 : hist;
+    r.src = { ...r.src, history: 'derived' };
+  }
+}
 function emptyLiveBlock(): DailyReportLiveBlock {
   const col = () => ({ sessions: null, gmv: null, duration: null });
   return { history: col(), yesterday: col(), month: col() };
@@ -347,6 +357,10 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
 
   }
 
+  // ── 历史GMV/历史核销 = 本月 - 昨日（推算回填，覆盖每个品牌的成交/核销分板块）──
+  fillHistoryRows(gmvRows);
+  fillHistoryRows(redeemRows);
+
   const seedNote = sourceLines.length
     ? `自动回填：${sourceLines.join('；')}。核销明细如平台无接口，请手动补充。`
     : '未检测到可用的平台数据接口（未配置 statQuery Cookie 或 Laike Cookie）。所有字段为空，请手动填写。';
@@ -393,6 +407,8 @@ export const GET: RouteHandler = async (req, res) => {
   if (id) {
     const found = dailyReports.find(r => r.id === id);
     if (!found) return err(res, `日报 ${id} 不存在`, 404);
+    fillHistoryRows(found.gmvRows, true);
+    fillHistoryRows(found.redeemRows, true);
     return ok(res, found);
   }
 
@@ -400,7 +416,11 @@ export const GET: RouteHandler = async (req, res) => {
   const date  = (req.query.date ?? '').trim();
   if (brand && date) {
     const saved = dailyReports.find(r => r.brandId === brand && r.date === date);
-    if (saved) return ok(res, { ...saved, saved: true });
+    if (saved) {
+      fillHistoryRows(saved.gmvRows, true);
+      fillHistoryRows(saved.redeemRows, true);
+      return ok(res, { ...saved, saved: true });
+    }
     // 没有已保存的 → 实时生成一份（不落盘），前端编辑后再 POST 保存
     const generated = await buildReport(brand, date);
     return ok(res, { ...generated, saved: false });

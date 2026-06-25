@@ -335,6 +335,7 @@ export type DailyReportCellSrc =
   | 'laike_sales'    // 绿色：抖音来客 coupon_sale_record 自动拉取
   | 'laike_overview' // 蓝色：抖音来客 data_overview（周期不确定）
   | 'manual'         // 灰色：用户手动录入
+  | 'derived'        // 紫色：推算（本月 − 昨日）
   | 'pending';       // 黄色：暂无接口，待补充
 
 export interface DailyReportRow {

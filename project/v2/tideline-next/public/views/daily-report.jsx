@@ -23,6 +23,7 @@ TL.openDailyReport = function (brandId, date) {
     laike_sales:    { color: '#389e0d', bg: 'rgba(56,158,13,0.10)', label: '来客明细' },
     laike_overview: { color: '#0958d9', bg: 'rgba(9,88,217,0.08)',  label: '来客概览（周期不确定）' },
     business:       { color: '#0958d9', bg: 'rgba(9,88,217,0.08)',  label: '生意经经营数据' },
+    derived:        { color: '#531dab', bg: 'rgba(83,29,171,0.08)',  label: '推算（本月−昨日）' },
     insight:        { color: '#8c8c8c', bg: 'rgba(0,0,0,0.05)',     label: '周期洞察，仅供参考' },
     manual:         { color: '#8c8c8c', bg: 'rgba(0,0,0,0.05)',     label: '手动录入' },
     pending:        { color: '#d48806', bg: 'rgba(212,136,6,0.10)', label: '待补充' },
