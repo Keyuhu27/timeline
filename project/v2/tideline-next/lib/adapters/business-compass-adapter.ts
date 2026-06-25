@@ -40,7 +40,7 @@ function base(): string { return (process.env.BUSINESS_COMPASS_API_BASE ?? '').r
  *  格式（JSON）：{"<laikePoi或externalId>": "<lifeAccountId>,<isSingle>"}
  *  例：{"1745303406415880": "7034394621161506847,0", "xxx": "7576836870521292852,1"}
  */
-function resolveLifeAccountId(poiId: string, overrideId?: string): { lifeAccountId: string; isSingle: number } {
+function resolveLifeAccountId(poiId: string, overrideId?: string): { lifeAccountId: string; isSingle: number; mapped: boolean } {
   // 1) 最高优先级：BUSINESS_COMPASS_LIFE_ACCOUNT_MAP（poiId → "lifeAccountId,isSingle"）
   try {
     const raw = process.env.BUSINESS_COMPASS_LIFE_ACCOUNT_MAP;
@@ -49,23 +49,19 @@ function resolveLifeAccountId(poiId: string, overrideId?: string): { lifeAccount
       const val = map[poiId];
       if (val) {
         const [id, single] = String(val).split(',');
-        return { lifeAccountId: id ?? '', isSingle: Number(single ?? 0) };
+        return { lifeAccountId: id ?? '', isSingle: Number(single ?? 0), mapped: true };
       }
-      // map 命中失败：按要求打印明确的 miss 日志
-      const fb = overrideId ? String(overrideId).split(',')[0] : (process.env.BUSINESS_COMPASS_LIFE_ACCOUNT_ID ?? '');
-      console.warn(`[BusinessSourceSplit] map miss poiId=${poiId} fallback lifeAccountId=${fb}（map keys=[${Object.keys(map).join(', ')}]）`);
-    } else {
-      const fb = overrideId ? String(overrideId).split(',')[0] : (process.env.BUSINESS_COMPASS_LIFE_ACCOUNT_ID ?? '');
-      console.warn(`[BusinessSourceSplit] map miss poiId=${poiId} fallback lifeAccountId=${fb}（未配置 BUSINESS_COMPASS_LIFE_ACCOUNT_MAP）`);
     }
   } catch (e) { console.error(`[BusinessSourceSplit] map 解析失败（检查 JSON 格式）:`, String(e)); }
-  // 2) 次级：account 级 override（也支持「id,single」形式）
+  // 2) 次级：account 级 override（也支持「id,single」形式）—— 视为已映射
   if (overrideId) {
     const [id, single] = String(overrideId).split(',');
-    return { lifeAccountId: id ?? '', isSingle: Number(single ?? 0) };
+    return { lifeAccountId: id ?? '', isSingle: Number(single ?? 0), mapped: true };
   }
-  // 3) 兜底：全局单一配置
-  return { lifeAccountId: process.env.BUSINESS_COMPASS_LIFE_ACCOUNT_ID ?? '', isSingle: 0 };
+  // 3) map 未命中且无 override：不回落全局 ID（否则会返回快乐蜂数据），标记 mapped=false
+  //    调用方据此跳过生意经请求，让该品牌日报生意经板块为空。
+  console.warn(`[BusinessSourceSplit] map miss poiId=${poiId} — 无映射，跳过生意经请求（日报留空，不回落快乐蜂）`);
+  return { lifeAccountId: '', isSingle: 0, mapped: false };
 }
 
 function headers(lifeAccountId?: string): Record<string, string> {
@@ -290,8 +286,13 @@ export class BusinessCompassAdapter {
       console.warn(`[BusinessSourceSplit] 未配置 URL，跳过 poiId=${poiId}`);
       return null;
     }
-    const { lifeAccountId, isSingle } = resolveLifeAccountId(poiId, overrideLifeAccountId);
-    console.log(`[BusinessSourceSplit] poiId=${poiId} lifeAccountId=${lifeAccountId} isSingle=${isSingle}`);
+    const { lifeAccountId, isSingle, mapped } = resolveLifeAccountId(poiId, overrideLifeAccountId);
+    console.log(`[BusinessSourceSplit] poiId=${poiId} lifeAccountId=${lifeAccountId} isSingle=${isSingle} mapped=${mapped}`);
+    // 未映射的品牌：直接返回 null，避免用快乐蜂 Cookie 默认账号拉到串品牌数据
+    if (!mapped || !lifeAccountId) {
+      console.warn(`[BusinessSourceSplit] poiId=${poiId} 无生意经映射，跳过成交数据请求（日报留空）`);
+      return null;
+    }
 
     const payload = {
       biz_params: {
@@ -418,7 +419,11 @@ export class BusinessCompassAdapter {
     if (!cookie() || !poiId) return null;
     const url = process.env.BUSINESS_FLOW_LIVE_URL || (base() + '/api/dito/query');
     if (!url.startsWith('http')) return null;
-    const { lifeAccountId } = resolveLifeAccountId(poiId);
+    const { lifeAccountId, mapped } = resolveLifeAccountId(poiId);
+    if (!mapped || !lifeAccountId) {
+      console.warn(`[BusinessLiveAnalysis] poiId=${poiId} 无生意经映射，跳过直播分析请求`);
+      return null;
+    }
 
     const payload = {
       biz_params: {
@@ -549,7 +554,13 @@ export class BusinessCompassAdapter {
     if (!cookie() || !poiId) return null;
     const url = process.env.BUSINESS_FLOW_TRADE_OVERVIEW_URL || (base() + '/api/dito/query');
     if (!url.startsWith('http')) return null;
-    const { lifeAccountId, isSingle } = resolveLifeAccountId(poiId, overrideLifeAccountId);
+    const { lifeAccountId, isSingle, mapped } = resolveLifeAccountId(poiId, overrideLifeAccountId);
+    console.log(`[BusinessVerifySplit] poiId=${poiId} lifeAccountId=${lifeAccountId} isSingle=${isSingle} mapped=${mapped}`);
+    // 未映射的品牌：跳过核销数据请求，避免串品牌
+    if (!mapped || !lifeAccountId) {
+      console.warn(`[BusinessVerifySplit] poiId=${poiId} 无生意经映射，跳过核销数据请求（日报留空）`);
+      return null;
+    }
 
     const payload = {
       biz_params: {

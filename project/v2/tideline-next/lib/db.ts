@@ -132,11 +132,10 @@ export const brandById = (id: string) => brands.find(b => b.id === id);
 export const userById  = (id: string) => team.find(u => u.id === id);
 export const accountById = (id: string) => accounts.find(a => a.id === id);
 
-// ─── 真实数据账户白名单 ────────────────────────────────────────────────────
+// ─── 生意经真实日报白名单 ──────────────────────────────────────────────────
 // 只有这些 externalId（= 生意经 poiId）能拉到真实生意经日报数据。
 // 与 .env 的 BUSINESS_COMPASS_LIFE_ACCOUNT_MAP 的 key 一一对应。
-// 同一品牌下若有多个账号（如「耀银-广州烨道餐饮」vs「广州烨道餐饮上城钱江」），
-// 只保留 externalId 在此集合中的那个；其余账号/品牌在 UI 中隐藏。
+// 不在此集合的品牌仍然显示，但日报生意经板块为空（不回落成快乐蜂数据）。
 export const REAL_DATA_EXTERNAL_IDS = new Set<string>([
   '1745303406415880',  // 快乐蜂（中国）餐饮
   '1851121699721292',  // 亿滋本地推
@@ -146,34 +145,42 @@ export const REAL_DATA_EXTERNAL_IDS = new Set<string>([
   '1845654181143703',  // 武义宏马文化发展
 ]);
 
+// 占位名（同步接口未回填真实门店名时的兜底名），这些品牌/账户在侧栏隐藏。
+const PLACEHOLDER_NAME = /^(Localad-|本地推账户\s*\d|未命名|unknown$)/i;
+const isPlaceholderName = (s?: string) => !s || PLACEHOLDER_NAME.test(s.trim());
+
 /**
- * 可见账户：externalId 在白名单中，且按 externalId 去重（种子账户优先于持久化 a_* 账户）。
- * 解决「同一品牌出现多个账号 / 重复品牌」的问题。
+ * 可见账户：去掉占位名账户，并按 externalId 去重（种子账户优先于持久化 a_* 账户）。
+ * 保留所有有真实门店名的账户，只消除重复与占位。
  */
 export function visibleAccounts(): Account[] {
   const byExt = new Map<string, Account>();
+  const noExt: Account[] = [];
   for (const a of accounts) {
-    if (!a.externalId || !REAL_DATA_EXTERNAL_IDS.has(a.externalId)) continue;
+    if (a.hidden || isPlaceholderName(a.name)) continue;
+    if (!a.externalId) { noExt.push(a); continue; }
     const prev = byExt.get(a.externalId);
-    // 优先保留种子账户（id 形如 a1/a2，不带下划线），其次才是持久化的 a_xxx
+    // 同 externalId 去重：优先保留种子账户（id 不带下划线），其次持久化 a_xxx
     if (!prev || (prev.id.startsWith('a_') && !a.id.startsWith('a_'))) {
       byExt.set(a.externalId, a);
     }
   }
-  return [...byExt.values()];
+  return [...byExt.values(), ...noExt];
 }
 
-/** 可见品牌：仅保留拥有可见账户的品牌，按 brand id 去重 */
+/** 可见品牌：去占位名 + 按真实门店名去重（同名只留一个，种子品牌优先） */
 export function visibleBrands(): Brand[] {
-  const brandIds = new Set(visibleAccounts().map(a => a.brand));
-  const seen = new Set<string>();
-  const out: Brand[] = [];
+  const byName = new Map<string, Brand>();
+  const order: string[] = [];
   for (const b of brands) {
-    if (!brandIds.has(b.id) || seen.has(b.id)) continue;
-    seen.add(b.id);
-    out.push(b);
+    if (isPlaceholderName(b.name)) continue;
+    const key = b.name.trim();
+    const prev = byName.get(key);
+    if (!prev) { byName.set(key, b); order.push(key); }
+    // 同名去重：优先保留种子品牌（id 不带下划线），其次持久化 b_xxx
+    else if (prev.id.startsWith('b_') && !b.id.startsWith('b_')) byName.set(key, b);
   }
-  return out;
+  return order.map(k => byName.get(k)!);
 }
 
 // ─── Auto Rules ────────────────────────────────────────────────────────────
