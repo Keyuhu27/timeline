@@ -240,6 +240,10 @@ export class BusinessCompassAdapter {
     videoTotalGmv: number;
     videoTalentGmv: number;
     videoOfficialGmv: number;
+    leadCardGmv: number;        // 获客卡
+    searchResultCardGmv: number;// 搜索结果卡
+    otherGmv: number;           // 其他
+    poiGmv: number;             // POI = 获客卡 + 搜索结果卡 + 其他
   } | null> {
     if (!cookie() || !poiId) return null;
     const url = process.env.BUSINESS_FLOW_TRADE_OVERVIEW_URL || (base() + '/api/dito/query');
@@ -319,14 +323,30 @@ export class BusinessCompassAdapter {
       console.log(`[BusinessSourceSplit] rows 为空，node ids = ${layout.map(n => n.id ?? '?').join(',')}; raw=${rawText.slice(0, 300)}`);
     }
 
-    const liveTotal  = rows.find(r => r.name === '直播'  && (r.levelPid == null));
+    // 体裁类型（一级行，levelPid == null 且无二级来源）：直播 / 短视频 / 获客卡 / 搜索结果卡 / 其他
+    const isTopLevel = (r: SourceRow) => r.levelPid == null && !r.second_order_source_name;
+    const genre = (label: string) =>
+      rows.find(r => isTopLevel(r) && (r.name === label || r.first_order_source_name === label));
+
+    const liveTotal  = genre('直播');
     const dabo       = rows.find(r => r.first_order_source_name === '直播' && (r.second_order_source_name === '达人' || r.name === '达人' || r.levelId === 103));
     const official   = rows.find(r => r.first_order_source_name === '直播' && (r.second_order_source_name === '官号' || r.name === '官号' || r.levelId === 101));
-    const videoTotal = rows.find(r => r.name === '短视频' && (r.levelPid == null));
+    const videoTotal = genre('短视频');
     const videoTalent  = rows.find(r => r.first_order_source_name === '短视频' && (r.second_order_source_name === '达人' || r.name === '达人' || r.levelId === 203));
     const videoOfficial= rows.find(r => r.first_order_source_name === '短视频' && (r.second_order_source_name === '官号' || r.name === '官号' || r.levelId === 201));
+    const leadCard   = genre('获客卡');
+    const searchCard = genre('搜索结果卡');
+    const other      = genre('其他');
 
-    console.log(`[BusinessSourceSplit] liveTotal=${liveTotal?.pay_gmv_1d} dabo=${dabo?.pay_gmv_1d} official=${official?.pay_gmv_1d}`);
+    // 调试：打印全部一级行（体裁类型）名称 + GMV（元），便于核对平台数值
+    const topRows = rows.filter(isTopLevel)
+      .map(r => `${r.name ?? r.first_order_source_name ?? '?'}=${(Number(r.pay_gmv_1d || 0) / 100).toFixed(2)}`)
+      .join(' | ');
+    console.log(`[BusinessSourceSplit] 体裁一级行: ${topRows}`);
+
+    const leadCardGmv         = Number(leadCard?.pay_gmv_1d   || 0) / 100;
+    const searchResultCardGmv = Number(searchCard?.pay_gmv_1d || 0) / 100;
+    const otherGmv            = Number(other?.pay_gmv_1d      || 0) / 100;
 
     const result = {
       liveTotalGmv:    Number(liveTotal?.pay_gmv_1d   || 0) / 100,
@@ -335,8 +355,12 @@ export class BusinessCompassAdapter {
       videoTotalGmv:   Number(videoTotal?.pay_gmv_1d   || 0) / 100,
       videoTalentGmv:  Number(videoTalent?.pay_gmv_1d  || 0) / 100,
       videoOfficialGmv:Number(videoOfficial?.pay_gmv_1d|| 0) / 100,
+      leadCardGmv,
+      searchResultCardGmv,
+      otherGmv,
+      poiGmv: leadCardGmv + searchResultCardGmv + otherGmv,
     };
-    console.log(`[BusinessSourceSplit] parsed officialLiveGmv=${result.officialLiveGmv} daboGmv=${result.daboGmv} liveTotalGmv=${result.liveTotalGmv} videoTotalGmv=${result.videoTotalGmv}`);
+    console.log(`[BusinessSourceSplit] parsed live=${result.liveTotalGmv} video=${result.videoTotalGmv} 获客卡=${leadCardGmv} 搜索结果卡=${searchResultCardGmv} 其他=${otherGmv} POI=${result.poiGmv}`);
     return result;
   }
 

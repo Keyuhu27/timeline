@@ -291,10 +291,36 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
       }
     }
 
+    // 生意经 POI 成交（获客卡 + 搜索结果卡 + 其他）
+    if (srcYday || srcMonth) {
+      const poi = gmvRows.find(r => r.key === 'poi')!;
+      if (srcYday) {
+        poi.yesterday = Math.round(srcYday.poiGmv);
+        poi.src = { ...poi.src, yesterday: 'platform' };
+      }
+      if (srcMonth) {
+        poi.month = Math.round(srcMonth.poiGmv);
+        poi.src = { ...poi.src, month: 'platform' };
+      }
+    }
+
+    // 生意经短视频成交 — 覆盖 OceanEngine statQuery 的 videoGmv（口径以生意经为准）
+    if (srcYday || srcMonth) {
+      const video = gmvRows.find(r => r.key === 'video')!;
+      if (srcYday) {
+        video.yesterday = Math.round(srcYday.videoTotalGmv);
+        video.src = { ...video.src, yesterday: 'platform' };
+      }
+      if (srcMonth) {
+        video.month = Math.round(srcMonth.videoTotalGmv);
+        video.src = { ...video.src, month: 'platform' };
+      }
+    }
+
   }
 
   const seedNote = sourceLines.length
-    ? `自动回填：${sourceLines.join('；')}。POI、核销明细平台无接口，请手动补充。`
+    ? `自动回填：${sourceLines.join('；')}。核销明细如平台无接口，请手动补充。`
     : '未检测到可用的平台数据接口（未配置 statQuery Cookie 或 Laike Cookie）。所有字段为空，请手动填写。';
 
   const report = {
