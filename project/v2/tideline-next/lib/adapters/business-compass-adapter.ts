@@ -306,17 +306,19 @@ export class BusinessCompassAdapter {
 
     let rows: SourceRow[] = [];
     for (const node of layout) {
-      const d = node?.data ?? {};
-      // 兼容两层 data 包装：d.data.PayOrderSourceAnalysis 或 d.PayOrderSourceAnalysis
-      const inner = (d?.data ?? d) as Record<string, unknown>;
-      const analysis = inner?.PayOrderSourceAnalysis as { Detail?: { data?: SourceRow[] } } | undefined;
-      if (Array.isArray(analysis?.Detail?.data)) {
-        rows = analysis!.Detail!.data!;
-        break;
+      const d = (node?.data ?? {}) as Record<string, unknown>;
+      // 真实结构：node.data.PayOrderSourceAnalysisDetail.data[]
+      const key = Object.keys(d).find(k => k.toLowerCase() === 'payordersourceanalysisdetail');
+      if (key) {
+        const detail = d[key] as { data?: SourceRow[] } | undefined;
+        if (Array.isArray(detail?.data)) { rows = detail!.data!; break; }
       }
     }
 
     console.log(`[BusinessSourceSplit] rows length = ${rows.length}`);
+    if (rows.length) {
+      console.log(`[BusinessSourceSplit] rows = ${rows.map(r => `${r.first_order_source_name ?? ''}/${r.name ?? ''}(lvl=${r.levelId},pid=${r.levelPid})=${r.pay_gmv_1d}`).join(' | ')}`);
+    }
     if (!rows.length) {
       console.log(`[BusinessSourceSplit] layout node ids = ${layout.map(n => n.id ?? '?').join(',')}`);
       console.log(`[BusinessSourceSplit] raw first 600 = ${rawText.slice(0, 600)}`);
