@@ -393,10 +393,17 @@ export class BusinessCompassAdapter {
         const mdv2Key = Object.keys(d).find(k => k.toLowerCase() === 'measuredatav2');
         const atKey   = Object.keys(d).find(k => k.toLowerCase() === 'authortype');
         const igKey   = Object.keys(d).find(k => k.toLowerCase() === 'itemgroup' || k.toLowerCase() === 'itemgroupv2');
-        console.log(`[BusinessLive][dump] VideoCoreDataCard_1 keys=[${Object.keys(d).join(',')}]`);
-        if (mdv2Key) console.log(`[BusinessLive][dump] measureDataV2 = ${JSON.stringify(d[mdv2Key]).slice(0, 1200)}`);
-        if (atKey)   console.log(`[BusinessLive][dump] authorType = ${JSON.stringify(d[atKey]).slice(0, 1200)}`);
-        if (igKey)   console.log(`[BusinessLive][dump] itemGroup/V2 = ${JSON.stringify(d[igKey]).slice(0, 600)}`);
+        if (mdv2Key) {
+          const m0 = (d[mdv2Key] as { data?: Array<Record<string, unknown>> })?.data?.[0] ?? {};
+          // 只打印标量字段（跳过 *DeriveData / *DeriveMeta），定位 gmv / live_cnt 真实字段名
+          const scalars: Record<string, unknown> = {};
+          for (const [k, v] of Object.entries(m0)) {
+            if (/DeriveData$|DeriveMeta$/.test(k)) continue;
+            if (typeof v === 'number' || typeof v === 'string') scalars[k] = v;
+          }
+          console.log(`[BusinessLive][dump] measureDataV2.data[0] scalars = ${JSON.stringify(scalars)}`);
+        }
+        if (igKey) void igKey; if (atKey) void atKey;
       }
     }
 
