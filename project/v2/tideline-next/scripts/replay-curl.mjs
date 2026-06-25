@@ -46,6 +46,11 @@ while ((hm = hre.exec(joined))) {
 const cm = joined.match(/(?:-b|--cookie)\s+'([^']*)'|(?:-b|--cookie)\s+"([^"]*)"/);
 if (cm) headers['Cookie'] = (cm[1] ?? cm[2]);
 
+// 统一清洗：所有头值去掉控制字符（含 nano 硬折行带来的 \n），折叠多余空白
+for (const k of Object.keys(headers)) {
+  headers[k] = headers[k].replace(/[\x00-\x1f\x7f]/g, '').replace(/\s{2,}/g, ' ').trim();
+}
+
 // body: --data-raw / --data / -d / --data-binary —— body 是最后一个参数，取 flag 后第一个引号到末尾
 let body = null;
 const flagIdx = joined.search(/(?:--data-raw|--data-binary|--data|-d)\s+['"]/);
@@ -57,6 +62,8 @@ if (flagIdx >= 0) {
   const end = rest.lastIndexOf(quote);
   body = end >= 0 ? rest.slice(0, end) : rest;
   body = body.trim();
+  // 去掉 nano 硬折行插入的换行/控制字符（折行不加空格，去掉即可还原）
+  body = body.replace(/[\x00-\x1f\x7f]/g, '');
   // 容错：截到最后一个 } ，去掉可能多带的尾巴
   const lastBrace = body.lastIndexOf('}');
   if (lastBrace >= 0) body = body.slice(0, lastBrace + 1);
