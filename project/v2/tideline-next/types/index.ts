@@ -5,6 +5,7 @@ export interface Brand {
   name: string;
   cat: string;
   logo: string;
+  hidden?: boolean;  // 归档/合并时隐藏，不在侧栏显示
 }
 
 export interface TeamMember {

@@ -12,7 +12,7 @@ import type {
 export const brands: Brand[] = [
   { id: 'b1',  name: '快乐蜂（中国）餐饮',         cat: '餐饮',     logo: '快' },
   { id: 'b2',  name: '耀银-广州烨道餐饮',           cat: '餐饮',     logo: '耀' },
-  { id: 'b3',  name: '广州烨道餐饮上城钱江',        cat: '餐饮',     logo: '广' },
+  { id: 'b3',  name: '广州烨道餐饮上城钱江',        cat: '餐饮',     logo: '广', hidden: true },  // 已合并入 b2
   { id: 'b4',  name: '亿滋本地推',                  cat: '餐饮',     logo: '亿' },
   { id: 'b6',  name: '武义蝶来望境温泉酒店',        cat: '酒店',     logo: '蝶' },
   { id: 'b7',  name: '武义宏马文化发展',            cat: '文旅',     logo: '宏' },
@@ -49,7 +49,8 @@ export const tasks: Task[] = [
 export const accounts: Account[] = [
   { id: 'a1',  name: '快乐蜂（中国）餐饮管理有限公司',        externalId: '1745303406415880', brand: 'b1',  color: 'c1',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
   { id: 'a2',  name: '耀银-广州烨道餐饮-上城钱江路',          externalId: '1847915308786764', brand: 'b2',  color: 'c2',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
-  { id: 'a3',  name: '广州烨道餐饮管理有限公司上城钱江',      externalId: '1839229761224026', brand: 'b3',  color: 'c3',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  // a3 合并入耀银-广州烨道餐饮(b2)；两个账户共用同一品牌详情页
+  { id: 'a3',  name: '广州烨道餐饮管理有限公司上城钱江',      externalId: '1839229761224026', brand: 'b2',  color: 'c3',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
   { id: 'a4',  name: '亿滋本地推',                             externalId: '1851121699721292', brand: 'b4',  color: 'c4',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
   { id: 'a6',  name: '武义蝶来望境温泉酒店',                  externalId: '1845654470244352', brand: 'b6',  color: 'c6',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
   { id: 'a7',  name: '武义宏马文化发展有限公司',              externalId: '1845654181143703', brand: 'b7',  color: 'c7',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
@@ -173,7 +174,7 @@ export function visibleBrands(): Brand[] {
   const byName = new Map<string, Brand>();
   const order: string[] = [];
   for (const b of brands) {
-    if (isPlaceholderName(b.name)) continue;
+    if (b.hidden || isPlaceholderName(b.name)) continue;
     const key = b.name.trim();
     const prev = byName.get(key);
     if (!prev) { byName.set(key, b); order.push(key); }
