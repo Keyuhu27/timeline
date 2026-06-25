@@ -37,7 +37,9 @@ while ((hm = hre.exec(joined))) {
   if (i <= 0) continue;
   const k = hv.slice(0, i).trim();
   if (SKIP.has(k.toLowerCase())) continue;
-  headers[k] = hv.slice(i + 1).trim();
+  // 去掉任何控制字符（\r \n \t 及不可见字符），否则 Node fetch 会拒绝
+  const val = hv.slice(i + 1).replace(/[\x00-\x1f\x7f]/g, '').trim();
+  headers[k] = val;
 }
 
 // cookie: -b / --cookie 单独给的情况
@@ -55,6 +57,9 @@ if (flagIdx >= 0) {
   const end = rest.lastIndexOf(quote);
   body = end >= 0 ? rest.slice(0, end) : rest;
   body = body.trim();
+  // 容错：截到最后一个 } ，去掉可能多带的尾巴
+  const lastBrace = body.lastIndexOf('}');
+  if (lastBrace >= 0) body = body.slice(0, lastBrace + 1);
 }
 
 console.log('URL:', url);
