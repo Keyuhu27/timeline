@@ -37,13 +37,29 @@ function cookie(): string { return process.env.BUSINESS_COMPASS_COOKIE ?? ''; }
 function base(): string { return (process.env.BUSINESS_COMPASS_API_BASE ?? '').replace(/\/$/, ''); }
 
 function headers(): Record<string, string> {
+  const lifeAccountId = process.env.BUSINESS_COMPASS_LIFE_ACCOUNT_ID ?? '';
+  // 额外 headers，从 env JSON 解析（如 x-secsdk-csrf-token / x-tt-ls-session-id 等）
+  let extraHeaders: Record<string, string> = {};
+  try {
+    const raw = process.env.BUSINESS_COMPASS_EXTRA_HEADERS_JSON;
+    if (raw) extraHeaders = JSON.parse(raw) as Record<string, string>;
+  } catch { /* 忽略解析错误 */ }
+
   return {
     'Content-Type': 'application/json',
-    'Cookie': cookie(),
     'Accept': 'application/json, text/plain, */*',
-    'User-Agent': 'Mozilla/5.0',
-    'Referer': base() + '/',
+    'Accept-Language': 'en,zh-CN;q=0.9,zh;q=0.8',
+    'Cache-Control': 'no-cache',
+    'Pragma': 'no-cache',
+    'Cookie': cookie(),
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
+    'Referer': base() + '/flow/content/my/overview',
     'Origin': base(),
+    'Sec-Fetch-Dest': 'empty',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'same-origin',
+    ...(lifeAccountId ? { 'life-account-id': lifeAccountId, 'root-life-account-id': lifeAccountId } : {}),
+    ...extraHeaders,
   };
 }
 
@@ -233,7 +249,8 @@ export class BusinessCompassAdapter {
       console.warn(`[BusinessLive] 未配置 URL (BUSINESS_FLOW_LIVE_URL)，base="${base()}"，请在 .env 中设置 BUSINESS_COMPASS_API_BASE=https://www.life-data.cn`);
       return null;
     }
-    console.log(`[BusinessLive] POST ${url}`);
+    const reqHeaders = headers();
+    console.log(`[BusinessLive] POST ${url} header-keys=[${Object.keys(reqHeaders).join(',')}] cookie-len=${(reqHeaders['Cookie'] ?? '').length} life-account-id="${reqHeaders['life-account-id'] ?? ''}"`);
 
     const payload = {
       biz_params: {
@@ -272,7 +289,7 @@ export class BusinessCompassAdapter {
 
     let rawText = '';
     try {
-      const res = await fetch(url, { method: 'POST', headers: headers(), body: JSON.stringify(payload) });
+      const res = await fetch(url, { method: 'POST', headers: reqHeaders, body: JSON.stringify(payload) });
       rawText = await res.text();
       console.log(`[BusinessLive] HTTP status = ${res.status} len=${rawText.length}`);
       if (!res.ok) {

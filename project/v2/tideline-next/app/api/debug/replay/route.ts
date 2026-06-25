@@ -133,3 +133,108 @@ export const laikeReplay: RouteHandler = (req, res) =>
 
 export const businessReplay: RouteHandler = (req, res) =>
   doReplay(req, res, 'BUSINESS_COMPASS_COOKIE', 'BUSINESS_COMPASS_API_BASE');
+
+/** GET /api/debug/business/live?date=YYYY-MM-DD&poiId=xxx
+ *  直接调用达播分析接口，返回状态码、响应摘要、layout节点列表，
+ *  方便在不刷新日报的情况下快速验证 Cookie/headers 是否正确。
+ *  可选 body：{ cookie, lifeAccountId, extraHeadersJson }（仅本次，不落 .env）
+ */
+export const businessLiveDebug: RouteHandler = async (req, res) => {
+  const base = (process.env.BUSINESS_COMPASS_API_BASE ?? '').replace(/\/$/, '');
+  const url  = process.env.BUSINESS_FLOW_LIVE_URL || (base + '/api/dito/query');
+  if (!url.startsWith('http')) return err(res, `未配置 BUSINESS_COMPASS_API_BASE，当前值="${base}"`);
+
+  const date   = (req.query.date   ?? new Date().toISOString().slice(0, 10)) as string;
+  const poiId  = (req.query.poiId  ?? '') as string;
+
+  // 允许 body 临时覆盖（不落 .env，不回显）
+  const body = (req.body ?? {}) as { cookie?: string; lifeAccountId?: string; extraHeadersJson?: string };
+  const cookieVal     = body.cookie          || process.env.BUSINESS_COMPASS_COOKIE    || '';
+  const lifeAccountId = body.lifeAccountId   || process.env.BUSINESS_COMPASS_LIFE_ACCOUNT_ID || '';
+  let extraHeaders: Record<string, string> = {};
+  try {
+    const raw = body.extraHeadersJson || process.env.BUSINESS_COMPASS_EXTRA_HEADERS_JSON;
+    if (raw) extraHeaders = JSON.parse(raw) as Record<string, string>;
+  } catch { /* ignore */ }
+
+  const reqHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'en,zh-CN;q=0.9,zh;q=0.8',
+    'Cache-Control': 'no-cache',
+    'Cookie': cookieVal,
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
+    'Referer': base + '/flow/content/my/overview',
+    'Origin': base,
+    'Sec-Fetch-Dest': 'empty',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'same-origin',
+    ...(lifeAccountId ? { 'life-account-id': lifeAccountId, 'root-life-account-id': lifeAccountId } : {}),
+    ...extraHeaders,
+  };
+
+  const payload = {
+    biz_params: {
+      path: '/flow/content/analysis/live',
+      query: {},
+      first_render: false,
+      common_params: {
+        is_sub_account: false,
+        poi_id: poiId || undefined,
+        start_date: date,
+        end_date: date,
+        date_type: 'last_one_days',
+        time_type: 'trade_date',
+        is_gray_live_trade_date: true,
+        room_type_filter: 'TALENT',
+        author_id: [],
+      },
+      module_params: {
+        RoomParam:    { limit: 10, offset: 0, search_keywords: '' },
+        FlowSourceV2: { group: 'date' },
+        ProductRank:  {},
+        UserFeature:  {},
+        RoomRank:     { limit: 10, offset: 0, order_type: 'desc', order_field: '' },
+      },
+    },
+    dito_params: {
+      is_event: true,
+      node_update_map: [
+        { type: 'refresh', node: 'LiveSelect_2' },
+        { type: 'refresh', node: 'VideoCoreDataCard_1' },
+        { type: 'refresh', node: 'LiveDealGoodsCard_1' },
+        { type: 'refresh', node: 'LiveListTable_1' },
+      ],
+    },
+  };
+
+  let status = 0;
+  let rawText = '';
+  try {
+    const r = await fetch(url, { method: 'POST', headers: reqHeaders, body: JSON.stringify(payload) });
+    status = r.status;
+    rawText = await r.text();
+  } catch (e) {
+    return err(res, `请求异常: ${String(e)}`);
+  }
+
+  let parsed: unknown = null;
+  try { parsed = JSON.parse(rawText); } catch { /* raw only */ }
+
+  const layoutSummary: Array<{ id?: string; subType?: string; dataKeys: string[] }> = [];
+  const layout = (parsed as Record<string, unknown>)?.layout;
+  if (Array.isArray(layout)) {
+    for (const node of layout) {
+      const n = node as Record<string, unknown>;
+      layoutSummary.push({ id: n.id as string, subType: n.subType as string, dataKeys: n.data ? Object.keys(n.data as object) : [] });
+    }
+  }
+
+  return ok(res, {
+    request: { url, poiId, date, header_keys: Object.keys(reqHeaders), has_cookie: !!cookieVal, cookie_len: cookieVal.length, has_life_account_id: !!lifeAccountId },
+    response: { status, body_first_500: rawText.slice(0, 500), body_len: rawText.length },
+    layout_nodes: layoutSummary,
+    top_keys: parsed && typeof parsed === 'object' ? Object.keys(parsed as object) : [],
+    non_zero: collectNonZero(parsed).slice(0, 60),
+  });
+};

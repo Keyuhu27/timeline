@@ -91,6 +91,7 @@ const ROUTES: Record<string, RouteModule> = {
   '/api/debug/oe/workbench-local-accounts': { GET: routeDebugOE.workbenchLocalAccounts },
   '/api/debug/laike/replay':    { POST: routeDebugReplay.laikeReplay },
   '/api/debug/business/replay': { POST: routeDebugReplay.businessReplay },
+  '/api/debug/business/live':   { GET: routeDebugReplay.businessLiveDebug, POST: routeDebugReplay.businessLiveDebug },
   '/api/reports':    routeReports,
 };
 
