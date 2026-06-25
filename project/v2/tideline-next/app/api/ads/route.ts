@@ -2,7 +2,7 @@
 // POST  /api/ads   { name, brand, account, budget, goal, productIds?, startDate }
 // PATCH /api/ads?id=c1  { status?, budget?, name? }
 
-import { adCampaigns, brands, accounts, normalizeOceanEngineAccountId } from '../../../lib/db';
+import { adCampaigns, brands, accounts, normalizeOceanEngineAccountId, visibleAccounts } from '../../../lib/db';
 import { ok, err, paginate }             from '../../../lib/api';
 import { adAdapter }                     from '../../../lib/adapters/index';
 import { saveSnapshot }                  from '../../../lib/persist';
@@ -14,7 +14,24 @@ export const GET: RouteHandler = (req, res) => {
   // 隐藏归档账户的计划（hidden 账户不在常规列表展示）
   const hiddenAccountIds = new Set(accounts.filter(a => a.hidden).map(a => a.id));
   let filtered = adCampaigns.filter(c => !hiddenAccountIds.has(c.account));
-  if (brand)  filtered = filtered.filter(c => c.brand  === brand);
+  if (brand) {
+    // 通过 externalId 跨越种子/持久化 ID 边界匹配计划
+    // 例：seed brand b10 的账户 externalId=1770545948162062，同步计划存为 brand=b_1770545948162062
+    const seedAcct = accounts.find(a => a.brand === brand);
+    const extId = seedAcct?.externalId;
+    const allAccountIds = new Set<string>();
+    accounts.forEach(a => {
+      if (a.brand === brand) allAccountIds.add(a.id);
+      if (extId && a.externalId === extId) allAccountIds.add(a.id);
+    });
+    // 同样收集所有与该 brand 同名的持久化 brand id
+    const seedBrand = brands.find(b => b.id === brand);
+    const brandIds = new Set<string>([brand as string]);
+    if (seedBrand) {
+      brands.forEach(b => { if (b.name === seedBrand.name) brandIds.add(b.id); });
+    }
+    filtered = filtered.filter(c => brandIds.has(c.brand) || allAccountIds.has(c.account));
+  }
   if (status) filtered = filtered.filter(c => c.status === status);
 
   const all = filtered;
@@ -32,7 +49,11 @@ export const GET: RouteHandler = (req, res) => {
   let statQueryReport: (NonNullable<import('../../../types/index').Account['statQueryReport']> & { localAccountId?: string }) | null = null;
   let accountReport: (NonNullable<import('../../../types/index').Account['globalReport']> & { localAccountId?: string }) | null = null;
   if (brand) {
-    const acct = accounts.find(a => a.brand === brand);
+    // 先找种子账户，再找持久化账户（externalId 匹配）
+    const seedAcctForReport = accounts.find(a => a.brand === brand);
+    const extIdForReport = seedAcctForReport?.externalId;
+    const acct = seedAcctForReport ??
+      (extIdForReport ? accounts.find(a => a.externalId === extIdForReport && (a.statQueryReport || a.globalReport)) : undefined);
     if (acct?.statQueryReport) statQueryReport = { ...acct.statQueryReport, localAccountId: acct.externalId };
     if (acct?.globalReport)    accountReport   = { ...acct.globalReport,   localAccountId: acct.externalId };
   }
