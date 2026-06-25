@@ -41,11 +41,7 @@ function base(): string { return (process.env.BUSINESS_COMPASS_API_BASE ?? '').r
  *  例：{"1745303406415880": "7034394621161506847,0", "xxx": "7576836870521292852,1"}
  */
 function resolveLifeAccountId(poiId: string, overrideId?: string): { lifeAccountId: string; isSingle: number } {
-  if (overrideId) {
-    // override 也支持「id,single」形式
-    const [id, single] = String(overrideId).split(',');
-    return { lifeAccountId: id ?? '', isSingle: Number(single ?? 0) };
-  }
+  // 1) 最高优先级：BUSINESS_COMPASS_LIFE_ACCOUNT_MAP（poiId → "lifeAccountId,isSingle"）
   try {
     const raw = process.env.BUSINESS_COMPASS_LIFE_ACCOUNT_MAP;
     if (raw) {
@@ -55,12 +51,20 @@ function resolveLifeAccountId(poiId: string, overrideId?: string): { lifeAccount
         const [id, single] = String(val).split(',');
         return { lifeAccountId: id ?? '', isSingle: Number(single ?? 0) };
       }
-      console.warn(`[LifeAccountMap] poiId=${poiId} 不在 map 中，回退全局 ID。map 现有 keys=[${Object.keys(map).join(', ')}]`);
+      // map 命中失败：按要求打印明确的 miss 日志
+      const fb = overrideId ? String(overrideId).split(',')[0] : (process.env.BUSINESS_COMPASS_LIFE_ACCOUNT_ID ?? '');
+      console.warn(`[BusinessSourceSplit] map miss poiId=${poiId} fallback lifeAccountId=${fb}（map keys=[${Object.keys(map).join(', ')}]）`);
     } else {
-      console.warn(`[LifeAccountMap] 未配置 BUSINESS_COMPASS_LIFE_ACCOUNT_MAP，poiId=${poiId} 回退全局 ID`);
+      const fb = overrideId ? String(overrideId).split(',')[0] : (process.env.BUSINESS_COMPASS_LIFE_ACCOUNT_ID ?? '');
+      console.warn(`[BusinessSourceSplit] map miss poiId=${poiId} fallback lifeAccountId=${fb}（未配置 BUSINESS_COMPASS_LIFE_ACCOUNT_MAP）`);
     }
-  } catch (e) { console.error(`[LifeAccountMap] 解析失败（检查 JSON 格式）:`, String(e)); }
-  // 兜底：使用全局单一配置
+  } catch (e) { console.error(`[BusinessSourceSplit] map 解析失败（检查 JSON 格式）:`, String(e)); }
+  // 2) 次级：account 级 override（也支持「id,single」形式）
+  if (overrideId) {
+    const [id, single] = String(overrideId).split(',');
+    return { lifeAccountId: id ?? '', isSingle: Number(single ?? 0) };
+  }
+  // 3) 兜底：全局单一配置
   return { lifeAccountId: process.env.BUSINESS_COMPASS_LIFE_ACCOUNT_ID ?? '', isSingle: 0 };
 }
 
@@ -72,6 +76,13 @@ function headers(lifeAccountId?: string): Record<string, string> {
     const raw = process.env.BUSINESS_COMPASS_EXTRA_HEADERS_JSON;
     if (raw) extraHeaders = JSON.parse(raw) as Record<string, string>;
   } catch { /* 忽略解析错误 */ }
+  // 防护：禁止 EXTRA_HEADERS 写死 life-account-id / root-life-account-id（否则会串品牌）
+  for (const k of Object.keys(extraHeaders)) {
+    if (/^(root-)?life-account-id$/i.test(k)) {
+      console.warn(`[BusinessSourceSplit] 已忽略 EXTRA_HEADERS 中的 ${k}（life-account-id 只能由 map 解析）`);
+      delete extraHeaders[k];
+    }
+  }
 
   return {
     'Content-Type': 'application/json',
@@ -86,8 +97,8 @@ function headers(lifeAccountId?: string): Record<string, string> {
     'Sec-Fetch-Dest': 'empty',
     'Sec-Fetch-Mode': 'cors',
     'Sec-Fetch-Site': 'same-origin',
-    ...(id ? { 'life-account-id': id, 'root-life-account-id': id } : {}),
     ...extraHeaders,
+    ...(id ? { 'life-account-id': id, 'root-life-account-id': id } : {}),
   };
 }
 
