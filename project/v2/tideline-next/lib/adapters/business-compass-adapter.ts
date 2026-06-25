@@ -315,13 +315,8 @@ export class BusinessCompassAdapter {
       }
     }
 
-    console.log(`[BusinessSourceSplit] rows length = ${rows.length}`);
-    if (rows.length) {
-      console.log(`[BusinessSourceSplit] rows = ${rows.map(r => `${r.first_order_source_name ?? ''}/${r.name ?? ''}(lvl=${r.levelId},pid=${r.levelPid})=${r.pay_gmv_1d}`).join(' | ')}`);
-    }
     if (!rows.length) {
-      console.log(`[BusinessSourceSplit] layout node ids = ${layout.map(n => n.id ?? '?').join(',')}`);
-      console.log(`[BusinessSourceSplit] raw first 600 = ${rawText.slice(0, 600)}`);
+      console.log(`[BusinessSourceSplit] rows 为空，node ids = ${layout.map(n => n.id ?? '?').join(',')}; raw=${rawText.slice(0, 300)}`);
     }
 
     const liveTotal  = rows.find(r => r.name === '直播'  && (r.levelPid == null));
@@ -331,9 +326,7 @@ export class BusinessCompassAdapter {
     const videoTalent  = rows.find(r => r.first_order_source_name === '短视频' && (r.second_order_source_name === '达人' || r.name === '达人' || r.levelId === 203));
     const videoOfficial= rows.find(r => r.first_order_source_name === '短视频' && (r.second_order_source_name === '官号' || r.name === '官号' || r.levelId === 201));
 
-    console.log(`[BusinessSourceSplit] liveTotal=${JSON.stringify(liveTotal)}`);
-    console.log(`[BusinessSourceSplit] dabo=${JSON.stringify(dabo)}`);
-    console.log(`[BusinessSourceSplit] official=${JSON.stringify(official)}`);
+    console.log(`[BusinessSourceSplit] liveTotal=${liveTotal?.pay_gmv_1d} dabo=${dabo?.pay_gmv_1d} official=${official?.pay_gmv_1d}`);
 
     const result = {
       liveTotalGmv:    Number(liveTotal?.pay_gmv_1d   || 0) / 100,

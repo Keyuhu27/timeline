@@ -42,8 +42,9 @@ function timeProgressOf(date: string): number {
 
 // 北京时间（UTC+8）日期工具
 function bjDateStr(date: string, offsetDays = 0): string {
-  const d = new Date(date + 'T00:00:00+08:00');
-  d.setDate(d.getDate() + offsetDays);
+  // 纯日历运算：按 UTC 解析+偏移，避免 +08:00 解析后 toISOString 转回 UTC 造成 off-by-one
+  const d = new Date(date + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + offsetDays);
   return d.toISOString().slice(0, 10);
 }
 function bjMonthStartStr(date: string): string {
