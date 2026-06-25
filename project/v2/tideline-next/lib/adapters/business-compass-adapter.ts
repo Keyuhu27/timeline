@@ -301,37 +301,59 @@ export class BusinessCompassAdapter {
       return null;
     }
 
-    interface LiveMeasureItem { gmv?: number; duration?: number; live_cnt?: number; author_cnt?: number; verify_amount?: number; verify_cert_cnt?: number; }
-    interface LiveFlowRow { date?: string; gmv?: number; duration?: number; live_cnt?: number; author_cnt?: number; verify_amount?: number; verify_cert_cnt?: number; }
-    interface LiveRoomItem { room_type_tag?: string; gmv?: number; duration?: number; room_verify_order_amt_td?: number; room_verify_cert_num_td?: number; room_pay_cert_num_td?: number; room_pay_user_td?: number; }
-    // key 可能是 measureDataV2 或 MeasureDataV2 — 用 any 后再查
-    interface LiveApiResp { layout?: Array<{ id?: string; subType?: string; data?: Record<string, unknown> }> }
 
-    let json: LiveApiResp | null = null;
-    try { json = JSON.parse(rawText) as LiveApiResp; }
+    interface AuthorRow { gmv?: number; live_cnt?: number; duration?: number; author_cnt?: number; verify_amount?: number; verify_cert_cnt?: number; }
+    interface AllAuthorNode { code?: number; data?: AuthorRow[]; total?: number; }
+
+    let parsed: Record<string, unknown> | null = null;
+    try { parsed = JSON.parse(rawText) as Record<string, unknown>; }
     catch { console.error(`[BusinessLive] 响应非 JSON ${startDate}~${endDate}: ${rawText.slice(0, 300)}`); return null; }
 
-    if (!json?.layout?.length) {
+    console.log(`[BusinessLive] top keys = ${Object.keys(parsed ?? {}).join(',')}`);
+    const dataObj = (parsed?.data ?? parsed) as Record<string, unknown>;
+    console.log(`[BusinessLive] data keys = ${Object.keys(dataObj ?? {}).join(',')}`);
+
+    const layout = (Array.isArray(dataObj?.layout) ? dataObj.layout : (Array.isArray(parsed?.layout) ? parsed!.layout : [])) as Array<{ id?: string; subType?: string; data?: Record<string, unknown> }>;
+    console.log(`[BusinessLive] layout length = ${layout.length}`);
+    if (layout.length > 0) {
+      console.log(`[BusinessLive] first layout node data keys = ${Object.keys(layout[0]?.data ?? {}).join(',')}`);
+    }
+
+    if (!layout.length) {
       console.error(`[BusinessLive] layout 为空 ${startDate}~${endDate}: ${rawText.slice(0, 300)}`);
       return null;
     }
 
-    let measure: LiveMeasureItem | null = null;
+    // 从所有 layout 节点汇总 allAuthor.data[]
+    const authorRows: AuthorRow[] = [];
+    let authorTotal = 0;
     const rooms: Array<{ roomTypeTag: string; gmv: number; durationSec: number; verifyOrderAmt: number; verifyCertNum: number; payCertNum: number; payUser: number }> = [];
     const dailyTrend: Array<{ date: string; gmv: number; durationSec: number; liveCnt: number; authorCnt: number; verifyAmount: number }> = [];
 
-    for (const section of json.layout ?? []) {
+    for (const section of layout) {
       const d = section?.data ?? {};
-      // measureDataV2 大小写兼容
-      const mdv2Key = Object.keys(d).find(k => k.toLowerCase() === 'measuredatav2');
-      if (!measure && mdv2Key) {
-        const mdv2 = d[mdv2Key] as { data?: LiveMeasureItem[] } | undefined;
-        if (mdv2?.data?.[0]) measure = mdv2.data[0];
+
+      // allAuthor — 达人汇总数据（可能大小写不同）
+      const aaKey = Object.keys(d).find(k => k.toLowerCase() === 'allauthor');
+      if (aaKey) {
+        const aa = d[aaKey] as AllAuthorNode | undefined;
+        if (Array.isArray(aa?.data)) {
+          authorRows.push(...aa!.data!);
+          if (aa?.total) authorTotal = Math.max(authorTotal, aa.total);
+        }
       }
+
+      // measureDataV2（大小写兼容，备用）
+      const mdv2Key = Object.keys(d).find(k => k.toLowerCase() === 'measuredatav2');
+      if (mdv2Key && !authorRows.length) {
+        const mdv2 = d[mdv2Key] as { data?: AuthorRow[] } | undefined;
+        if (Array.isArray(mdv2?.data) && mdv2!.data!.length) authorRows.push(...mdv2!.data!);
+      }
+
       // FlowSourceV2 每日趋势
       const flowKey = Object.keys(d).find(k => k.toLowerCase() === 'flowsourcev2');
       if (flowKey) {
-        const flow = d[flowKey] as { data?: LiveFlowRow[] } | undefined;
+        const flow = d[flowKey] as { data?: Array<{ date?: string; gmv?: number; duration?: number; live_cnt?: number; author_cnt?: number; verify_amount?: number }> } | undefined;
         for (const r of flow?.data ?? []) {
           if (r.date) dailyTrend.push({
             date: r.date,
@@ -343,10 +365,11 @@ export class BusinessCompassAdapter {
           });
         }
       }
+
       // roomRank 大小写兼容
       const rrKey = Object.keys(d).find(k => k.toLowerCase() === 'roomrank');
       if (rrKey) {
-        const rr = d[rrKey] as { data?: LiveRoomItem[] } | undefined;
+        const rr = d[rrKey] as { data?: Array<{ room_type_tag?: string; gmv?: number; duration?: number; room_verify_order_amt_td?: number; room_verify_cert_num_td?: number; room_pay_cert_num_td?: number; room_pay_user_td?: number }> } | undefined;
         for (const r of rr?.data ?? []) {
           rooms.push({
             roomTypeTag: r.room_type_tag ?? '',
@@ -361,25 +384,29 @@ export class BusinessCompassAdapter {
       }
     }
 
-    if (!measure) {
-      // 打印 layout 节点的 key 列表，帮助定位真实路径
-      const layoutKeys = (json.layout ?? []).map(s => `[id=${s.id ?? s.subType ?? '?'} keys=${Object.keys(s.data ?? {}).join(',')}]`).join(' ');
-      console.error(`[BusinessLive] measureDataV2 未找到 ${startDate}~${endDate}. layout节点: ${layoutKeys}`);
-      return null;
-    }
+    console.log(`[BusinessLive] allAuthor rows = ${authorRows.length}`);
+
+    // 汇总 allAuthor rows（请求已过滤 room_type_filter=TALENT，直接全量汇总）
+    const daboGmv = authorRows.reduce((s, r) => s + fen2yuan(r.gmv), 0);
+    const daboCnt = authorRows.reduce((s, r) => s + Number(r.live_cnt ?? 0), 0);
+    const daboDurationSec = authorRows.reduce((s, r) => s + Number(r.duration ?? 0), 0);
+    const authorCnt = authorTotal || authorRows.reduce((s, r) => s + Number(r.author_cnt ?? 1), 0);
+    const verifyAmount = authorRows.reduce((s, r) => s + fen2yuan(r.verify_amount), 0);
+    const verifyCertCnt = authorRows.reduce((s, r) => s + Number(r.verify_cert_cnt ?? 0), 0);
+
+    console.log(`[BusinessLive] parsed ${startDate}~${endDate}: gmv=${daboGmv} cnt=${daboCnt} dur=${daboDurationSec}s authorCnt=${authorCnt} verifyAmt=${verifyAmount}`);
 
     const result = {
-      daboGmv: fen2yuan(measure.gmv),
-      daboCnt: Number(measure.live_cnt ?? 0),
-      daboDurationSec: Number(measure.duration ?? 0),
-      authorCnt: Number(measure.author_cnt ?? 0),
-      verifyAmount: fen2yuan(measure.verify_amount),
-      verifyCertCnt: Number(measure.verify_cert_cnt ?? 0),
+      daboGmv,
+      daboCnt,
+      daboDurationSec,
+      authorCnt,
+      verifyAmount,
+      verifyCertCnt,
       rooms,
       dailyTrend: dailyTrend.sort((a, b) => a.date < b.date ? -1 : 1),
       fetchedAt: new Date().toISOString(),
     };
-    console.log(`[BusinessLive] parsed ${startDate}~${endDate}: gmv=${result.daboGmv} cnt=${result.daboCnt} dur=${result.daboDurationSec}s author=${result.authorCnt} verifyAmt=${result.verifyAmount}`);
     return result;
   }
 
