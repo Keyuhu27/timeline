@@ -385,13 +385,19 @@ export class BusinessCompassAdapter {
     }
 
     console.log(`[BusinessLive] allAuthor rows = ${authorRows.length}`);
-    // 一次性 dump：打印每个 layout 节点完整 keys + 第一行 allAuthor 的完整字段，便于精确对字段
+    // dump: VideoCoreDataCard_1 的 measureDataV2 + authorType 是真正的区间汇总入口
     for (const section of layout) {
       const d = section?.data ?? {};
-      console.log(`[BusinessLive][dump] node id=${section.id ?? section.subType ?? '?'} keys=[${Object.keys(d).join(',')}]`);
-    }
-    if (authorRows[0]) {
-      console.log(`[BusinessLive][dump] allAuthor[0] = ${JSON.stringify(authorRows[0]).slice(0, 1200)}`);
+      const id = section.id ?? section.subType ?? '?';
+      if (id === 'VideoCoreDataCard_1') {
+        const mdv2Key = Object.keys(d).find(k => k.toLowerCase() === 'measuredatav2');
+        const atKey   = Object.keys(d).find(k => k.toLowerCase() === 'authortype');
+        const igKey   = Object.keys(d).find(k => k.toLowerCase() === 'itemgroup' || k.toLowerCase() === 'itemgroupv2');
+        console.log(`[BusinessLive][dump] VideoCoreDataCard_1 keys=[${Object.keys(d).join(',')}]`);
+        if (mdv2Key) console.log(`[BusinessLive][dump] measureDataV2 = ${JSON.stringify(d[mdv2Key]).slice(0, 1200)}`);
+        if (atKey)   console.log(`[BusinessLive][dump] authorType = ${JSON.stringify(d[atKey]).slice(0, 1200)}`);
+        if (igKey)   console.log(`[BusinessLive][dump] itemGroup/V2 = ${JSON.stringify(d[igKey]).slice(0, 600)}`);
+      }
     }
 
     // 汇总 allAuthor rows（请求已过滤 room_type_filter=TALENT，直接全量汇总）
