@@ -188,16 +188,19 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
 
   if (poiId && process.env.BUSINESS_COMPASS_COOKIE) {
     console.log(`[buildReport] 生意经 poiId=${poiId} yesterday=${yesterday} monthStart=${monthStart} date=${date}`);
-    const [trade, exposure, bIns, mktOv, mktTrend, liveYday, liveMonth] = await Promise.all([
+    const [trade, exposure, bIns, mktOv, mktTrend, liveYday, liveMonth, ziboYday, ziboMonth] = await Promise.all([
       BusinessCompassAdapter.fetchTradeSplit(poiId, yesterday, yesterday).catch((e) => { console.error('[buildReport] tradeSplit err', String(e)); return null; }),
       BusinessCompassAdapter.fetchExposureSplit(poiId, yesterday, yesterday).catch((e) => { console.error('[buildReport] exposureSplit err', String(e)); return null; }),
       BusinessCompassAdapter.fetchInsights(poiId, yesterday, date).catch((e) => { console.error('[buildReport] insights err', String(e)); return null; }),
       BusinessCompassAdapter.fetchMarketingOverview(poiId, yesterday, yesterday).catch((e) => { console.error('[buildReport] mktOv err', String(e)); return null; }),
       BusinessCompassAdapter.fetchMarketingTrend(poiId, yesterday, date).catch((e) => { console.error('[buildReport] mktTrend err', String(e)); return null; }),
-      BusinessCompassAdapter.fetchLiveAnalysis(poiId, yesterday, yesterday).catch((e) => { console.error('[buildReport] liveYday err', String(e)); return null; }),
-      BusinessCompassAdapter.fetchLiveAnalysis(poiId, monthStart, date).catch((e) => { console.error('[buildReport] liveMonth err', String(e)); return null; }),
+      BusinessCompassAdapter.fetchLiveAnalysis(poiId, yesterday, yesterday, 'TALENT').catch((e) => { console.error('[buildReport] liveYday err', String(e)); return null; }),
+      BusinessCompassAdapter.fetchLiveAnalysis(poiId, monthStart, date, 'TALENT').catch((e) => { console.error('[buildReport] liveMonth err', String(e)); return null; }),
+      BusinessCompassAdapter.fetchLiveAnalysis(poiId, yesterday, yesterday, 'OFFICIAL').catch((e) => { console.error('[buildReport] ziboYday err', String(e)); return null; }),
+      BusinessCompassAdapter.fetchLiveAnalysis(poiId, monthStart, date, 'OFFICIAL').catch((e) => { console.error('[buildReport] ziboMonth err', String(e)); return null; }),
     ]);
-    console.log(`[buildReport] liveYday=${liveYday ? `gmv=${liveYday.daboGmv} cnt=${liveYday.daboCnt}` : 'null'} liveMonth=${liveMonth ? `gmv=${liveMonth.daboGmv}` : 'null'}`);
+    console.log(`[buildReport] liveYday(达播)=${liveYday ? `gmv=${liveYday.daboGmv} cnt=${liveYday.daboCnt}` : 'null'} liveMonth=${liveMonth ? `gmv=${liveMonth.daboGmv}` : 'null'}`);
+    console.log(`[buildReport] ziboYday(官号)=${ziboYday ? `gmv=${ziboYday.daboGmv} cnt=${ziboYday.daboCnt}` : 'null'} ziboMonth=${ziboMonth ? `gmv=${ziboMonth.daboGmv}` : 'null'}`);
     if (trade) {
       businessTrade = trade;
       sourceLines.push(`生意经流量成交（${yesterday}）：直播渠道 ¥${trade.liveGmv} / 视频渠道 ¥${trade.videoGmv} / 搜索场景 ¥${trade.searchSceneGmv}`);
@@ -249,6 +252,33 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
       const yd = liveYday ? `昨日 GMV ¥${liveYday.daboGmv} / ${liveYday.daboCnt} 场 / ${liveYday.authorCnt} 达人` : '';
       const mo = liveMonth ? `本月 GMV ¥${liveMonth.daboGmv}` : '';
       sourceLines.push(`生意经达播（${[yd, mo].filter(Boolean).join('，')}）`);
+      seeded = true;
+    }
+
+    // 生意经自播（官号直播）— 覆盖 OceanEngine statQuery 的 liveGmv
+    if (ziboYday || ziboMonth) {
+      const zibo = gmvRows.find(r => r.key === 'zibo')!;
+      if (ziboYday) {
+        zibo.yesterday = Math.round(ziboYday.daboGmv);
+        zibo.src = { ...zibo.src, yesterday: 'platform' };
+        liveDetail.zibo.yesterday.gmv      = Math.round(ziboYday.daboGmv);
+        liveDetail.zibo.yesterday.sessions = ziboYday.daboCnt || null;
+        liveDetail.zibo.yesterday.duration = ziboYday.daboDurationSec
+          ? Math.round(ziboYday.daboDurationSec / 3600 * 10) / 10
+          : null;
+      }
+      if (ziboMonth) {
+        zibo.month = Math.round(ziboMonth.daboGmv);
+        zibo.src = { ...zibo.src, month: 'platform' };
+        liveDetail.zibo.month.gmv      = Math.round(ziboMonth.daboGmv);
+        liveDetail.zibo.month.sessions = ziboMonth.daboCnt || null;
+        liveDetail.zibo.month.duration = ziboMonth.daboDurationSec
+          ? Math.round(ziboMonth.daboDurationSec / 3600 * 10) / 10
+          : null;
+      }
+      const yd2 = ziboYday ? `昨日 GMV ¥${ziboYday.daboGmv}` : '';
+      const mo2 = ziboMonth ? `本月 GMV ¥${ziboMonth.daboGmv}` : '';
+      sourceLines.push(`生意经自播官号（${[yd2, mo2].filter(Boolean).join('，')}）`);
       seeded = true;
     }
   }

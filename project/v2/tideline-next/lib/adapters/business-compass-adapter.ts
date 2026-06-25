@@ -228,10 +228,10 @@ export class BusinessCompassAdapter {
   }
 
   /** 生意经直播分析（达播 GMV / 场次 / 时长 / 达人数量）
+   *  roomTypeFilter: 'TALENT'（达播/达人）| 'OFFICIAL'（自播/官号）
    *  payload 对齐抓包真实结构：dito/query + path=/flow/content/analysis/live
-   *  measureDataV2.data[0] → 区间汇总；FlowSourceV2.data[] → 每日趋势
    */
-  static async fetchLiveAnalysis(poiId: string, startDate: string, endDate: string): Promise<{
+  static async fetchLiveAnalysis(poiId: string, startDate: string, endDate: string, roomTypeFilter: 'TALENT' | 'OFFICIAL' = 'TALENT'): Promise<{
     daboGmv: number; daboCnt: number; daboDurationSec: number; authorCnt: number;
     verifyAmount: number; verifyCertCnt: number;
     rooms: Array<{ roomTypeTag: string; gmv: number; durationSec: number; verifyOrderAmt: number; verifyCertNum: number; payCertNum: number; payUser: number }>;
@@ -239,7 +239,7 @@ export class BusinessCompassAdapter {
     fetchedAt: string;
   } | null> {
     // 入口立即打印，确认函数被调用
-    console.log(`[BusinessLive] start fetch { startDate: "${startDate}", endDate: "${endDate}", room_type_filter: "TALENT", poiId: "${poiId}", hasCookie: ${!!cookie()} }`);
+    console.log(`[BusinessLive] start fetch { startDate: "${startDate}", endDate: "${endDate}", room_type_filter: "${roomTypeFilter}", poiId: "${poiId}", hasCookie: ${!!cookie()} }`);
     if (!cookie() || !poiId) {
       console.log(`[BusinessLive] skip: cookie=${!!cookie()} poiId="${poiId}"`);
       return null;
@@ -265,7 +265,7 @@ export class BusinessCompassAdapter {
           date_type: 'custom',
           time_type: 'trade_date',
           is_gray_live_trade_date: true,
-          room_type_filter: 'TALENT',
+          room_type_filter: roomTypeFilter,
           author_id: [],
         },
         module_params: {
