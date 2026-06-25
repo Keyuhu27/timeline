@@ -653,6 +653,42 @@ export class OceanEngineAdapter implements IAdAdapter {
       return d.toISOString().replace('T', ' ').slice(0, 19);
     };
 
+    // 支持按 advid 指定 DataSetKey：OCEANENGINE_LOCALADS_DATASET_MAP={"advid":"cdp"} 中 "cdp" 为别名
+    // "cdp" → pc_home_app_promotion_cdp（适用于品牌推广类账户）
+    // 默认用 pc_home_roi2（适用于本地推/门店类账户）
+    let datasetAlias = 'roi2';
+    try {
+      if (process.env.OCEANENGINE_LOCALADS_DATASET_MAP) {
+        const dm = JSON.parse(process.env.OCEANENGINE_LOCALADS_DATASET_MAP) as Record<string, string>;
+        if (dm[advid]) datasetAlias = dm[advid];
+      }
+    } catch { /* ignore malformed */ }
+
+    const isCdp = datasetAlias === 'cdp';
+    const dataSetKey = isCdp ? 'pc_home_app_promotion_cdp' : 'pc_home_roi2';
+    const conditions = isCdp
+      ? [
+          { Field: 'advertiser_id', Operator: 7, Values: [advid] },
+          { Field: 'is_order',      Operator: 7, Values: ['1'] },
+          { Field: 'landing_type',  Operator: 7, Values: ['1'] },
+        ]
+      : [
+          { Field: 'advertiser_id', Operator: 7, Values: [advid] },
+          { Field: 'adlab_mode',    Operator: 7, Values: ['1'] },
+          { Field: 'create_channel', Operator: 7, Values: ['64'] },
+        ];
+    const metrics = isCdp
+      ? ['stat_cost', 'oto_pay_order_stat_amount', 'oto_pay_order_count', 'roi']
+      : [
+          'live_stat_cost_for_roi2',
+          'video_stat_cost_for_roi2',
+          'live_oto_pay_order_stat_amount_for_roi2',
+          'live_oto_pay_order_roi2_new',
+          'video_oto_pay_order_stat_amount_for_roi2',
+          'video_oto_pay_order_roi2_new',
+          'stat_cost',
+        ];
+
     const payload = {
       StartTime: startTime,
       EndTime:   endTime,
@@ -660,27 +696,15 @@ export class OceanEngineAdapter implements IAdAdapter {
         RatioStartTime: prev(startTime),
         RatioEndTime:   prev(endTime),
       },
-      DataSetKey: 'pc_home_roi2',
+      DataSetKey: dataSetKey,
       Dimensions: ['stat_time_hour'],
       Filters: {
         ConditionRelationshipType: 1,
-        Conditions: [
-          { Field: 'advertiser_id', Operator: 7, Values: [advid] },
-          { Field: 'adlab_mode',    Operator: 7, Values: ['1'] },
-          { Field: 'create_channel', Operator: 7, Values: ['64'] },
-        ],
+        Conditions: conditions,
       },
       FrameId:  '7289039319510155321',
       ModuleId: '7396885770868375562',
-      Metrics: [
-        'live_stat_cost_for_roi2',
-        'video_stat_cost_for_roi2',
-        'live_oto_pay_order_stat_amount_for_roi2',
-        'live_oto_pay_order_roi2_new',
-        'video_oto_pay_order_stat_amount_for_roi2',
-        'video_oto_pay_order_roi2_new',
-        'stat_cost',
-      ],
+      Metrics:  metrics,
       OrderBy: [{ Field: 'stat_time_hour', Type: 1 }],
     };
 
@@ -744,16 +768,16 @@ export class OceanEngineAdapter implements IAdAdapter {
     const videoSpent = tv('video_stat_cost_for_roi2');
     const liveGmv    = tv('live_oto_pay_order_stat_amount_for_roi2');
     const videoGmv   = tv('video_oto_pay_order_stat_amount_for_roi2');
+    // cdp 数据集直接有 stat_cost / oto_pay_order_stat_amount
     const spent      = tv('stat_cost') || (liveSpent + videoSpent);
-    const gmv        = liveGmv + videoGmv;
-    // 订单数：pc_home_roi2 数据集通常不返回订单数；如存在同名口径则带出
+    const gmv        = tv('oto_pay_order_stat_amount') || (liveGmv + videoGmv);
     const orders = tv('oto_pay_order_count')
       || tv('live_oto_pay_order_count_for_roi2')
       || tv('video_oto_pay_order_count_for_roi2');
     const orderCost = orders > 0 ? spent / orders : 0;
 
     console.log(
-      `[statQuery_pc_home_roi2] advid=${advid}\n` +
+      `[statQuery_${dataSetKey}] advid=${advid}\n` +
       `  spent=${spent}\n  liveSpent=${liveSpent}\n  videoSpent=${videoSpent}\n` +
       `  gmv=${gmv}  liveGmv=${liveGmv}  videoGmv=${videoGmv}\n` +
       `  orders=${orders}  orderCost=${orderCost}\n` +
