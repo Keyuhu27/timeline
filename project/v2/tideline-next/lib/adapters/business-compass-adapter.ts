@@ -41,18 +41,25 @@ function base(): string { return (process.env.BUSINESS_COMPASS_API_BASE ?? '').r
  *  例：{"1745303406415880": "7034394621161506847,0", "xxx": "7576836870521292852,1"}
  */
 function resolveLifeAccountId(poiId: string, overrideId?: string): { lifeAccountId: string; isSingle: number } {
-  if (overrideId) return { lifeAccountId: overrideId, isSingle: 0 };
+  if (overrideId) {
+    // override 也支持「id,single」形式
+    const [id, single] = String(overrideId).split(',');
+    return { lifeAccountId: id ?? '', isSingle: Number(single ?? 0) };
+  }
   try {
     const raw = process.env.BUSINESS_COMPASS_LIFE_ACCOUNT_MAP;
     if (raw) {
       const map = JSON.parse(raw) as Record<string, string>;
       const val = map[poiId];
       if (val) {
-        const [id, single] = val.split(',');
+        const [id, single] = String(val).split(',');
         return { lifeAccountId: id ?? '', isSingle: Number(single ?? 0) };
       }
+      console.warn(`[LifeAccountMap] poiId=${poiId} 不在 map 中，回退全局 ID。map 现有 keys=[${Object.keys(map).join(', ')}]`);
+    } else {
+      console.warn(`[LifeAccountMap] 未配置 BUSINESS_COMPASS_LIFE_ACCOUNT_MAP，poiId=${poiId} 回退全局 ID`);
     }
-  } catch { /* 忽略 */ }
+  } catch (e) { console.error(`[LifeAccountMap] 解析失败（检查 JSON 格式）:`, String(e)); }
   // 兜底：使用全局单一配置
   return { lifeAccountId: process.env.BUSINESS_COMPASS_LIFE_ACCOUNT_ID ?? '', isSingle: 0 };
 }
