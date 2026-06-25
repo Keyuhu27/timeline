@@ -566,17 +566,20 @@ export class BusinessCompassAdapter {
     let rows: VerifyRow[] = [];
     for (const node of layout) {
       const d = (node?.data ?? {}) as Record<string, unknown>;
-      const key = Object.keys(d).find(k => k.toLowerCase() === 'verifyordersourceanalysisdetail');
+      // 真实结构：node.data.VerifyDetail.data[]（明细），VerifyOverview 为汇总
+      const key = Object.keys(d).find(k => /^(verifydetail|verifyordersourceanalysisdetail)$/.test(k.toLowerCase()));
       if (key) {
-        const detail = d[key] as { data?: VerifyRow[] } | undefined;
-        if (Array.isArray(detail?.data)) { rows = detail!.data!; break; }
+        const detail = d[key] as { data?: VerifyRow[] } | VerifyRow[] | undefined;
+        const arr = Array.isArray(detail) ? detail : detail?.data;
+        if (Array.isArray(arr) && arr.length) { rows = arr; break; }
       }
     }
 
     if (!rows.length) {
-      // 打印所有 node.data 键名帮助定位正确 key
+      // 打印所有 node.data 键名 + VerifyDetail 结构样本帮助定位
       const allKeys = layout.flatMap(n => Object.keys(n?.data ?? {}));
-      console.log(`[BusinessVerifySplit] rows 为空，data keys=${allKeys.join(',')}`);
+      const vd = layout.map(n => (n?.data as Record<string, unknown>)?.VerifyDetail).find(Boolean);
+      console.log(`[BusinessVerifySplit] rows 为空，data keys=${allKeys.join(',')}; VerifyDetail=${JSON.stringify(vd).slice(0, 400)}`);
       return null;
     }
 
