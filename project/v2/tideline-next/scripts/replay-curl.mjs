@@ -22,26 +22,40 @@ if (m) url = m[1];
 if (!url) { m = joined.match(/(https?:\/\/[^'"\s]+)/); if (m) url = m[1]; }
 
 // headers: -H 'k: v'  /  --header "k: v"
+// 跳过会让 Node fetch 报错或与鉴权无关的浏览器头
+const SKIP = new Set([
+  'sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform',
+  'priority', 'traceparent', 'sec-fetch-dest', 'sec-fetch-mode', 'sec-fetch-site',
+  'pragma', 'cache-control',
+]);
 const headers = {};
 const hre = /(?:-H|--header)\s+'([^']*)'|(?:-H|--header)\s+"([^"]*)"/g;
 let hm;
 while ((hm = hre.exec(joined))) {
   const hv = hm[1] ?? hm[2];
   const i = hv.indexOf(':');
-  if (i > 0) headers[hv.slice(0, i).trim()] = hv.slice(i + 1).trim();
+  if (i <= 0) continue;
+  const k = hv.slice(0, i).trim();
+  if (SKIP.has(k.toLowerCase())) continue;
+  headers[k] = hv.slice(i + 1).trim();
 }
 
 // cookie: -b / --cookie 单独给的情况
 const cm = joined.match(/(?:-b|--cookie)\s+'([^']*)'|(?:-b|--cookie)\s+"([^"]*)"/);
 if (cm) headers['Cookie'] = (cm[1] ?? cm[2]);
 
-// body: --data-raw / --data / -d / --data-binary
+// body: --data-raw / --data / -d / --data-binary —— body 是最后一个参数，取 flag 后第一个引号到末尾
 let body = null;
-const bre = /(?:--data-raw|--data-binary|--data|-d)\s+'([\s\S]*?)'(?:\s+(?:--?\w|$))|(?:--data-raw|--data-binary|--data|-d)\s+"([\s\S]*?)"(?:\s+(?:--?\w|$))/;
-const bm = joined.match(/(?:--data-raw|--data-binary|--data|-d)\s+'([\s\S]*?)'\s*(?:\\?$|--|-[A-Za-z])/m)
-        || joined.match(/(?:--data-raw|--data-binary|--data|-d)\s+'([\s\S]*)'/);
-if (bm) body = bm[1];
-if (!body) { const bm2 = joined.match(/(?:--data-raw|--data-binary|--data|-d)\s+"([\s\S]*)"/); if (bm2) body = bm2[1]; }
+const flagIdx = joined.search(/(?:--data-raw|--data-binary|--data|-d)\s+['"]/);
+if (flagIdx >= 0) {
+  const after = joined.slice(flagIdx);
+  const q = after.search(/['"]/);
+  const quote = after[q];
+  const rest = after.slice(q + 1);
+  const end = rest.lastIndexOf(quote);
+  body = end >= 0 ? rest.slice(0, end) : rest;
+  body = body.trim();
+}
 
 console.log('URL:', url);
 console.log('Method:', body ? 'POST' : (/\b-X\s+(\w+)/.exec(joined)?.[1] || 'GET'));
