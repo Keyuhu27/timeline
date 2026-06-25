@@ -677,7 +677,7 @@ TL.openDailyReport = function (brandId, date) {
   // ── 复制文本 ─────────────────────────────────────────────────────────────────
   function toText(rep) {
     const L = [];
-    L.push(`${rep.brandName}日报（${dateLabel(rep.date)}）`);
+    L.push(`${rep.brandName}日报（${dateLabel(rep.adSpend?.period?.slice(0,10) || rep.date)}）`);
     if (rep.adSpend) {
       L.push(`\n【投放数据】（${rep.adSpend.period}）`);
       L.push(`· 全域消耗：¥${(rep.adSpend.totalSpent || 0).toLocaleString()}`);
@@ -760,7 +760,7 @@ TL.openDailyReport = function (brandId, date) {
           <div className="row between" style={{ alignItems: 'center', marginBottom: 14 }}>
             <div>
               <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>
-                {rep ? `${rep.brandName}日报（${dateLabel(curDate)}）` : '经营日报'}
+                {rep ? `${rep.brandName}日报（${dateLabel(rep.adSpend?.period?.slice(0,10) || curDate)}）` : '经营日报'}
               </h2>
               <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 3, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <SrcBadge src="platform" />
