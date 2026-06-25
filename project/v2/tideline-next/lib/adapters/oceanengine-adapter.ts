@@ -670,22 +670,10 @@ export class OceanEngineAdapter implements IAdAdapter {
     const moduleId   = isStandard ? '7399754894837612581' : '7396885770868375562';
     const conditions = isStandard
       ? [
+          // 只按 advertiser_id + platform_version=2 取「账户整体」口径（含标准+全域）。
+          // 不要加 derivate_is_order=0——那会只剩「标准投放」，而标准投放常为 0。
           { Field: 'advertiser_id', Operator: 7, Values: [advid] },
           { Field: 'platform_version', Operator: 8, Values: ['2'] },
-          {
-            ConditionRelationshipType: 1,
-            Operator: 7,
-            Conditions: [
-              {
-                ConditionRelationshipType: 2,
-                Conditions: [
-                  { Field: 'adlab_mode', Operator: 7, Values: ['0'] },
-                  { Field: 'adlab_mode', Operator: 12 },
-                ],
-              },
-              { Field: 'derivate_is_order', Operator: 7, Values: ['0'] },
-            ],
-          },
         ]
       : [
           { Field: 'advertiser_id', Operator: 7, Values: [advid] },
