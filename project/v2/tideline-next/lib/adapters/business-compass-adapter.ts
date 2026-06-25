@@ -36,8 +36,29 @@ export interface BusinessInsightResult {
 function cookie(): string { return process.env.BUSINESS_COMPASS_COOKIE ?? ''; }
 function base(): string { return (process.env.BUSINESS_COMPASS_API_BASE ?? '').replace(/\/$/, ''); }
 
-function headers(): Record<string, string> {
-  const lifeAccountId = process.env.BUSINESS_COMPASS_LIFE_ACCOUNT_ID ?? '';
+/** 从 BUSINESS_COMPASS_LIFE_ACCOUNT_MAP 环境变量读取品牌 lifeAccountId 映射
+ *  格式（JSON）：{"<laikePoi或externalId>": "<lifeAccountId>,<isSingle>"}
+ *  例：{"1745303406415880": "7034394621161506847,0", "xxx": "7576836870521292852,1"}
+ */
+function resolveLifeAccountId(poiId: string, overrideId?: string): { lifeAccountId: string; isSingle: number } {
+  if (overrideId) return { lifeAccountId: overrideId, isSingle: 0 };
+  try {
+    const raw = process.env.BUSINESS_COMPASS_LIFE_ACCOUNT_MAP;
+    if (raw) {
+      const map = JSON.parse(raw) as Record<string, string>;
+      const val = map[poiId];
+      if (val) {
+        const [id, single] = val.split(',');
+        return { lifeAccountId: id ?? '', isSingle: Number(single ?? 0) };
+      }
+    }
+  } catch { /* 忽略 */ }
+  // 兜底：使用全局单一配置
+  return { lifeAccountId: process.env.BUSINESS_COMPASS_LIFE_ACCOUNT_ID ?? '', isSingle: 0 };
+}
+
+function headers(lifeAccountId?: string): Record<string, string> {
+  const id = lifeAccountId || (process.env.BUSINESS_COMPASS_LIFE_ACCOUNT_ID ?? '');
   // 额外 headers，从 env JSON 解析（如 x-secsdk-csrf-token / x-tt-ls-session-id 等）
   let extraHeaders: Record<string, string> = {};
   try {
@@ -58,7 +79,7 @@ function headers(): Record<string, string> {
     'Sec-Fetch-Dest': 'empty',
     'Sec-Fetch-Mode': 'cors',
     'Sec-Fetch-Site': 'same-origin',
-    ...(lifeAccountId ? { 'life-account-id': lifeAccountId, 'root-life-account-id': lifeAccountId } : {}),
+    ...(id ? { 'life-account-id': id, 'root-life-account-id': id } : {}),
     ...extraHeaders,
   };
 }
@@ -67,9 +88,9 @@ function tryParse<T>(text: string): T | null {
   try { return JSON.parse(text) as T; } catch { return null; }
 }
 
-async function postJson<T>(url: string, body: unknown): Promise<T | null> {
+async function postJson<T>(url: string, body: unknown, lifeAccountId?: string): Promise<T | null> {
   try {
-    const res = await fetch(url, { method: 'POST', headers: headers(), body: JSON.stringify(body) });
+    const res = await fetch(url, { method: 'POST', headers: headers(lifeAccountId), body: JSON.stringify(body) });
     const text = await res.text();
     const json = tryParse<T>(text);
     if (!json) { console.error(`[BusinessCompass] 响应非 JSON (HTTP ${res.status}) ${url}: ${text.slice(0, 200)}`); return null; }
@@ -233,7 +254,7 @@ export class BusinessCompassAdapter {
    *  接口：dito/query + path=/flow/trade/overview，节点 PayOrderSourceAnalysis
    *  可通过 BUSINESS_FLOW_TRADE_OVERVIEW_URL 覆盖完整 URL
    */
-  static async fetchPayOrderSourceSplit(poiId: string, startDate: string, endDate: string): Promise<{
+  static async fetchPayOrderSourceSplit(poiId: string, startDate: string, endDate: string, overrideLifeAccountId?: string): Promise<{
     liveTotalGmv: number;
     daboGmv: number;
     officialLiveGmv: number;
@@ -251,6 +272,8 @@ export class BusinessCompassAdapter {
       console.warn(`[BusinessSourceSplit] 未配置 URL，跳过 poiId=${poiId}`);
       return null;
     }
+    const { lifeAccountId, isSingle } = resolveLifeAccountId(poiId, overrideLifeAccountId);
+    console.log(`[BusinessSourceSplit] poiId=${poiId} lifeAccountId=${lifeAccountId} isSingle=${isSingle}`);
 
     const payload = {
       biz_params: {
@@ -258,7 +281,7 @@ export class BusinessCompassAdapter {
         query: {},
         first_render: false,
         common_params: {
-          is_single: 0,
+          is_single: isSingle,
           start_date: startDate,
           end_date: endDate,
           date_type: 'custom',
@@ -282,7 +305,7 @@ export class BusinessCompassAdapter {
 
     let rawText = '';
     try {
-      const res = await fetch(url, { method: 'POST', headers: headers(), body: JSON.stringify(payload) });
+      const res = await fetch(url, { method: 'POST', headers: headers(lifeAccountId), body: JSON.stringify(payload) });
       rawText = await res.text();
       console.log(`[BusinessSourceSplit] HTTP ${res.status} len=${rawText.length} ${startDate}~${endDate}`);
       if (!res.ok) { console.error(`[BusinessSourceSplit] HTTP error body=${rawText.slice(0, 300)}`); return null; }
@@ -377,6 +400,7 @@ export class BusinessCompassAdapter {
     if (!cookie() || !poiId) return null;
     const url = process.env.BUSINESS_FLOW_LIVE_URL || (base() + '/api/dito/query');
     if (!url.startsWith('http')) return null;
+    const { lifeAccountId } = resolveLifeAccountId(poiId);
 
     const payload = {
       biz_params: {
@@ -415,7 +439,7 @@ export class BusinessCompassAdapter {
 
     let rawText = '';
     try {
-      const res = await fetch(url, { method: 'POST', headers: headers(), body: JSON.stringify(payload) });
+      const res = await fetch(url, { method: 'POST', headers: headers(lifeAccountId), body: JSON.stringify(payload) });
       rawText = await res.text();
       if (!res.ok) return null;
     } catch { return null; }
@@ -494,7 +518,7 @@ export class BusinessCompassAdapter {
    *  与 fetchPayOrderSourceSplit 同接口，节点改为 PcBusinessVerifyOrderSourceAnalysis
    *  字段预期：verify_gmv_1d（待日志确认），分→元 ÷100
    */
-  static async fetchVerifyOrderSourceSplit(poiId: string, startDate: string, endDate: string): Promise<{
+  static async fetchVerifyOrderSourceSplit(poiId: string, startDate: string, endDate: string, overrideLifeAccountId?: string): Promise<{
     liveTotalGmv: number;
     daboGmv: number;
     officialLiveGmv: number;
@@ -507,6 +531,7 @@ export class BusinessCompassAdapter {
     if (!cookie() || !poiId) return null;
     const url = process.env.BUSINESS_FLOW_TRADE_OVERVIEW_URL || (base() + '/api/dito/query');
     if (!url.startsWith('http')) return null;
+    const { lifeAccountId, isSingle } = resolveLifeAccountId(poiId, overrideLifeAccountId);
 
     const payload = {
       biz_params: {
@@ -514,7 +539,7 @@ export class BusinessCompassAdapter {
         query: {},
         first_render: false,
         common_params: {
-          is_single: 0,
+          is_single: isSingle,
           start_date: startDate,
           end_date: endDate,
           date_type: 'custom',
@@ -538,7 +563,7 @@ export class BusinessCompassAdapter {
 
     let rawText = '';
     try {
-      const res = await fetch(url, { method: 'POST', headers: headers(), body: JSON.stringify(payload) });
+      const res = await fetch(url, { method: 'POST', headers: headers(lifeAccountId), body: JSON.stringify(payload) });
       rawText = await res.text();
       console.log(`[BusinessVerifySplit] HTTP ${res.status} len=${rawText.length} ${startDate}~${endDate}`);
       if (!res.ok) { console.error(`[BusinessVerifySplit] HTTP error body=${rawText.slice(0, 300)}`); return null; }

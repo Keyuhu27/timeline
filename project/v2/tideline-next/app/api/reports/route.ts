@@ -187,8 +187,9 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
   // 诊断日志：无论条件是否满足都打印，方便排查
   console.log(`[buildReport] pre-check brandId=${brandId} accountId=${account?.id ?? 'none'} poiId="${poiId}" hasBizCookie=${!!process.env.BUSINESS_COMPASS_COOKIE}`);
 
+  const lifeAccountId = account?.lifeAccountId;
   if (poiId && process.env.BUSINESS_COMPASS_COOKIE) {
-    console.log(`[buildReport] 生意经 poiId=${poiId} yesterday=${yesterday} monthStart=${monthStart} date=${date}`);
+    console.log(`[buildReport] 生意经 poiId=${poiId} lifeAccountId=${lifeAccountId ?? '(from map/env)'} yesterday=${yesterday} monthStart=${monthStart} date=${date}`);
     const [trade, exposure, bIns, mktOv, mktTrend, srcYday, srcMonth, liveYday, liveMonth, verYday, verMonth] = await Promise.all([
       BusinessCompassAdapter.fetchTradeSplit(poiId, yesterday, yesterday).catch((e) => { console.error('[buildReport] tradeSplit err', String(e)); return null; }),
       BusinessCompassAdapter.fetchExposureSplit(poiId, yesterday, yesterday).catch((e) => { console.error('[buildReport] exposureSplit err', String(e)); return null; }),
@@ -196,14 +197,14 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
       BusinessCompassAdapter.fetchMarketingOverview(poiId, yesterday, yesterday).catch((e) => { console.error('[buildReport] mktOv err', String(e)); return null; }),
       BusinessCompassAdapter.fetchMarketingTrend(poiId, yesterday, date).catch((e) => { console.error('[buildReport] mktTrend err', String(e)); return null; }),
       // 经营概览 — 官号/达人 GMV 拆分（自播 / 达播）
-      BusinessCompassAdapter.fetchPayOrderSourceSplit(poiId, yesterday, yesterday).catch((e) => { console.error('[buildReport] srcYday err', String(e)); return null; }),
-      BusinessCompassAdapter.fetchPayOrderSourceSplit(poiId, monthStart, date).catch((e) => { console.error('[buildReport] srcMonth err', String(e)); return null; }),
+      BusinessCompassAdapter.fetchPayOrderSourceSplit(poiId, yesterday, yesterday, lifeAccountId).catch((e) => { console.error('[buildReport] srcYday err', String(e)); return null; }),
+      BusinessCompassAdapter.fetchPayOrderSourceSplit(poiId, monthStart, date, lifeAccountId).catch((e) => { console.error('[buildReport] srcMonth err', String(e)); return null; }),
       // 直播内容分析 — 场次 / 时长 / 达人数（不再取 GMV）
       BusinessCompassAdapter.fetchLiveAnalysis(poiId, yesterday, yesterday).catch((e) => { console.error('[buildReport] liveYday err', String(e)); return null; }),
       BusinessCompassAdapter.fetchLiveAnalysis(poiId, monthStart, date).catch((e) => { console.error('[buildReport] liveMonth err', String(e)); return null; }),
       // 核销来源拆分 — 自播 / 达播 / POI / 短视频
-      BusinessCompassAdapter.fetchVerifyOrderSourceSplit(poiId, yesterday, yesterday).catch((e) => { console.error('[buildReport] verYday err', String(e)); return null; }),
-      BusinessCompassAdapter.fetchVerifyOrderSourceSplit(poiId, monthStart, date).catch((e) => { console.error('[buildReport] verMonth err', String(e)); return null; }),
+      BusinessCompassAdapter.fetchVerifyOrderSourceSplit(poiId, yesterday, yesterday, lifeAccountId).catch((e) => { console.error('[buildReport] verYday err', String(e)); return null; }),
+      BusinessCompassAdapter.fetchVerifyOrderSourceSplit(poiId, monthStart, date, lifeAccountId).catch((e) => { console.error('[buildReport] verMonth err', String(e)); return null; }),
     ]);
     console.log(`[buildReport] srcYday=${srcYday ? `official=${srcYday.officialLiveGmv} dabo=${srcYday.daboGmv}` : 'null'} srcMonth=${srcMonth ? `official=${srcMonth.officialLiveGmv} dabo=${srcMonth.daboGmv}` : 'null'}`);
     console.log(`[buildReport] liveYday=${liveYday ? `cnt=${liveYday.daboCnt} dur=${liveYday.daboDurationSec}s` : 'null'} liveMonth=${liveMonth ? `cnt=${liveMonth.daboCnt}` : 'null'}`);
