@@ -10,15 +10,12 @@ import type {
 
 // ─── Brands ────────────────────────────────────────────────────────────────
 export const brands: Brand[] = [
-  { id: 'b1',  name: '快乐蜂（中国）餐饮',         cat: '餐饮',   logo: '快' },
-  { id: 'b2',  name: '耀银-广州烨道餐饮',           cat: '餐饮',   logo: '耀' },
-  { id: 'b3',  name: '广州烨道餐饮上城钱江',        cat: '餐饮',   logo: '广' },
-  { id: 'b4',  name: '亿滋本地推',                  cat: '餐饮',   logo: '亿' },
-  { id: 'b5',  name: '萤山の温泉',                  cat: '休闲旅游', logo: '萤' },
-  { id: 'b6',  name: '武义蝶来望境温泉酒店',        cat: '酒店',   logo: '蝶' },
-  { id: 'b7',  name: '武义宏马文化发展',            cat: '文旅',   logo: '宏' },
-  { id: 'b8',  name: '天鸿丝绸(福田三区店)',        cat: '零售',   logo: '天' },
-  { id: 'b9',  name: '上前小店',                    cat: '零售',   logo: '上' },
+  { id: 'b1',  name: '快乐蜂（中国）餐饮',         cat: '餐饮',     logo: '快' },
+  { id: 'b2',  name: '耀银-广州烨道餐饮',           cat: '餐饮',     logo: '耀' },
+  { id: 'b3',  name: '广州烨道餐饮上城钱江',        cat: '餐饮',     logo: '广' },
+  { id: 'b4',  name: '亿滋本地推',                  cat: '餐饮',     logo: '亿' },
+  { id: 'b6',  name: '武义蝶来望境温泉酒店',        cat: '酒店',     logo: '蝶' },
+  { id: 'b7',  name: '武义宏马文化发展',            cat: '文旅',     logo: '宏' },
   { id: 'b10', name: '半日懒竹林漂流',              cat: '户外休闲', logo: '竹' },
 ];
 
@@ -54,12 +51,9 @@ export const accounts: Account[] = [
   { id: 'a2',  name: '耀银-广州烨道餐饮-上城钱江路',          externalId: '1847915308786764', brand: 'b2',  color: 'c2',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
   { id: 'a3',  name: '广州烨道餐饮管理有限公司上城钱江',      externalId: '1839229761224026', brand: 'b3',  color: 'c3',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
   { id: 'a4',  name: '亿滋本地推',                             externalId: '1851121699721292', brand: 'b4',  color: 'c4',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
-  { id: 'a5',  name: '萤山の温泉',                             externalId: '1815580479574091', brand: 'b5',  color: 'c5',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
-  { id: 'a6',  name: '武义蝶来望境温泉酒店_3号',              externalId: '1845654470244352', brand: 'b6',  color: 'c6',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
-  { id: 'a7',  name: '武义宏马文化发展有限公司_2号',          externalId: '1845654181143703', brand: 'b7',  color: 'c7',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
-  { id: 'a8',  name: '天鸿丝绸(福田三区店)-gfs',              externalId: '1844144155187404', brand: 'b8',  color: 'c8',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
-  { id: 'a9',  name: '上前小店-gfs',                          externalId: '1840323758018395', brand: 'b9',  color: 'c9',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
-  { id: 'a10', name: '半日懒竹林漂流',                        externalId: '',                 brand: 'b10', color: 'c10', followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  { id: 'a6',  name: '武义蝶来望境温泉酒店',                  externalId: '1845654470244352', brand: 'b6',  color: 'c6',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  { id: 'a7',  name: '武义宏马文化发展有限公司',              externalId: '1845654181143703', brand: 'b7',  color: 'c7',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  { id: 'a10', name: '半日懒竹林漂流',                        externalId: '1770545948162062', brand: 'b10', color: 'c10', followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
 ];
 
 // ─── Live Sessions ────────────────────────────────────────────────────────

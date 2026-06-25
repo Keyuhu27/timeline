@@ -16,8 +16,11 @@ const KNOWN_LOCAL_ACCOUNT_IDS = [
   '1851121699721292',  // 亿滋本地推
   '1745303406415880',  // 快乐蜂（中国）餐饮管理有限公司
   '1810161095323913',  // 永和大王
-  '1849117028573319',  // 蝶来望境
+  '1849117028573319',  // 蝶来望境（OE账户）
   '1847915308786764',  // 耀银-广州烨道餐饮
+  '1845654470244352',  // 武义蝶来望境温泉酒店
+  '1839229761224026',  // 广州烨道餐饮上城钱江路
+  '1845654181143703',  // 武义宏马文化发展
 ];
 // 已知账户名（接口未回填 poi_name 时的兜底显示名）
 const KNOWN_LOCAL_ACCOUNT_NAMES: Record<string, string> = {
@@ -106,7 +109,7 @@ export async function syncLocalAccounts(
     const existed = accounts.find(a => a.externalId === lid);
     if (existed) {
       // 同步归档状态（防止已存在账户未标 hidden）
-      if (ARCHIVED_LOCAL_ACCOUNT_IDS.has(lid)) existed.hidden = true;
+      if (ARCHIVED_LOCAL_ACCOUNT_IDS.has(lid) || !KNOWN_LOCAL_ACCOUNT_IDS.includes(lid)) existed.hidden = true;
       // 用真实 account_name 覆盖占位名（Localad-xxx / 本地推账户 xxx / 空 / unknown）
       const realName = (nameById?.get(lid) ?? '').trim() || KNOWN_LOCAL_ACCOUNT_NAMES[lid];
       if (realName && isPlaceholderName(existed.name)) {
@@ -116,6 +119,11 @@ export async function syncLocalAccounts(
         console.log(`[AccountSync] 覆盖占位名 ${lid} → ${realName}`);
       }
       if (!result.includes(existed)) result.push(existed);
+      continue;
+    }
+    // 不在白名单的账户（Localad-xxx / 本地推账户 xxx 等）跳过，不创建品牌条目
+    if (!KNOWN_LOCAL_ACCOUNT_IDS.includes(lid)) {
+      console.log(`[AccountSync] 跳过非白名单账户 ${lid}（未在 KNOWN_LOCAL_ACCOUNT_IDS 中登记）`);
       continue;
     }
     const brandId = `b_${lid}`;
