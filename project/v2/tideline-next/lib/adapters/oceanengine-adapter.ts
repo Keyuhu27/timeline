@@ -653,9 +653,9 @@ export class OceanEngineAdapter implements IAdAdapter {
       return d.toISOString().replace('T', ' ').slice(0, 19);
     };
 
-    // 支持按 advid 指定 DataSetKey：OCEANENGINE_LOCALADS_DATASET_MAP={"advid":"cdp"} 中 "cdp" 为别名
-    // "cdp" → pc_home_app_promotion_cdp（适用于品牌推广类账户）
-    // 默认用 pc_home_roi2（适用于本地推/门店类账户）
+    // 支持按 advid 指定数据集：OCEANENGINE_LOCALADS_DATASET_MAP={"advid":"standard"}
+    // "standard" → pc_home_standard_promotion（标准推广类账户，如天鸿；后台首页「标准推广」口径）
+    // 默认 "roi2" → pc_home_roi2（本地推/门店全域投放类账户）
     let datasetAlias = 'roi2';
     try {
       if (process.env.OCEANENGINE_LOCALADS_DATASET_MAP) {
@@ -664,21 +664,36 @@ export class OceanEngineAdapter implements IAdAdapter {
       }
     } catch { /* ignore malformed */ }
 
-    const isCdp = datasetAlias === 'cdp';
-    const dataSetKey = isCdp ? 'pc_home_app_promotion_cdp' : 'pc_home_roi2';
-    const conditions = isCdp
+    const isStandard = datasetAlias === 'standard';
+    // 各数据集的 DataSetKey / ModuleId / Filters / Metrics 都不同——实测自浏览器真实请求
+    const dataSetKey = isStandard ? 'pc_home_standard_promotion' : 'pc_home_roi2';
+    const moduleId   = isStandard ? '7399754894837612581' : '7396885770868375562';
+    const conditions = isStandard
       ? [
           { Field: 'advertiser_id', Operator: 7, Values: [advid] },
-          { Field: 'is_order',      Operator: 7, Values: ['1'] },
-          { Field: 'landing_type',  Operator: 7, Values: ['1'] },
+          { Field: 'platform_version', Operator: 8, Values: ['2'] },
+          {
+            ConditionRelationshipType: 1,
+            Operator: 7,
+            Conditions: [
+              {
+                ConditionRelationshipType: 2,
+                Conditions: [
+                  { Field: 'adlab_mode', Operator: 7, Values: ['0'] },
+                  { Field: 'adlab_mode', Operator: 12 },
+                ],
+              },
+              { Field: 'derivate_is_order', Operator: 7, Values: ['0'] },
+            ],
+          },
         ]
       : [
           { Field: 'advertiser_id', Operator: 7, Values: [advid] },
           { Field: 'adlab_mode',    Operator: 7, Values: ['1'] },
           { Field: 'create_channel', Operator: 7, Values: ['64'] },
         ];
-    const metrics = isCdp
-      ? ['stat_cost', 'oto_pay_order_stat_amount', 'oto_pay_order_count', 'roi']
+    const metrics = isStandard
+      ? ['stat_cost', 'show_cnt', 'click_cnt', 'oto_pay_order_count', 'oto_pay_order_amount', 'oto_pay_order_roi']
       : [
           'live_stat_cost_for_roi2',
           'video_stat_cost_for_roi2',
@@ -703,7 +718,7 @@ export class OceanEngineAdapter implements IAdAdapter {
         Conditions: conditions,
       },
       FrameId:  '7289039319510155321',
-      ModuleId: '7396885770868375562',
+      ModuleId: moduleId,
       Metrics:  metrics,
       OrderBy: [{ Field: 'stat_time_hour', Type: 1 }],
     };
@@ -713,9 +728,11 @@ export class OceanEngineAdapter implements IAdAdapter {
       'Content-Type': 'application/json',
       'Cookie': cookie,
       'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'en,zh-CN;q=0.9,zh;q=0.8',
       'Origin': 'https://localads.chengzijianzhan.cn',
-      'Referer': 'https://localads.chengzijianzhan.cn/',
-      'User-Agent': 'Mozilla/5.0',
+      // referer 必须带 advid——通用 referer 会被风控判为「未登录」（实测）
+      'Referer': `https://localads.chengzijianzhan.cn/lamp/pc/home?advid=${encodeURIComponent(advid)}`,
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
       ...extraHeaders,
     };
 
@@ -768,13 +785,15 @@ export class OceanEngineAdapter implements IAdAdapter {
     const videoSpent = tv('video_stat_cost_for_roi2');
     const liveGmv    = tv('live_oto_pay_order_stat_amount_for_roi2');
     const videoGmv   = tv('video_oto_pay_order_stat_amount_for_roi2');
-    // cdp 数据集直接有 stat_cost / oto_pay_order_stat_amount
+    // standard 数据集直接给 stat_cost / oto_pay_order_amount / oto_pay_order_roi（无直播/视频拆分）
     const spent      = tv('stat_cost') || (liveSpent + videoSpent);
-    const gmv        = tv('oto_pay_order_stat_amount') || (liveGmv + videoGmv);
+    const gmv        = tv('oto_pay_order_amount') || (liveGmv + videoGmv);
     const orders = tv('oto_pay_order_count')
       || tv('live_oto_pay_order_count_for_roi2')
       || tv('video_oto_pay_order_count_for_roi2');
     const orderCost = orders > 0 ? spent / orders : 0;
+    // standard 直接有 oto_pay_order_roi；roi2 用 gmv/spent 自算
+    const directRoi = tv('oto_pay_order_roi');
 
     console.log(
       `[statQuery_${dataSetKey}] advid=${advid}\n` +
@@ -789,7 +808,7 @@ export class OceanEngineAdapter implements IAdAdapter {
       spent, liveSpent, videoSpent, liveGmv, videoGmv, gmv,
       liveRoi:  tv('live_oto_pay_order_roi2_new'),
       videoRoi: tv('video_oto_pay_order_roi2_new'),
-      roi: spent > 0 ? gmv / spent : 0,
+      roi: directRoi || (spent > 0 ? gmv / spent : 0),
       orders, orderCost,
       rawTotals: totals,
       totalsKeys,
