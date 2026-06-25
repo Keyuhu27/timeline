@@ -21,6 +21,7 @@ const KNOWN_LOCAL_ACCOUNT_IDS = [
   '1845654470244352',  // 武义蝶来望境温泉酒店
   '1839229761224026',  // 广州烨道餐饮上城钱江路
   '1845654181143703',  // 武义宏马文化发展
+  '1844144155187404',  // 天鸿丝绸福田三区店（仅本地推数据，无日报/生意经）
 ];
 // 已知账户名（接口未回填 poi_name 时的兜底显示名）
 const KNOWN_LOCAL_ACCOUNT_NAMES: Record<string, string> = {
@@ -30,6 +31,7 @@ const KNOWN_LOCAL_ACCOUNT_NAMES: Record<string, string> = {
   '1810161095323913': '永和大王',
   '1849117028573319': '蝶来望境',
   '1847915308786764': '耀银-广州烨道餐饮',
+  '1844144155187404': '天鸿丝绸福田三区店',
 };
 // 归档账户（重复/废弃），UI 隐藏但保留数据
 const ARCHIVED_LOCAL_ACCOUNT_IDS = new Set([
@@ -37,6 +39,18 @@ const ARCHIVED_LOCAL_ACCOUNT_IDS = new Set([
   '1746097610345479',  // 快乐蜂 重复账户
   '1847218637597210',  // 耀银 旧账户（保留新账户 1847915308786764）
 ]);
+
+// 是否为该 advid 配置了后台 statQuery 鉴权（全局 cookie 或 per-advid cookie map）
+function hasLocalAdsCookie(advid?: string): boolean {
+  if (process.env.OCEANENGINE_LOCALADS_COOKIE) return true;
+  try {
+    if (advid && process.env.OCEANENGINE_LOCALADS_COOKIE_MAP) {
+      const m = JSON.parse(process.env.OCEANENGINE_LOCALADS_COOKIE_MAP) as Record<string, string>;
+      if (m[advid]) return true;
+    }
+  } catch { /* ignore malformed */ }
+  return false;
+}
 
 // 占位/无效账户名（需用真实 account_name 覆盖）
 function isPlaceholderName(name: string | undefined): boolean {
@@ -245,7 +259,7 @@ export async function syncLocalAccounts(
       console.log(`[AccountSync] ${account.name}: 同步 ${campList.length} 个计划（含报表）`);
 
       // 后台首页 statQuery——优先级最高的今日消耗来源（全域投放口径）
-      if (!process.env.OCEANENGINE_LOCALADS_COOKIE) {
+      if (!hasLocalAdsCookie(account.externalId)) {
         delete account.statQueryReport;   // 没鉴权就别留旧值冒充
         console.warn(`[AccountSync] ⚠️ 后台 statQuery 未配置鉴权（OCEANENGINE_LOCALADS_COOKIE），跳过全域消耗拉取（${account.name}）`);
       } else {
@@ -716,7 +730,7 @@ export const syncStatus: RouteHandler = async (req, res) => {
         }
       }
       // 后台首页 statQuery——优先级最高的今日消耗来源（全域投放口径）
-      if (!process.env.OCEANENGINE_LOCALADS_COOKIE) {
+      if (!hasLocalAdsCookie(account.externalId)) {
         delete account.statQueryReport;   // 没鉴权就别留旧值冒充
         console.warn(`[SyncStatus] ⚠️ 后台 statQuery 未配置鉴权（OCEANENGINE_LOCALADS_COOKIE），跳过全域消耗拉取（${account.name}）`);
       } else {

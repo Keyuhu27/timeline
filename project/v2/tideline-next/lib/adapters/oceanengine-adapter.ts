@@ -621,14 +621,29 @@ export class OceanEngineAdapter implements IAdAdapter {
     httpStatus: number;
     source: 'statQuery_pc_home_roi2';
   }> {
-    const cookie = process.env.OCEANENGINE_LOCALADS_COOKIE;
-    if (!cookie) throw new Error('[statQuery] 未配置 OCEANENGINE_LOCALADS_COOKIE，请在本地 .env 设置后台 Cookie');
+    // 按 advid 解析后台 Cookie：优先 OCEANENGINE_LOCALADS_COOKIE_MAP（JSON advid→cookie），
+    // 回落到全局 OCEANENGINE_LOCALADS_COOKIE。不同登录会话的账户（如天鸿）用各自 cookie。
+    let cookie = process.env.OCEANENGINE_LOCALADS_COOKIE;
+    try {
+      if (process.env.OCEANENGINE_LOCALADS_COOKIE_MAP) {
+        const m = JSON.parse(process.env.OCEANENGINE_LOCALADS_COOKIE_MAP) as Record<string, string>;
+        if (m[advid]) cookie = m[advid];
+      }
+    } catch { /* ignore malformed */ }
+    if (!cookie) throw new Error('[statQuery] 未配置 OCEANENGINE_LOCALADS_COOKIE（或 _COOKIE_MAP），请在本地 .env 设置后台 Cookie');
 
-    // 可选补充 csrf / agw 等风控头（OCEANENGINE_LOCALADS_HEADERS 为 JSON 字符串）
+    // 可选补充 csrf / agw 等风控头：优先 OCEANENGINE_LOCALADS_HEADERS_MAP（JSON advid→headers对象），
+    // 回落到全局 OCEANENGINE_LOCALADS_HEADERS（JSON 字符串）。
     let extraHeaders: Record<string, string> = {};
     try {
       if (process.env.OCEANENGINE_LOCALADS_HEADERS)
         extraHeaders = JSON.parse(process.env.OCEANENGINE_LOCALADS_HEADERS) as Record<string, string>;
+    } catch { /* ignore malformed */ }
+    try {
+      if (process.env.OCEANENGINE_LOCALADS_HEADERS_MAP) {
+        const hm = JSON.parse(process.env.OCEANENGINE_LOCALADS_HEADERS_MAP) as Record<string, Record<string, string>>;
+        if (hm[advid]) extraHeaders = { ...extraHeaders, ...hm[advid] };
+      }
     } catch { /* ignore malformed */ }
 
     // 对比时段：startTime 前一天同时间段

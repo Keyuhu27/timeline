@@ -17,6 +17,7 @@ export const brands: Brand[] = [
   { id: 'b6',  name: '武义蝶来望境温泉酒店',        cat: '酒店',     logo: '蝶' },
   { id: 'b7',  name: '武义宏马文化发展',            cat: '文旅',     logo: '宏' },
   { id: 'b10', name: '半日懒竹林漂流',              cat: '户外休闲', logo: '竹' },
+  { id: 'b11', name: '天鸿丝绸福田三区店',          cat: '本地推',   logo: '天' },
 ];
 
 // ─── Team ────────────────────────────────────────────────────────────────
@@ -55,6 +56,8 @@ export const accounts: Account[] = [
   { id: 'a6',  name: '武义蝶来望境温泉酒店',                  externalId: '1845654470244352', brand: 'b6',  color: 'c6',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
   { id: 'a7',  name: '武义宏马文化发展有限公司',              externalId: '1845654181143703', brand: 'b7',  color: 'c7',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
   { id: 'a10', name: '半日懒竹林漂流',                        externalId: '1770545948162062', brand: 'b10', color: 'c10', followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  // 天鸿丝绸福田三区店：仅本地推 statQuery 数据，无生意经日报映射
+  { id: 'a11', name: '天鸿丝绸福田三区店',                    externalId: '1844144155187404', brand: 'b11', color: 'c1',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
 ];
 
 // ─── Live Sessions ────────────────────────────────────────────────────────
@@ -150,6 +153,10 @@ export const REAL_DATA_EXTERNAL_IDS = new Set<string>([
 const PLACEHOLDER_NAME = /^(Localad-|本地推账户\s*\d|未命名|unknown$)/i;
 const isPlaceholderName = (s?: string) => !s || PLACEHOLDER_NAME.test(s.trim());
 
+// 列表黑名单：测试/废弃门店（上前小店0733、上前小店-gfs1 等）一律不在侧栏显示
+const HIDDEN_NAME_PATTERN = /上前小店/;
+const isHiddenName = (s?: string) => !!s && HIDDEN_NAME_PATTERN.test(s.trim());
+
 /**
  * 可见账户：去掉占位名账户，并按 externalId 去重（种子账户优先于持久化 a_* 账户）。
  * 保留所有有真实门店名的账户，只消除重复与占位。
@@ -158,7 +165,7 @@ export function visibleAccounts(): Account[] {
   const byExt = new Map<string, Account>();
   const noExt: Account[] = [];
   for (const a of accounts) {
-    if (a.hidden || isPlaceholderName(a.name)) continue;
+    if (a.hidden || isPlaceholderName(a.name) || isHiddenName(a.name)) continue;
     if (!a.externalId) { noExt.push(a); continue; }
     const prev = byExt.get(a.externalId);
     // 同 externalId 去重：优先保留种子账户（id 不带下划线），其次持久化 a_xxx
@@ -174,7 +181,7 @@ export function visibleBrands(): Brand[] {
   const byName = new Map<string, Brand>();
   const order: string[] = [];
   for (const b of brands) {
-    if (b.hidden || isPlaceholderName(b.name)) continue;
+    if (b.hidden || isPlaceholderName(b.name) || isHiddenName(b.name)) continue;
     const key = b.name.trim();
     const prev = byName.get(key);
     if (!prev) { byName.set(key, b); order.push(key); }
