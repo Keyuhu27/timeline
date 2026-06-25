@@ -837,8 +837,7 @@ TL.openDailyReport = function (brandId, date) {
               {/* 生意经曝光拆分 */}
               <BusinessExposureCard businessExposure={rep.businessExposure} />
 
-              {/* 直播板块明细 */}
-              <LiveDetailTable liveDetail={rep.liveDetail} onChange={liveChange} businessLive={rep.businessLive} />
+              {/* 直播板块明细 — 按需求已从日报中移除 */}
 
               {/* 平台经营洞察（来客 + 生意经）*/}
               <InsightBlock laikeInsight={rep.laikeInsight} businessInsight={rep.businessInsight} />
