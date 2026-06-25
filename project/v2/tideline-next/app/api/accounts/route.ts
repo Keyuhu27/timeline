@@ -43,13 +43,18 @@ const ARCHIVED_LOCAL_ACCOUNT_IDS = new Set([
 // 是否为该 advid 配置了后台 statQuery 鉴权。
 // 若 COOKIE_MAP 已配置，则只对 MAP 中明确列出的 advid 返回 true，
 // 避免用错误账户的 cookie 去请求其它 advid 导致「未登录」。
-// 若未配置 COOKIE_MAP，则全局 OCEANENGINE_LOCALADS_COOKIE 作为兜底（原有行为）。
+// 关键：COOKIE_MAP 存在但解析失败（如 .env 被编辑器换行截断）时，必须返回 false 跳过，
+// 绝不能回退到全局 cookie 给所有账户盲打——那正是「每个品牌都报未登录」的根因。
+// 仅当完全未配置 COOKIE_MAP 时，才用全局 OCEANENGINE_LOCALADS_COOKIE 兜底。
 function hasLocalAdsCookie(advid?: string): boolean {
   if (process.env.OCEANENGINE_LOCALADS_COOKIE_MAP) {
     try {
       const m = JSON.parse(process.env.OCEANENGINE_LOCALADS_COOKIE_MAP) as Record<string, string>;
       return !!(advid && m[advid]);
-    } catch { /* ignore malformed */ }
+    } catch {
+      console.error('[statQuery] ⚠️ OCEANENGINE_LOCALADS_COOKIE_MAP 解析失败（疑似 .env 被换行截断），跳过 statQuery。请确保该变量在 .env 中为单行不换行。');
+      return false;
+    }
   }
   return !!process.env.OCEANENGINE_LOCALADS_COOKIE;
 }
