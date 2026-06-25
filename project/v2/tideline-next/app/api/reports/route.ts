@@ -189,7 +189,7 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
 
   if (poiId && process.env.BUSINESS_COMPASS_COOKIE) {
     console.log(`[buildReport] 生意经 poiId=${poiId} yesterday=${yesterday} monthStart=${monthStart} date=${date}`);
-    const [trade, exposure, bIns, mktOv, mktTrend, srcYday, srcMonth, liveYday, liveMonth] = await Promise.all([
+    const [trade, exposure, bIns, mktOv, mktTrend, srcYday, srcMonth, liveYday, liveMonth, verYday, verMonth] = await Promise.all([
       BusinessCompassAdapter.fetchTradeSplit(poiId, yesterday, yesterday).catch((e) => { console.error('[buildReport] tradeSplit err', String(e)); return null; }),
       BusinessCompassAdapter.fetchExposureSplit(poiId, yesterday, yesterday).catch((e) => { console.error('[buildReport] exposureSplit err', String(e)); return null; }),
       BusinessCompassAdapter.fetchInsights(poiId, yesterday, date).catch((e) => { console.error('[buildReport] insights err', String(e)); return null; }),
@@ -201,6 +201,9 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
       // 直播内容分析 — 场次 / 时长 / 达人数（不再取 GMV）
       BusinessCompassAdapter.fetchLiveAnalysis(poiId, yesterday, yesterday).catch((e) => { console.error('[buildReport] liveYday err', String(e)); return null; }),
       BusinessCompassAdapter.fetchLiveAnalysis(poiId, monthStart, date).catch((e) => { console.error('[buildReport] liveMonth err', String(e)); return null; }),
+      // 核销来源拆分 — 自播 / 达播 / POI / 短视频
+      BusinessCompassAdapter.fetchVerifyOrderSourceSplit(poiId, yesterday, yesterday).catch((e) => { console.error('[buildReport] verYday err', String(e)); return null; }),
+      BusinessCompassAdapter.fetchVerifyOrderSourceSplit(poiId, monthStart, date).catch((e) => { console.error('[buildReport] verMonth err', String(e)); return null; }),
     ]);
     console.log(`[buildReport] srcYday=${srcYday ? `official=${srcYday.officialLiveGmv} dabo=${srcYday.daboGmv}` : 'null'} srcMonth=${srcMonth ? `official=${srcMonth.officialLiveGmv} dabo=${srcMonth.daboGmv}` : 'null'}`);
     console.log(`[buildReport] liveYday=${liveYday ? `cnt=${liveYday.daboCnt} dur=${liveYday.daboDurationSec}s` : 'null'} liveMonth=${liveMonth ? `cnt=${liveMonth.daboCnt}` : 'null'}`);
@@ -315,6 +318,30 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
         video.month = Math.round(srcMonth.videoTotalGmv);
         video.src = { ...video.src, month: 'platform' };
       }
+    }
+
+    // ── 核销来源拆分：自播 / 达播 / POI / 短视频 ─────────────────────────────
+    if (verYday || verMonth) {
+      const rZibo  = redeemRows.find(r => r.key === 'zibo')!;
+      const rDabo  = redeemRows.find(r => r.key === 'dabo')!;
+      const rPoi   = redeemRows.find(r => r.key === 'poi')!;
+      const rVideo = redeemRows.find(r => r.key === 'video')!;
+      if (verYday) {
+        rZibo.yesterday  = Math.round(verYday.officialLiveGmv);  rZibo.src  = { ...rZibo.src,  yesterday: 'platform' };
+        rDabo.yesterday  = Math.round(verYday.daboGmv);          rDabo.src  = { ...rDabo.src,  yesterday: 'platform' };
+        rPoi.yesterday   = Math.round(verYday.poiGmv);           rPoi.src   = { ...rPoi.src,   yesterday: 'platform' };
+        rVideo.yesterday = Math.round(verYday.videoTotalGmv);    rVideo.src = { ...rVideo.src, yesterday: 'platform' };
+      }
+      if (verMonth) {
+        rZibo.month  = Math.round(verMonth.officialLiveGmv);  rZibo.src  = { ...rZibo.src,  month: 'platform' };
+        rDabo.month  = Math.round(verMonth.daboGmv);          rDabo.src  = { ...rDabo.src,  month: 'platform' };
+        rPoi.month   = Math.round(verMonth.poiGmv);           rPoi.src   = { ...rPoi.src,   month: 'platform' };
+        rVideo.month = Math.round(verMonth.videoTotalGmv);    rVideo.src = { ...rVideo.src, month: 'platform' };
+      }
+      const vy = verYday  ? `昨日核销 自播 ¥${verYday.officialLiveGmv.toFixed(0)} / 达播 ¥${verYday.daboGmv.toFixed(0)} / POI ¥${verYday.poiGmv.toFixed(0)} / 短视频 ¥${verYday.videoTotalGmv.toFixed(0)}` : '';
+      const vm = verMonth ? `本月核销 自播 ¥${verMonth.officialLiveGmv.toFixed(0)} / 达播 ¥${verMonth.daboGmv.toFixed(0)} / POI ¥${verMonth.poiGmv.toFixed(0)}` : '';
+      sourceLines.push(`生意经核销概览（${[vy, vm].filter(Boolean).join('，')}）`);
+      seeded = true;
     }
 
   }

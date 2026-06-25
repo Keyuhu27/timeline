@@ -490,6 +490,130 @@ export class BusinessCompassAdapter {
     };
   }
 
+  /** 生意经核销来源拆分（VerifyOrderSourceAnalysis）
+   *  与 fetchPayOrderSourceSplit 同接口，节点改为 PcBusinessVerifyOrderSourceAnalysis
+   *  字段预期：verify_gmv_1d（待日志确认），分→元 ÷100
+   */
+  static async fetchVerifyOrderSourceSplit(poiId: string, startDate: string, endDate: string): Promise<{
+    liveTotalGmv: number;
+    daboGmv: number;
+    officialLiveGmv: number;
+    videoTotalGmv: number;
+    leadCardGmv: number;
+    searchResultCardGmv: number;
+    otherGmv: number;
+    poiGmv: number;
+  } | null> {
+    if (!cookie() || !poiId) return null;
+    const url = process.env.BUSINESS_FLOW_TRADE_OVERVIEW_URL || (base() + '/api/dito/query');
+    if (!url.startsWith('http')) return null;
+
+    const payload = {
+      biz_params: {
+        path: '/dito/pc/business/page',
+        query: {},
+        first_render: false,
+        common_params: {
+          is_single: 0,
+          start_date: startDate,
+          end_date: endDate,
+          date_type: 'custom',
+        },
+        module_params: {
+          BaseInfoModule: {},
+          ProductOverviewBaseInfo: {},
+          CoreIndicatorAndTrend: { business_tab: 'all' },
+          BusinessOverviewTab: {},
+          IndicatorLayout: {},
+          VerifyOrderSourceAnalysis: {},
+        },
+      },
+      dito_params: {
+        is_event: true,
+        node_update_map: [
+          { type: 'refresh', node: 'PcBusinessVerifyOrderSourceAnalysis' },
+        ],
+      },
+    };
+
+    let rawText = '';
+    try {
+      const res = await fetch(url, { method: 'POST', headers: headers(), body: JSON.stringify(payload) });
+      rawText = await res.text();
+      console.log(`[BusinessVerifySplit] HTTP ${res.status} len=${rawText.length} ${startDate}~${endDate}`);
+      if (!res.ok) { console.error(`[BusinessVerifySplit] HTTP error body=${rawText.slice(0, 300)}`); return null; }
+    } catch (e) {
+      console.error(`[BusinessVerifySplit] 请求异常:`, String(e));
+      return null;
+    }
+
+    let json: Record<string, unknown> | null = null;
+    try { json = JSON.parse(rawText) as Record<string, unknown>; }
+    catch { console.error(`[BusinessVerifySplit] 非 JSON: ${rawText.slice(0, 200)}`); return null; }
+
+    interface VerifyRow {
+      first_order_source_name?: string;
+      second_order_source_name?: string;
+      levelPid?: number | null;
+      levelId?: number;
+      name?: string;
+      verify_gmv_1d?: number;
+      [k: string]: unknown;
+    }
+    const dataObj = (json?.data ?? json) as Record<string, unknown>;
+    const layout = (Array.isArray(dataObj?.layout) ? dataObj.layout : []) as Array<{ id?: string; data?: Record<string, unknown> }>;
+
+    let rows: VerifyRow[] = [];
+    for (const node of layout) {
+      const d = (node?.data ?? {}) as Record<string, unknown>;
+      const key = Object.keys(d).find(k => k.toLowerCase() === 'verifyordersourceanalysisdetail');
+      if (key) {
+        const detail = d[key] as { data?: VerifyRow[] } | undefined;
+        if (Array.isArray(detail?.data)) { rows = detail!.data!; break; }
+      }
+    }
+
+    if (!rows.length) {
+      // 打印所有 node.data 键名帮助定位正确 key
+      const allKeys = layout.flatMap(n => Object.keys(n?.data ?? {}));
+      console.log(`[BusinessVerifySplit] rows 为空，data keys=${allKeys.join(',')}`);
+      return null;
+    }
+
+    // 尝试 verify_gmv_1d；如为 undefined 则找第一个数值字段（调试用）
+    const sample = rows[0];
+    const gmvField = 'verify_gmv_1d' in sample ? 'verify_gmv_1d'
+      : Object.keys(sample).find(k => k.includes('gmv') || k.includes('amount') || k.includes('pay'));
+    const gmv = (r: VerifyRow) => Number((gmvField ? r[gmvField] : 0) ?? 0) / 100;
+
+    const isTopLevel = (r: VerifyRow) => r.levelPid == null && !r.second_order_source_name;
+    const genre = (label: string) =>
+      rows.find(r => isTopLevel(r) && (r.name === label || r.first_order_source_name === label));
+
+    const dabo     = rows.find(r => r.first_order_source_name === '直播' && (r.second_order_source_name === '达人' || r.name === '达人' || r.levelId === 103));
+    const official = rows.find(r => r.first_order_source_name === '直播' && (r.second_order_source_name === '官号' || r.name === '官号' || r.levelId === 101));
+
+    // 调试：打印体裁一级行 + gmvField 确认字段名
+    const topRows = rows.filter(isTopLevel)
+      .map(r => `${r.name ?? r.first_order_source_name ?? '?'}=${gmv(r).toFixed(2)}`)
+      .join(' | ');
+    console.log(`[BusinessVerifySplit] gmvField=${gmvField} 体裁一级行: ${topRows}`);
+
+    const leadCardGmv         = gmv(genre('获客卡')      ?? {});
+    const searchResultCardGmv = gmv(genre('搜索结果卡')  ?? {});
+    const otherGmv            = gmv(genre('其他')         ?? {});
+    const result = {
+      liveTotalGmv:    gmv(genre('直播')   ?? {}),
+      daboGmv:         gmv(dabo           ?? {}),
+      officialLiveGmv: gmv(official       ?? {}),
+      videoTotalGmv:   gmv(genre('短视频') ?? {}),
+      leadCardGmv, searchResultCardGmv, otherGmv,
+      poiGmv: leadCardGmv + searchResultCardGmv + otherGmv,
+    };
+    console.log(`[BusinessVerifySplit] live=${result.liveTotalGmv} video=${result.videoTotalGmv} POI=${result.poiGmv}`);
+    return result;
+  }
+
   /** 生意经经营洞察（data_conclusion / data_explain） */
   static async fetchInsights(poiId: string, startDate: string, endDate: string): Promise<BusinessInsightResult | null> {
     if (!cookie() || !poiId) return null;
