@@ -101,7 +101,21 @@ const variants = [
   },
 ];
 
-const url = `https://localads.chengzijianzhan.cn/api/lamp/pc/v2/statistics/data/statQuery?advid=${encodeURIComponent(ADVID)}`;
+// 对照组：用全局 cookie 打一个已知能出数的账户，确认 localads 登录态是否还活着
+const CONTROL_ADVID = process.env.PROBE_CONTROL_ADVID || '1843942799242247';
+variants.push({
+  name: `对照：全局cookie + roi2 + 已知账户 ${CONTROL_ADVID}`,
+  control: true,
+  DataSetKey: 'pc_home_roi2',
+  Conditions: [
+    { Field: 'advertiser_id',  Operator: 7, Values: [CONTROL_ADVID] },
+    { Field: 'adlab_mode',     Operator: 7, Values: ['1'] },
+    { Field: 'create_channel', Operator: 7, Values: ['64'] },
+  ],
+  Metrics: ['stat_cost', 'live_stat_cost_for_roi2', 'video_stat_cost_for_roi2'],
+});
+
+const urlFor = (advid) => `https://localads.chengzijianzhan.cn/api/lamp/pc/v2/statistics/data/statQuery?advid=${encodeURIComponent(advid)}`;
 
 function findTotals(o, depth = 0) {
   if (!o || typeof o !== 'object' || depth > 6) return null;
@@ -111,6 +125,12 @@ function findTotals(o, depth = 0) {
 }
 
 for (const v of variants) {
+  const advid = v.control ? CONTROL_ADVID : ADVID;
+  const useCookie = v.control ? process.env.OCEANENGINE_LOCALADS_COOKIE : cookie;
+  const useHeaders = v.control
+    ? (() => { try { return JSON.parse(process.env.OCEANENGINE_LOCALADS_HEADERS || '{}'); } catch { return {}; } })()
+    : headersFor(ADVID);
+
   const payload = {
     StartTime: startTime, EndTime: endTime,
     ComparisonParams: { RatioStartTime: prev(startTime), RatioEndTime: prev(endTime) },
@@ -123,17 +143,18 @@ for (const v of variants) {
   if (!v.noFrame) { payload.FrameId = '7289039319510155321'; payload.ModuleId = '7396885770868375562'; }
 
   console.log(`\n=== ${v.name} ===`);
+  if (!useCookie) { console.log('（跳过：该组所需 cookie 未配置）'); continue; }
   try {
-    const res = await fetch(url, {
+    const res = await fetch(urlFor(advid), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Cookie': cookie,
+        'Cookie': useCookie,
         'Accept': 'application/json, text/plain, */*',
         'Origin': 'https://localads.chengzijianzhan.cn',
         'Referer': 'https://localads.chengzijianzhan.cn/',
         'User-Agent': 'Mozilla/5.0',
-        ...headersFor(ADVID),
+        ...useHeaders,
       },
       body: JSON.stringify(payload),
     });
