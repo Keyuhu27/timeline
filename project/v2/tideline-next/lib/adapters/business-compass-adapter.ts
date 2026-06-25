@@ -250,25 +250,28 @@ export class BusinessCompassAdapter {
 
     const payload = {
       biz_params: {
-        path: '/flow/trade/overview',
+        path: '/dito/pc/business/page',
         query: {},
         first_render: false,
         common_params: {
-          is_sub_account: false,
-          poi_id: poiId,
+          is_single: 0,
           start_date: startDate,
           end_date: endDate,
           date_type: 'custom',
-          time_type: 'trade_date',
         },
         module_params: {
+          BaseInfoModule: {},
+          ProductOverviewBaseInfo: {},
+          CoreIndicatorAndTrend: { business_tab: 'all' },
+          BusinessOverviewTab: {},
+          IndicatorLayout: {},
           PayOrderSourceAnalysis: {},
         },
       },
       dito_params: {
         is_event: true,
         node_update_map: [
-          { type: 'refresh', node: 'PayOrderSourceAnalysis' },
+          { type: 'refresh', node: 'PcBusinessPayOrderSourceAnalysis' },
         ],
       },
     };
@@ -314,6 +317,10 @@ export class BusinessCompassAdapter {
     }
 
     console.log(`[BusinessSourceSplit] rows length = ${rows.length}`);
+    if (!rows.length) {
+      console.log(`[BusinessSourceSplit] layout node ids = ${layout.map(n => n.id ?? '?').join(',')}`);
+      console.log(`[BusinessSourceSplit] raw first 600 = ${rawText.slice(0, 600)}`);
+    }
 
     const liveTotal  = rows.find(r => r.name === '直播'  && (r.levelPid == null));
     const dabo       = rows.find(r => r.first_order_source_name === '直播' && (r.second_order_source_name === '达人' || r.name === '达人' || r.levelId === 103));
