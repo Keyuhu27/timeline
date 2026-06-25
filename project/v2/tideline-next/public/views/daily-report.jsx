@@ -16,6 +16,13 @@ TL.openDailyReport = function (brandId, date) {
   const pct = (num, den) => (den > 0 ? Math.round((num / den) * 100) + '%' : '—');
   const dateLabel = (d) => { const [, m, dd] = (d || '').split('-'); return `${+m}.${+dd}`; };
   const isNil = (v) => v === null || v === undefined;
+  // 日历位移：日报数据日 = 报告日 - 1。选择器展示数据日，存的是报告日。
+  const shiftDay = (d, n) => {
+    const dt = new Date((d || '') + 'T00:00:00Z');
+    if (isNaN(dt.getTime())) return d;
+    dt.setUTCDate(dt.getUTCDate() + n);
+    return dt.toISOString().slice(0, 10);
+  };
 
   // ── 数据来源徽标 ─────────────────────────────────────────────────────────────
   const SRC_CONFIG = {
@@ -761,7 +768,7 @@ TL.openDailyReport = function (brandId, date) {
           <div className="row between" style={{ alignItems: 'center', marginBottom: 14 }}>
             <div>
               <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>
-                {rep ? `${rep.brandName}日报（${dateLabel(rep.adSpend?.period?.slice(0,10) || curDate)}）` : '经营日报'}
+                {rep ? `${rep.brandName}日报（${dateLabel(rep.adSpend?.period?.slice(0,10) || shiftDay(curDate, -1))}）` : '经营日报'}
               </h2>
               <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 3, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <SrcBadge src="platform" />
@@ -775,7 +782,8 @@ TL.openDailyReport = function (brandId, date) {
 
           {/* 日期 + 操作 */}
           <div className="row" style={{ gap: 8, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input type="date" value={curDate} onChange={e => setCurDate(e.target.value)}
+            {/* 日历显示「数据日」(报告日-1)，与投放/成交数据同一天；选择后换算回报告日 */}
+            <input type="date" value={shiftDay(curDate, -1)} onChange={e => setCurDate(shiftDay(e.target.value, 1))}
               style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '5px 8px', font: 'inherit' }} />
             <div style={{ flex: 1 }} />
             {tip && <span style={{ fontSize: 12, color: 'var(--success, #389e0d)' }}>{tip}</span>}
