@@ -50,13 +50,17 @@ function hasLocalAdsCookie(advid?: string): boolean {
   if (process.env.OCEANENGINE_LOCALADS_COOKIE_MAP) {
     try {
       const m = JSON.parse(process.env.OCEANENGINE_LOCALADS_COOKIE_MAP) as Record<string, string>;
-      return !!(advid && m[advid]);
+      const hit = !!(advid && m[advid]);
+      console.log(`[statQuery gate] advid=${advid} mapKeys=[${Object.keys(m).join(',')}] hit=${hit}`);
+      return hit;
     } catch {
       console.error('[statQuery] ⚠️ OCEANENGINE_LOCALADS_COOKIE_MAP 解析失败（疑似 .env 被换行截断），跳过 statQuery。请确保该变量在 .env 中为单行不换行。');
       return false;
     }
   }
-  return !!process.env.OCEANENGINE_LOCALADS_COOKIE;
+  const g = !!process.env.OCEANENGINE_LOCALADS_COOKIE;
+  console.log(`[statQuery gate] advid=${advid} 无 COOKIE_MAP，用全局 cookie=${g}`);
+  return g;
 }
 
 // 占位/无效账户名（需用真实 account_name 覆盖）
