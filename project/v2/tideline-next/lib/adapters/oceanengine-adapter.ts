@@ -735,8 +735,8 @@ export class OceanEngineAdapter implements IAdAdapter {
       throw new Error(`[statQuery] 响应非 JSON (HTTP ${res.status})，疑似 cookie 失效/风控拦截: ${text.slice(0, 160)}`);
     }
 
-    // 后台接口错误码非 0 表示鉴权失败或参数错误
-    const code = json.code ?? (json.data as Record<string, unknown>)?.code;
+    // 后台接口错误码非 0 表示鉴权失败或参数错误（后台有时用 status_code，有时用 code）
+    const code = json.status_code ?? json.code ?? (json.data as Record<string, unknown>)?.code;
     if (code !== 0 && code !== undefined) {
       throw new Error(`[statQuery] 接口错误 code=${code} message=${json.message ?? JSON.stringify(json).slice(0, 160)}`);
     }

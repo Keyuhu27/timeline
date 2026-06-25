@@ -40,16 +40,18 @@ const ARCHIVED_LOCAL_ACCOUNT_IDS = new Set([
   '1847218637597210',  // 耀银 旧账户（保留新账户 1847915308786764）
 ]);
 
-// 是否为该 advid 配置了后台 statQuery 鉴权（全局 cookie 或 per-advid cookie map）
+// 是否为该 advid 配置了后台 statQuery 鉴权。
+// 若 COOKIE_MAP 已配置，则只对 MAP 中明确列出的 advid 返回 true，
+// 避免用错误账户的 cookie 去请求其它 advid 导致「未登录」。
+// 若未配置 COOKIE_MAP，则全局 OCEANENGINE_LOCALADS_COOKIE 作为兜底（原有行为）。
 function hasLocalAdsCookie(advid?: string): boolean {
-  if (process.env.OCEANENGINE_LOCALADS_COOKIE) return true;
-  try {
-    if (advid && process.env.OCEANENGINE_LOCALADS_COOKIE_MAP) {
+  if (process.env.OCEANENGINE_LOCALADS_COOKIE_MAP) {
+    try {
       const m = JSON.parse(process.env.OCEANENGINE_LOCALADS_COOKIE_MAP) as Record<string, string>;
-      if (m[advid]) return true;
-    }
-  } catch { /* ignore malformed */ }
-  return false;
+      return !!(advid && m[advid]);
+    } catch { /* ignore malformed */ }
+  }
+  return !!process.env.OCEANENGINE_LOCALADS_COOKIE;
 }
 
 // 占位/无效账户名（需用真实 account_name 覆盖）
