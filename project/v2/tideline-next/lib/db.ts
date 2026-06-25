@@ -132,6 +132,50 @@ export const brandById = (id: string) => brands.find(b => b.id === id);
 export const userById  = (id: string) => team.find(u => u.id === id);
 export const accountById = (id: string) => accounts.find(a => a.id === id);
 
+// ─── 真实数据账户白名单 ────────────────────────────────────────────────────
+// 只有这些 externalId（= 生意经 poiId）能拉到真实生意经日报数据。
+// 与 .env 的 BUSINESS_COMPASS_LIFE_ACCOUNT_MAP 的 key 一一对应。
+// 同一品牌下若有多个账号（如「耀银-广州烨道餐饮」vs「广州烨道餐饮上城钱江」），
+// 只保留 externalId 在此集合中的那个；其余账号/品牌在 UI 中隐藏。
+export const REAL_DATA_EXTERNAL_IDS = new Set<string>([
+  '1745303406415880',  // 快乐蜂（中国）餐饮
+  '1851121699721292',  // 亿滋本地推
+  '1770545948162062',  // 半日懒竹林漂流
+  '1845654470244352',  // 武义蝶来望境温泉酒店
+  '1839229761224026',  // 广州烨道餐饮上城钱江路
+  '1845654181143703',  // 武义宏马文化发展
+]);
+
+/**
+ * 可见账户：externalId 在白名单中，且按 externalId 去重（种子账户优先于持久化 a_* 账户）。
+ * 解决「同一品牌出现多个账号 / 重复品牌」的问题。
+ */
+export function visibleAccounts(): Account[] {
+  const byExt = new Map<string, Account>();
+  for (const a of accounts) {
+    if (!a.externalId || !REAL_DATA_EXTERNAL_IDS.has(a.externalId)) continue;
+    const prev = byExt.get(a.externalId);
+    // 优先保留种子账户（id 形如 a1/a2，不带下划线），其次才是持久化的 a_xxx
+    if (!prev || (prev.id.startsWith('a_') && !a.id.startsWith('a_'))) {
+      byExt.set(a.externalId, a);
+    }
+  }
+  return [...byExt.values()];
+}
+
+/** 可见品牌：仅保留拥有可见账户的品牌，按 brand id 去重 */
+export function visibleBrands(): Brand[] {
+  const brandIds = new Set(visibleAccounts().map(a => a.brand));
+  const seen = new Set<string>();
+  const out: Brand[] = [];
+  for (const b of brands) {
+    if (!brandIds.has(b.id) || seen.has(b.id)) continue;
+    seen.add(b.id);
+    out.push(b);
+  }
+  return out;
+}
+
 // ─── Auto Rules ────────────────────────────────────────────────────────────
 import type { AutoRule, OperationLog } from '../types/index';
 

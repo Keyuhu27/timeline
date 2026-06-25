@@ -1,7 +1,7 @@
 // GET  /api/accounts         — 返回当前账户列表
 // POST /api/accounts/sync    — 从巨量引擎 API 自动发现并同步所有授权广告主
 
-import { accounts, brands, adCampaigns, normalizeOceanEngineAccountId } from '../../../lib/db';
+import { accounts, brands, adCampaigns, normalizeOceanEngineAccountId, visibleAccounts } from '../../../lib/db';
 import { ok, err, paginate }             from '../../../lib/api';
 import { OceanEngineAdapter }            from '../../../lib/adapters/oceanengine-adapter';
 import { tokenManager, adAdapter }       from '../../../lib/adapters/index';
@@ -47,7 +47,8 @@ function isPlaceholderName(name: string | undefined): boolean {
 
 export const GET: RouteHandler = (req, res) => {
   const { brand } = req.query;
-  let filtered = accounts.filter(a => !a.hidden);
+  // 只返回有真实生意经数据的账户（白名单 + 按 externalId 去重），过滤重复/脏账户
+  let filtered = visibleAccounts().filter(a => !a.hidden);
   if (brand) filtered = filtered.filter(a => a.brand === brand);
   const { items, total, page, pageSize } = paginate(filtered, req.query);
   ok(res, items, { total, page, pageSize });
