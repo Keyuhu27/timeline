@@ -66,13 +66,24 @@ function findTotals(o, depth = 0) {
   return null;
 }
 
-const res = await fetch(url, { method: body ? 'POST' : 'GET', headers, body: body ?? undefined });
-const text = await res.text();
-console.log('\nHTTP', res.status);
-let json;
-try { json = JSON.parse(text); } catch { console.log('非 JSON 响应:', text.slice(0, 300)); process.exit(0); }
-console.log('status_code/code =', json.status_code ?? json.code, ' message =', json.message);
-const totals = findTotals(json);
-if (!totals) { console.log('未找到 Totals。响应前 600 字:', JSON.stringify(json).slice(0, 600)); process.exit(0); }
-console.log('Totals 字段:', Object.keys(totals).join(', '));
-console.log('Totals 值:', JSON.stringify(totals).slice(0, 1000));
+async function run(label, theUrl) {
+  console.log(`\n=== ${label} ===`);
+  console.log('URL:', theUrl.replace(/(msToken|a_bogus)=[^&]*/g, '$1=<隐藏>'));
+  const res = await fetch(theUrl, { method: body ? 'POST' : 'GET', headers, body: body ?? undefined });
+  const text = await res.text();
+  console.log('HTTP', res.status);
+  let json;
+  try { json = JSON.parse(text); } catch { console.log('非 JSON 响应:', text.slice(0, 300)); return; }
+  console.log('status_code/code =', json.status_code ?? json.code, ' message =', json.message);
+  const totals = findTotals(json);
+  if (!totals) { console.log('未找到 Totals。响应前 600 字:', JSON.stringify(json).slice(0, 600)); return; }
+  console.log('Totals 字段:', Object.keys(totals).join(', '));
+  console.log('Totals 值:', JSON.stringify(totals).slice(0, 1000));
+}
+
+// A：原样（带 msToken / a_bogus）
+await run('A 原样（带 msToken/a_bogus）', url);
+// B：去掉 msToken / a_bogus，看 cookie+csrf 是否足够
+const stripped = url.replace(/[?&]msToken=[^&]*/g, '').replace(/[?&]a_bogus=[^&]*/g, '')
+                    .replace(/\?&/, '?').replace(/&&/g, '&').replace(/[?&]$/, '');
+await run('B 去掉 msToken/a_bogus', stripped);
