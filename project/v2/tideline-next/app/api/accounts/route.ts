@@ -272,11 +272,8 @@ export async function syncLocalAccounts(
       const cookieSrc = localAdsCookieSource(account.externalId);
       if (cookieSrc === 'none') {
         delete account.statQueryReport;   // 没鉴权就别留旧值冒充
-        console.log(`[AccountSync] advid=${account.externalId} 无 cookie，跳过 statQuery（走开放 API 报表，正常）`);
+        console.log(`[LocalAds] advid=${account.externalId} 无 cookie，跳过 statQuery（走开放 API 报表，正常）`);
       } else {
-        console.log(cookieSrc === 'map'
-          ? `[AccountSync] advid=${account.externalId} 使用专属 LOCALADS_COOKIE_MAP`
-          : `[AccountSync] advid=${account.externalId} 使用全局 OCEANENGINE_LOCALADS_COOKIE fallback`);
         try {
           const today8 = new Date(Date.now() + 8 * 3600_000);
           const todayStr = today8.toISOString().slice(0, 10);
@@ -288,8 +285,9 @@ export async function syncLocalAccounts(
             liveGmv: sq.liveGmv, videoGmv: sq.videoGmv, gmv: sq.gmv,
             liveRoi: sq.liveRoi, videoRoi: sq.videoRoi, roi: sq.roi,
             orders: sq.orders, orderCost: sq.orderCost,
-            syncedAt: now, source: 'statQuery_pc_home_roi2',
+            syncedAt: now, source: sq.source,
           };
+          console.log(`[LocalAds] advid=${account.externalId} 使用${cookieSrc === 'map' ? '专属 LOCALADS_COOKIE_MAP' : '全局 OCEANENGINE_LOCALADS_COOKIE fallback'} dataset=${sq.source}`);
           console.log(`[AccountSync] ${account.name} statQuery: 消耗¥${sq.spent} 直播¥${sq.liveSpent} 视频¥${sq.videoSpent} 成交¥${sq.gmv}`);
         } catch (e) {
           // 失败：清掉旧的 statQueryReport，避免前端显示陈旧的 0 并误标 source=statQuery
@@ -747,11 +745,8 @@ export const syncStatus: RouteHandler = async (req, res) => {
       const cookieSrc = localAdsCookieSource(account.externalId);
       if (cookieSrc === 'none') {
         delete account.statQueryReport;   // 没鉴权就别留旧值冒充
-        console.log(`[SyncStatus] advid=${account.externalId} 无 cookie，跳过 statQuery（走开放 API 报表，正常）`);
+        console.log(`[LocalAds] advid=${account.externalId} 无 cookie，跳过 statQuery（走开放 API 报表，正常）`);
       } else {
-        console.log(cookieSrc === 'map'
-          ? `[SyncStatus] advid=${account.externalId} 使用专属 LOCALADS_COOKIE_MAP`
-          : `[SyncStatus] advid=${account.externalId} 使用全局 OCEANENGINE_LOCALADS_COOKIE fallback`);
         try {
           const today8 = new Date(Date.now() + 8 * 3600_000);
           const todayStr = today8.toISOString().slice(0, 10);
@@ -763,8 +758,9 @@ export const syncStatus: RouteHandler = async (req, res) => {
             liveGmv: sq.liveGmv, videoGmv: sq.videoGmv, gmv: sq.gmv,
             liveRoi: sq.liveRoi, videoRoi: sq.videoRoi, roi: sq.roi,
             orders: sq.orders, orderCost: sq.orderCost,
-            syncedAt: now, source: 'statQuery_pc_home_roi2',
+            syncedAt: now, source: sq.source,
           };
+          console.log(`[LocalAds] advid=${account.externalId} 使用${cookieSrc === 'map' ? '专属 LOCALADS_COOKIE_MAP' : '全局 OCEANENGINE_LOCALADS_COOKIE fallback'} dataset=${sq.source}`);
           console.log(`[SyncStatus] ${account.name} statQuery: 消耗¥${sq.spent} 直播¥${sq.liveSpent} 视频¥${sq.videoSpent} 成交¥${sq.gmv}`);
         } catch (e) {
           // 失败：清掉旧的 statQueryReport，避免前端显示陈旧的 0 并误标 source=statQuery

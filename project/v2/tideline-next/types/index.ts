@@ -67,7 +67,7 @@ export interface Account {
     orders:     number;
     orderCost:  number;
     syncedAt:   number;
-    source: 'statQuery_pc_home_roi2';
+    source: 'statQuery_pc_home_roi2' | 'statQuery_pc_home_standard_promotion' | string;
   };
   // 账户级（全域投放）报表汇总——来自 /local/report/account/get/。
   // 全域投放消耗不进项目报表，只在账户报表，故单独缓存供品牌详情页顶部展示。
@@ -413,7 +413,7 @@ export interface DailyReport {
     liveRoi: number;
     videoRoi: number;
     period: string;   // e.g. "2026-06-15 全天"
-    source: 'statQuery_pc_home_roi2';
+    source: 'statQuery_pc_home_roi2' | 'statQuery_pc_home_standard_promotion' | string;
   };
 
   // 来客成交明细汇总（coupon_sale_record 昨日）
