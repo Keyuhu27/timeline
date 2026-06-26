@@ -619,7 +619,7 @@ export class OceanEngineAdapter implements IAdAdapter {
     rawTotals:  Record<string, unknown>;  // 原始 Totals，供 debug
     totalsKeys: string[];
     httpStatus: number;
-    source: 'statQuery_pc_home_roi2';
+    source: string;
   }> {
     // 按 advid 解析后台 Cookie：优先 OCEANENGINE_LOCALADS_COOKIE_MAP（JSON advid→cookie），
     // 回落到全局 OCEANENGINE_LOCALADS_COOKIE。不同登录会话的账户（如天鸿）用各自 cookie。
@@ -724,7 +724,7 @@ export class OceanEngineAdapter implements IAdAdapter {
       ...extraHeaders,
     };
 
-    console.log(`[statQuery] 请求 advid=${advid} ${startTime} ~ ${endTime}`);
+    console.log(`[statQuery] 请求 advid=${advid} dataset=${dataSetKey} isStandard=${isStandard} ${startTime} ~ ${endTime}`);
     const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
     const text = await res.text();
     let json: Record<string, unknown>;
@@ -801,7 +801,7 @@ export class OceanEngineAdapter implements IAdAdapter {
       rawTotals: totals,
       totalsKeys,
       httpStatus: res.status,
-      source: 'statQuery_pc_home_roi2',
+      source: `statQuery_${dataSetKey}` as 'statQuery_pc_home_roi2',
     };
   }
 
