@@ -203,6 +203,9 @@ export const tokenManager = {
 
   if (accessToken && refreshToken && appId) {
     // 用 appId 作为默认 accountId，也可后续通过 POST /api/auth 覆盖
+    // 注意：.env 里的 access_token 很可能已过期（巨量有效期仅 2 小时），
+    // 不能假定它是新的——否则缓存命中会一直拿过期 token 报 40105。
+    // 标记为「已过期」，让第一次 getToken 用 refresh_token 自动换新 token（自愈）。
     const cred: PlatformCredential = {
       id:           'env_default',
       accountId:    appId,
@@ -210,17 +213,16 @@ export const tokenManager = {
       appId,
       accessToken,
       refreshToken,
-      // 假定从环境变量读取时 token 是刚拿到的，剩余约 2 小时
-      expiresAt:    Date.now() + 7200 * 1000,
+      expiresAt:    Date.now() - 1000, // 立即视为过期，触发首次刷新
       updatedAt:    new Date().toISOString(),
     };
     tokenManager.register(cred);
-    // 同时写入缓存，让第一次 getToken 直接命中而不触发刷新
+    // 缓存也写成已过期：getToken 会因 expiresAt-now < 刷新窗口而走 refresh_token 换新
     const key = `${appId}::oceanengine`;
     tokenCache.set(key, {
       token:     accessToken,
-      expiresAt: Math.floor(Date.now() / 1000) + 7200,
+      expiresAt: Math.floor(Date.now() / 1000) - 1,
     });
-    console.log(`[TokenManager] 已从环境变量注入 Token: accountId=${appId}`);
+    console.log(`[TokenManager] 已从环境变量注入 Token（标记为待刷新，首次调用将用 refresh_token 换新）: accountId=${appId}`);
   }
 }());
