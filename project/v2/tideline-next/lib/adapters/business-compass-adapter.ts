@@ -347,6 +347,8 @@ export class BusinessCompassAdapter {
     // 路径：json.data.layout[i].data.data?.PayOrderSourceAnalysis?.Detail?.data
     //    或：json.data.layout[i].data?.PayOrderSourceAnalysis?.Detail?.data
     interface SourceRow {
+      first_enter_source?: number | string;
+      first_enter_source_name?: string;
       first_order_source_name?: string;
       second_order_source_name?: string;
       levelPid?: number | null;
@@ -372,23 +374,30 @@ export class BusinessCompassAdapter {
       console.log(`[BusinessSourceSplit] rows 为空，node ids = ${layout.map(n => n.id ?? '?').join(',')}; raw=${rawText.slice(0, 300)}`);
     }
 
+    // 关键：响应里含 5 个流量场景（first_enter_source = -1全部/1推荐/2搜索/3团购/4线下）各一套体裁拆分。
+    // 必须先收窄到「全部」(-1) 场景，否则跨场景 .find 会抓错行、POI 等重复累加（曾导致合计虚高 ~1.8 倍）。
+    const isAllScene = (r: SourceRow) =>
+      r.first_enter_source === -1 || r.first_enter_source === '-1' || r.first_enter_source_name === '全部';
+    const hasAll = rows.some(isAllScene);
+    const scopeRows = hasAll ? rows.filter(isAllScene) : rows; // 无 -1 标记时回退全量，避免回归空值
+
     // 体裁类型（一级行，levelPid == null 且无二级来源）：直播 / 短视频 / 获客卡 / 搜索结果卡 / 其他
     const isTopLevel = (r: SourceRow) => r.levelPid == null && !r.second_order_source_name;
     const genre = (label: string) =>
-      rows.find(r => isTopLevel(r) && (r.name === label || r.first_order_source_name === label));
+      scopeRows.find(r => isTopLevel(r) && (r.name === label || r.first_order_source_name === label));
 
     const liveTotal  = genre('直播');
-    const dabo       = rows.find(r => r.first_order_source_name === '直播' && (r.second_order_source_name === '达人' || r.name === '达人' || r.levelId === 103));
-    const official   = rows.find(r => r.first_order_source_name === '直播' && (r.second_order_source_name === '官号' || r.name === '官号' || r.levelId === 101));
+    const dabo       = scopeRows.find(r => r.first_order_source_name === '直播' && (r.second_order_source_name === '达人' || r.name === '达人' || r.levelId === 103));
+    const official   = scopeRows.find(r => r.first_order_source_name === '直播' && (r.second_order_source_name === '官号' || r.name === '官号' || r.levelId === 101));
     const videoTotal = genre('短视频');
-    const videoTalent  = rows.find(r => r.first_order_source_name === '短视频' && (r.second_order_source_name === '达人' || r.name === '达人' || r.levelId === 203));
-    const videoOfficial= rows.find(r => r.first_order_source_name === '短视频' && (r.second_order_source_name === '官号' || r.name === '官号' || r.levelId === 201));
+    const videoTalent  = scopeRows.find(r => r.first_order_source_name === '短视频' && (r.second_order_source_name === '达人' || r.name === '达人' || r.levelId === 203));
+    const videoOfficial= scopeRows.find(r => r.first_order_source_name === '短视频' && (r.second_order_source_name === '官号' || r.name === '官号' || r.levelId === 201));
     const leadCard   = genre('获客卡');
     const searchCard = genre('搜索结果卡');
     const other      = genre('其他');
 
     // 调试：打印全部一级行（体裁类型）名称 + GMV（元），便于核对平台数值
-    const topRows = rows.filter(isTopLevel)
+    const topRows = scopeRows.filter(isTopLevel)
       .map(r => `${r.name ?? r.first_order_source_name ?? '?'}=${(Number(r.pay_gmv_1d || 0) / 100).toFixed(2)}`)
       .join(' | ');
     console.log(`[BusinessSourceSplit] 体裁一级行: ${topRows}`);
@@ -613,6 +622,8 @@ export class BusinessCompassAdapter {
     catch { console.error(`[BusinessVerifySplit] 非 JSON: ${rawText.slice(0, 200)}`); return null; }
 
     interface VerifyRow {
+      first_enter_source?: number | string;
+      first_enter_source_name?: string;
       first_order_source_name?: string;
       second_order_source_name?: string;
       levelPid?: number | null;
@@ -650,15 +661,21 @@ export class BusinessCompassAdapter {
       : Object.keys(sample).find(k => k.includes('gmv') || k.includes('amount') || k.includes('pay'));
     const gmv = (r: VerifyRow) => Number((gmvField ? r[gmvField] : 0) ?? 0) / 100;
 
+    // 同成交拆分：必须先收窄到「全部」(-1) 场景，避免跨场景重复累加（POI 虚高）
+    const isAllScene = (r: VerifyRow) =>
+      r.first_enter_source === -1 || r.first_enter_source === '-1' || r.first_enter_source_name === '全部';
+    const hasAll = rows.some(isAllScene);
+    const scopeRows = hasAll ? rows.filter(isAllScene) : rows;
+
     const isTopLevel = (r: VerifyRow) => r.levelPid == null && !r.second_order_source_name;
     const genre = (label: string) =>
-      rows.find(r => isTopLevel(r) && (r.name === label || r.first_order_source_name === label));
+      scopeRows.find(r => isTopLevel(r) && (r.name === label || r.first_order_source_name === label));
 
-    const dabo     = rows.find(r => r.first_order_source_name === '直播' && (r.second_order_source_name === '达人' || r.name === '达人' || r.levelId === 103));
-    const official = rows.find(r => r.first_order_source_name === '直播' && (r.second_order_source_name === '官号' || r.name === '官号' || r.levelId === 101));
+    const dabo     = scopeRows.find(r => r.first_order_source_name === '直播' && (r.second_order_source_name === '达人' || r.name === '达人' || r.levelId === 103));
+    const official = scopeRows.find(r => r.first_order_source_name === '直播' && (r.second_order_source_name === '官号' || r.name === '官号' || r.levelId === 101));
 
     // 调试：打印体裁一级行 + gmvField 确认字段名
-    const topRows = rows.filter(isTopLevel)
+    const topRows = scopeRows.filter(isTopLevel)
       .map(r => `${r.name ?? r.first_order_source_name ?? '?'}=${gmv(r).toFixed(2)}`)
       .join(' | ');
     console.log(`[BusinessVerifySplit] gmvField=${gmvField} 体裁一级行: ${topRows}`);
