@@ -760,6 +760,35 @@ TL.openDailyReport = function (brandId, date) {
       catch { setTip('复制失败'); }
     };
 
+    // ── 导出 PDF ───────────────────────────────────────────────────────────────
+    // 零依赖方案：把日报正文克隆进新窗口 + 打印样式，调用 print() 走浏览器「另存为 PDF」。
+    // 比 html2canvas 更清晰（矢量文字、可选中），且不引入额外 CDN 依赖。
+    const printRef = React.useRef(null);
+    const exportPdf = () => {
+      if (!printRef.current) return;
+      const title = `${rep.brandName}日报（${dateLabel(rep.adSpend?.period?.slice(0,10) || shiftDay(curDate, -1))}）`;
+      const win = window.open('', '_blank', 'width=960,height=900');
+      if (!win) { setTip('请允许弹窗后重试'); setTimeout(() => setTip(''), 2500); return; }
+      // 收集当前页样式，保证打印窗口视觉一致
+      const styles = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+        .map(n => n.outerHTML).join('\n');
+      win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>
+        ${styles}
+        <style>
+          @page { size: A4; margin: 12mm; }
+          body { background:#fff; margin:0; padding:20px; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+          input, textarea { border:none !important; background:transparent !important; resize:none; }
+          button, .btn { display:none !important; }
+          .print-only-title { display:block !important; font-size:22px; font-weight:700; margin:0 0 16px; }
+          section, table, .card { break-inside: avoid; }
+        </style></head><body>${printRef.current.innerHTML}</body></html>`);
+      win.document.close();
+      // 等样式/字体加载后再打印
+      win.onload = () => { win.focus(); win.print(); };
+      // 兜底：部分浏览器 onload 不触发
+      setTimeout(() => { try { win.focus(); win.print(); } catch {} }, 600);
+    };
+
     return (
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(20,20,28,0.45)', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', overflow: 'auto', padding: '4vh 16px' }}>
         <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 920, background: 'var(--bg-elevated, #fff)', borderRadius: 12, boxShadow: '0 20px 60px rgba(0,0,0,0.25)', padding: 24, marginBottom: 32 }}>
@@ -788,13 +817,18 @@ TL.openDailyReport = function (brandId, date) {
             <div style={{ flex: 1 }} />
             {tip && <span style={{ fontSize: 12, color: 'var(--success, #389e0d)' }}>{tip}</span>}
             <button className="btn ghost sm" onClick={copy} disabled={!rep}><Icon name="copy" size={12} /> 复制文本</button>
+            <button className="btn ghost sm" onClick={exportPdf} disabled={!rep || loading}><Icon name="fileText" size={12} /> 导出PDF</button>
             <button className="btn sm" onClick={save} disabled={!rep || saving}><Icon name="check" size={12} /> {saving ? '保存中…' : '保存日报'}</button>
           </div>
 
           {loading || !rep ? (
             <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>生成日报中，正在拉取平台数据…</div>
           ) : (
-            <>
+            <div ref={printRef}>
+              {/* PDF 导出仅作标题，屏幕上隐藏（@media print 才显示） */}
+              <h1 className="print-only-title" style={{ display: 'none' }}>
+                {`${rep.brandName}日报（${dateLabel(rep.adSpend?.period?.slice(0,10) || shiftDay(curDate, -1))}）`}
+              </h1>
               {/* 数据来源说明 */}
               {rep.seedNote && (
                 <div style={{ fontSize: 11.5, lineHeight: 1.65, padding: '8px 12px', borderRadius: 8, marginBottom: 16,
@@ -857,7 +891,7 @@ TL.openDailyReport = function (brandId, date) {
                 <NoteBlock label="官号" value={rep.notes?.official} onChange={(v) => patch(n => { n.notes.official = v; })} />
                 <NoteBlock label="官号短视频" value={rep.notes?.officialVideo} onChange={(v) => patch(n => { n.notes.officialVideo = v; })} />
               </section>
-            </>
+            </div>
           )}
         </div>
       </div>
