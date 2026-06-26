@@ -634,9 +634,25 @@ export const syncDiagnosis: RouteHandler = async (req, res) => {
 // 仅同步状态+报表数据，跳过账户发现阶段，比完整 POST /api/accounts 更快。
 // 前端「刷新数据」按钮调用此接口。
 export const syncStatus: RouteHandler = async (req, res) => {
-  const validAccounts = accounts.filter(a => a.externalId && /^\d{10,}$/.test(a.externalId));
-  if (!validAccounts.length) {
+  // brandId 来自 query（GET）或 body（POST）；有则单品牌，否则全量
+  const brandId = (req.query.brandId as string | undefined) || (req.body as Record<string, unknown>)?.brandId as string | undefined;
+
+  let allValid = accounts.filter(a => a.externalId && /^\d{10,}$/.test(a.externalId));
+  if (!allValid.length) {
     return err(res, '内存中没有有效账户，请先执行「同步广告主」（POST /api/accounts）');
+  }
+
+  let validAccounts = allValid;
+  if (brandId) {
+    validAccounts = allValid.filter(a => a.brand === brandId);
+    if (!validAccounts.length) {
+      return err(res, `找不到 brandId=${brandId} 对应的有效账户`);
+    }
+    const acct = validAccounts[0]!;
+    console.log(`[SyncBrand] brandId=${brandId} name=${acct.name} localAccountId=${acct.externalId} start`);
+    console.log(`[SyncBrand] brandId=${brandId} only current brand, skip all brands (total skipped=${allValid.length - validAccounts.length})`);
+  } else {
+    console.log(`[SyncAllBrands] start total=${validAccounts.length}`);
   }
 
   let accessToken: string;
@@ -797,6 +813,11 @@ export const syncStatus: RouteHandler = async (req, res) => {
   }
 
   saveSnapshot();
+  if (brandId) {
+    console.log(`[SyncBrand] brandId=${brandId} done (updated=${totalUpdated} added=${totalAdded} errors=${errors.length})`);
+  } else {
+    console.log(`[SyncAllBrands] done total=${validAccounts.length} updated=${totalUpdated} added=${totalAdded} errors=${errors.length}`);
+  }
   ok(res, {
     synced_accounts: validAccounts.length,
     total_campaigns: adCampaigns.length,

@@ -169,7 +169,7 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
               <button className="btn sm" onClick={async () => {
                 setLoading(true);
                 try {
-                  await fetch('/api/accounts/sync-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+                  await fetch('/api/accounts/sync-status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ brandId }) });
                 } catch {}
                 load();
               }} disabled={loading}><Icon name="refresh" size={12} /> 同步状态</button>

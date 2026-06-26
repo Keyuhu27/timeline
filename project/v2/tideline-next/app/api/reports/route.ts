@@ -67,6 +67,7 @@ function sq(dt: string, hms: string) { return `${dt} ${hms}`; }
  *  所有外部调用均 catch 静默，日报始终可生成。
  */
 export async function buildReport(brandId: string, date: string): Promise<DailyReport> {
+  console.log(`[GenerateReport] brandId=${brandId} date=${date} start`);
   const brand = brandById(brandId);
   const account = accounts.find(a => a.brand === brandId);
   const now = new Date().toISOString();
@@ -82,14 +83,25 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
 
   // ── 1. statQuery 投放全域成交 ────────────────────────────────────────────
   let adSpend: DailyReport['adSpend'] | undefined;
-  if (account?.externalId && process.env.OCEANENGINE_LOCALADS_COOKIE) {
+  // 有专属 COOKIE_MAP 或全局 cookie 都尝试拉 statQuery；适配器内部按 COOKIE_MAP/DATASET_MAP 自动选 dataset
+  const hasLocalAdsCookieForReport = (() => {
+    if (process.env.OCEANENGINE_LOCALADS_COOKIE_MAP && account?.externalId) {
+      try {
+        const m = JSON.parse(process.env.OCEANENGINE_LOCALADS_COOKIE_MAP) as Record<string, string>;
+        if (m[account.externalId]) return true;
+      } catch { /* ignore */ }
+    }
+    return !!process.env.OCEANENGINE_LOCALADS_COOKIE;
+  })();
+  if (account?.externalId && hasLocalAdsCookieForReport) {
+    console.log(`[GenerateReport] localAds advid=${account.externalId} (brandId=${brandId} date=${date})`);
     const [sqYday, sqMonth] = await Promise.all([
       OceanEngineAdapter.fetchHomeRoi2StatQuery(
         account.externalId, sq(yesterday, '00:00:00'), sq(yesterday, '23:59:59'),
-      ).catch(() => null),
+      ).catch((e) => { console.warn(`[GenerateReport] statQuery 昨日失败: ${String(e)}`); return null; }),
       OceanEngineAdapter.fetchHomeRoi2StatQuery(
         account.externalId, sq(monthStart, '00:00:00'), sq(date, '23:59:59'),
-      ).catch(() => null),
+      ).catch((e) => { console.warn(`[GenerateReport] statQuery 本月失败: ${String(e)}`); return null; }),
     ]);
 
     if (sqYday) {
@@ -107,8 +119,9 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
         liveRoi:    sqYday.liveRoi || 0,
         videoRoi:   sqYday.videoRoi || 0,
         period: `${yesterday} 全天`,
-        source: 'statQuery_pc_home_roi2',
+        source: sqYday.source as DailyReport['adSpend']['source'],
       };
+      console.log(`[GenerateReport] localAds advid=${account.externalId} source=${sqYday.source} totalSpent=${adSpend.totalSpent}`);
       sourceLines.push(`投放消耗（${yesterday}）：全域 ¥${adSpend.totalSpent} / 直播 ¥${adSpend.liveSpent} / 短视频 ¥${adSpend.videoSpent}`);
       seeded = true;
     }
@@ -199,6 +212,8 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
 
   const lifeAccountId = account?.lifeAccountId;
   if (poiId && process.env.BUSINESS_COMPASS_COOKIE) {
+    // lifeAccountId 最终由 business-compass-adapter 内部按 BUSINESS_COMPASS_LIFE_ACCOUNT_MAP 解析
+    console.log(`[GenerateReport] businessCompass poiId=${poiId} lifeAccountId=${lifeAccountId ?? '(from map/env)'} isSingle=? brandId=${brandId} date=${date}`);
     console.log(`[buildReport] 生意经 poiId=${poiId} lifeAccountId=${lifeAccountId ?? '(from map/env)'} yesterday=${yesterday} monthStart=${monthStart} date=${date}`);
     const [trade, exposure, bIns, mktOv, mktTrend, srcYday, srcMonth, liveYday, liveMonth, verYday, verMonth] = await Promise.all([
       BusinessCompassAdapter.fetchTradeSplit(poiId, yesterday, yesterday).catch((e) => { console.error('[buildReport] tradeSplit err', String(e)); return null; }),
@@ -398,6 +413,7 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
   console.log(`[ReportAPI] gmvRows self/live = yesterday=${ziboRow?.yesterday} month=${ziboRow?.month}`);
   console.log(`[ReportAPI] gmvRows dabo = yesterday=${daboRow?.yesterday} month=${daboRow?.month}`);
   console.log(`[ReportAPI] businessLive =`, businessLive ? JSON.stringify({ daboGmv: businessLive.daboGmv, monthGmv: (businessLive as any).monthGmv, daboCnt: businessLive.daboCnt, daboDurationSec: businessLive.daboDurationSec }) : 'undefined');
+  console.log(`[GenerateReport] brandId=${brandId} date=${date} done (seeded=${seeded} sources=${sourceLines.length})`);
 
   return report;
 }
