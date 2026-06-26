@@ -387,7 +387,7 @@ export class BusinessCompassAdapter {
       scopeRows.find(r => isTopLevel(r) && (r.name === label || r.first_order_source_name === label));
 
     const liveTotal  = genre('直播');
-    const dabo       = scopeRows.find(r => r.first_order_source_name === '直播' && (r.second_order_source_name === '达人' || r.name === '达人' || r.levelId === 103));
+    const daboRows   = scopeRows.filter(r => r.first_order_source_name === '直播' && (r.second_order_source_name === '达人' || r.name === '达人' || r.levelId === 103 || r.levelId === 102));
     const official   = scopeRows.find(r => r.first_order_source_name === '直播' && (r.second_order_source_name === '官号' || r.name === '官号' || r.levelId === 101));
     const videoTotal = genre('短视频');
     const videoTalent  = scopeRows.find(r => r.first_order_source_name === '短视频' && (r.second_order_source_name === '达人' || r.name === '达人' || r.levelId === 203));
@@ -408,7 +408,7 @@ export class BusinessCompassAdapter {
 
     const result = {
       liveTotalGmv:    Number(liveTotal?.pay_gmv_1d   || 0) / 100,
-      daboGmv:         Number(dabo?.pay_gmv_1d         || 0) / 100,
+      daboGmv:         daboRows.reduce((s, r) => s + Number(r.pay_gmv_1d || 0), 0) / 100,
       officialLiveGmv: Number(official?.pay_gmv_1d     || 0) / 100,
       videoTotalGmv:   Number(videoTotal?.pay_gmv_1d   || 0) / 100,
       videoTalentGmv:  Number(videoTalent?.pay_gmv_1d  || 0) / 100,
@@ -671,7 +671,7 @@ export class BusinessCompassAdapter {
     const genre = (label: string) =>
       scopeRows.find(r => isTopLevel(r) && (r.name === label || r.first_order_source_name === label));
 
-    const dabo     = scopeRows.find(r => r.first_order_source_name === '直播' && (r.second_order_source_name === '达人' || r.name === '达人' || r.levelId === 103));
+    const daboRows = scopeRows.filter(r => r.first_order_source_name === '直播' && (r.second_order_source_name === '达人' || r.name === '达人' || r.levelId === 103 || r.levelId === 102));
     const official = scopeRows.find(r => r.first_order_source_name === '直播' && (r.second_order_source_name === '官号' || r.name === '官号' || r.levelId === 101));
 
     // 调试：打印体裁一级行 + gmvField 确认字段名
@@ -685,7 +685,7 @@ export class BusinessCompassAdapter {
     const otherGmv            = gmv(genre('其他')         ?? {});
     const result = {
       liveTotalGmv:    gmv(genre('直播')   ?? {}),
-      daboGmv:         gmv(dabo           ?? {}),
+      daboGmv:         daboRows.reduce((s, r) => s + gmv(r), 0),
       officialLiveGmv: gmv(official       ?? {}),
       videoTotalGmv:   gmv(genre('短视频') ?? {}),
       leadCardGmv, searchResultCardGmv, otherGmv,
