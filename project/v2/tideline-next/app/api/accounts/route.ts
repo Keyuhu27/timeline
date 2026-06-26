@@ -51,7 +51,7 @@ function hasLocalAdsCookie(advid?: string): boolean {
     try {
       const m = JSON.parse(process.env.OCEANENGINE_LOCALADS_COOKIE_MAP) as Record<string, string>;
       const hit = !!(advid && m[advid]);
-      console.log(`[statQuery gate] advid=${advid} mapKeys=[${Object.keys(m).join(',')}] hit=${hit}`);
+      if (hit) console.log(`[statQuery gate] advid=${advid} 命中 COOKIE_MAP，将拉取全域消耗`);
       return hit;
     } catch {
       console.error('[statQuery] ⚠️ OCEANENGINE_LOCALADS_COOKIE_MAP 解析失败（疑似 .env 被换行截断），跳过 statQuery。请确保该变量在 .env 中为单行不换行。');
@@ -59,7 +59,6 @@ function hasLocalAdsCookie(advid?: string): boolean {
     }
   }
   const g = !!process.env.OCEANENGINE_LOCALADS_COOKIE;
-  console.log(`[statQuery gate] advid=${advid} 无 COOKIE_MAP，用全局 cookie=${g}`);
   return g;
 }
 
@@ -272,7 +271,7 @@ export async function syncLocalAccounts(
       // 后台首页 statQuery——优先级最高的今日消耗来源（全域投放口径）
       if (!hasLocalAdsCookie(account.externalId)) {
         delete account.statQueryReport;   // 没鉴权就别留旧值冒充
-        console.warn(`[AccountSync] ⚠️ 后台 statQuery 未配置鉴权（OCEANENGINE_LOCALADS_COOKIE），跳过全域消耗拉取（${account.name}）`);
+        console.log(`[AccountSync] ${account.name} 不在 LOCALADS_COOKIE_MAP，跳过 statQuery（走开放 API 报表，正常）`);
       } else {
         try {
           const today8 = new Date(Date.now() + 8 * 3600_000);
@@ -743,7 +742,7 @@ export const syncStatus: RouteHandler = async (req, res) => {
       // 后台首页 statQuery——优先级最高的今日消耗来源（全域投放口径）
       if (!hasLocalAdsCookie(account.externalId)) {
         delete account.statQueryReport;   // 没鉴权就别留旧值冒充
-        console.warn(`[SyncStatus] ⚠️ 后台 statQuery 未配置鉴权（OCEANENGINE_LOCALADS_COOKIE），跳过全域消耗拉取（${account.name}）`);
+        console.log(`[SyncStatus] ${account.name} 不在 LOCALADS_COOKIE_MAP，跳过 statQuery（走开放 API 报表，正常）`);
       } else {
         try {
           const today8 = new Date(Date.now() + 8 * 3600_000);
