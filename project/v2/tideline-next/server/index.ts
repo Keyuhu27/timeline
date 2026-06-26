@@ -121,9 +121,14 @@ const PORT = parseInt(process.env.PORT ?? '3000');
 function serveStatic(res: ServerResponse, filePath: string): boolean {
   if (!existsSync(filePath)) return false;
   const body = readFileSync(filePath);
-  const mime = MIME[extname(filePath)] ?? 'application/octet-stream';
+  const ext = extname(filePath);
+  const mime = MIME[ext] ?? 'application/octet-stream';
+  // 源码类资源（jsx/js/css/html）改后必须立即生效，禁止浏览器长缓存——
+  // 否则改了 .jsx 还得手动硬刷，普通刷新会拿到 1h 旧缓存（曾导致同步按钮不带 brandId）。
+  // 静态素材（图片/字体）仍可长缓存。
+  const noCache = ext === '.jsx' || ext === '.js' || ext === '.css' || ext === '.html';
   res.writeHead(200, { 'Content-Type': mime, 'Content-Length': body.length,
-    'Cache-Control': 'public, max-age=3600' });
+    'Cache-Control': noCache ? 'no-cache, must-revalidate' : 'public, max-age=3600' });
   res.end(body);
   return true;
 }
