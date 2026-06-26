@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node dist/server.mjs",
+    "start": "node dist/server.mjs",
     "build": "esbuild server/index.ts --bundle --platform=node --target=node18 --format=esm --outfile=dist/server.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.build.json"
   },
