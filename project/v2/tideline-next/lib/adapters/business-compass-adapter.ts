@@ -58,9 +58,16 @@ function resolveLifeAccountId(poiId: string, overrideId?: string): { lifeAccount
     const [id, single] = String(overrideId).split(',');
     return { lifeAccountId: id ?? '', isSingle: Number(single ?? 0), mapped: true };
   }
-  // 3) map 未命中且无 override：不回落全局 ID（否则会返回快乐蜂数据），标记 mapped=false
-  //    调用方据此跳过生意经请求，让该品牌日报生意经板块为空。
-  console.warn(`[BusinessSourceSplit] map miss poiId=${poiId} — 无映射，跳过生意经请求（日报留空，不回落快乐蜂）`);
+  // 3) map 未命中且无 override：尝试全局 BUSINESS_COMPASS_LIFE_ACCOUNT_ID 作为兜底
+  //    适用场景：仅运营单一品牌，或临时调试时尚未配置完整 map。
+  //    多品牌运营时应尽快配置 BUSINESS_COMPASS_LIFE_ACCOUNT_MAP 避免串品牌数据。
+  const globalId = process.env.BUSINESS_COMPASS_LIFE_ACCOUNT_ID;
+  if (globalId) {
+    console.warn(`[BusinessSourceSplit] map miss poiId=${poiId} — 回落全局 BUSINESS_COMPASS_LIFE_ACCOUNT_ID=${globalId}（建议配置 BUSINESS_COMPASS_LIFE_ACCOUNT_MAP 避免串品牌）`);
+    const [id, single] = String(globalId).split(',');
+    return { lifeAccountId: id ?? '', isSingle: Number(single ?? 0), mapped: true };
+  }
+  console.warn(`[BusinessSourceSplit] map miss poiId=${poiId} — 无映射且无全局 ID，跳过生意经请求（日报留空）。请在 Railway 配置 BUSINESS_COMPASS_LIFE_ACCOUNT_MAP={"${poiId}":"lifeAccountId,1"}`);
   return { lifeAccountId: '', isSingle: 0, mapped: false };
 }
 
