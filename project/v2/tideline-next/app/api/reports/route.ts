@@ -135,7 +135,7 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
       zibo.src  = { ...zibo.src,  month: 'platform' };
       video.src = { ...video.src, month: 'platform' };
       liveDetail.zibo.month.gmv = Math.round(sqMonth.liveGmv || 0);
-      sourceLines.push(`本月成交（${monthStart}~${yesterday}）：自播 ¥${zibo.month} / 短视频 ¥${video.month}`);
+      // 注意：本月成交提示行不在此 push，移到生意经覆盖之后，确保口径与下方表格一致
       seeded = true;
     }
   }
@@ -372,6 +372,19 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
       seeded = true;
     }
 
+  }
+
+  // ── 本月成交提示行：用最终表格口径（生意经优先覆盖 statQuery）─────────────────
+  // 放在所有数据源覆盖之后，避免顶部提示条与下方成交表自相矛盾（自播/短视频曾出现两套口径）
+  {
+    const zibo  = gmvRows.find(r => r.key === 'zibo')!;
+    const dabo  = gmvRows.find(r => r.key === 'dabo')!;
+    const poi   = gmvRows.find(r => r.key === 'poi')!;
+    const video = gmvRows.find(r => r.key === 'video')!;
+    const hasMonth = [zibo, dabo, poi, video].some(r => r.src?.month === 'platform');
+    if (hasMonth) {
+      sourceLines.push(`本月成交（${monthStart}~${yesterday}）：自播 ¥${zibo.month} / 达播 ¥${dabo.month} / POI ¥${poi.month} / 短视频 ¥${video.month}`);
+    }
   }
 
   // ── 历史GMV/历史核销 = 本月 - 昨日（推算回填，覆盖每个品牌的成交/核销分板块）──
