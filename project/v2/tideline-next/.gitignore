@@ -2,3 +2,14 @@ node_modules/
 dist/
 data/
 *.log
+
+# 环境变量（含 cookie / token / secret，绝不提交）
+.env
+.env.local
+.env.*.local
+.env.production
+.env.staging
+
+# 系统文件
+.DS_Store
+Thumbs.db
