@@ -72,7 +72,9 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
   const account = accounts.find(a => a.brand === brandId);
   const now = new Date().toISOString();
   const yesterday  = bjDateStr(date, -1);
-  const monthStart = bjMonthStartStr(date);
+  // 本月口径锚定「数据日 yesterday」而非「今天 date」：
+  // 1) 避免本月 GMV 把今天（未结算）算进去；2) 跨月边界正确（today=月初时，本月=上月整月）
+  const monthStart = bjMonthStartStr(yesterday);
   const poiId = account?.laikePoi ?? account?.externalId ?? '';
 
   const gmvRows = emptyRows();
@@ -100,7 +102,7 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
         account.externalId, sq(yesterday, '00:00:00'), sq(yesterday, '23:59:59'),
       ).catch((e) => { console.warn(`[GenerateReport] statQuery 昨日失败: ${String(e)}`); return null; }),
       OceanEngineAdapter.fetchHomeRoi2StatQuery(
-        account.externalId, sq(monthStart, '00:00:00'), sq(date, '23:59:59'),
+        account.externalId, sq(monthStart, '00:00:00'), sq(yesterday, '23:59:59'),
       ).catch((e) => { console.warn(`[GenerateReport] statQuery 本月失败: ${String(e)}`); return null; }),
     ]);
 
@@ -133,7 +135,7 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
       zibo.src  = { ...zibo.src,  month: 'platform' };
       video.src = { ...video.src, month: 'platform' };
       liveDetail.zibo.month.gmv = Math.round(sqMonth.liveGmv || 0);
-      sourceLines.push(`本月成交（${monthStart}~${date}）：自播 ¥${zibo.month} / 短视频 ¥${video.month}`);
+      sourceLines.push(`本月成交（${monthStart}~${yesterday}）：自播 ¥${zibo.month} / 短视频 ¥${video.month}`);
       seeded = true;
     }
   }
@@ -218,18 +220,18 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
     const [trade, exposure, bIns, mktOv, mktTrend, srcYday, srcMonth, liveYday, liveMonth, verYday, verMonth] = await Promise.all([
       BusinessCompassAdapter.fetchTradeSplit(poiId, yesterday, yesterday).catch((e) => { console.error('[buildReport] tradeSplit err', String(e)); return null; }),
       BusinessCompassAdapter.fetchExposureSplit(poiId, yesterday, yesterday).catch((e) => { console.error('[buildReport] exposureSplit err', String(e)); return null; }),
-      BusinessCompassAdapter.fetchInsights(poiId, yesterday, date).catch((e) => { console.error('[buildReport] insights err', String(e)); return null; }),
+      BusinessCompassAdapter.fetchInsights(poiId, yesterday, yesterday).catch((e) => { console.error('[buildReport] insights err', String(e)); return null; }),
       BusinessCompassAdapter.fetchMarketingOverview(poiId, yesterday, yesterday).catch((e) => { console.error('[buildReport] mktOv err', String(e)); return null; }),
-      BusinessCompassAdapter.fetchMarketingTrend(poiId, yesterday, date).catch((e) => { console.error('[buildReport] mktTrend err', String(e)); return null; }),
+      BusinessCompassAdapter.fetchMarketingTrend(poiId, monthStart, yesterday).catch((e) => { console.error('[buildReport] mktTrend err', String(e)); return null; }),
       // 经营概览 — 官号/达人 GMV 拆分（自播 / 达播）
       BusinessCompassAdapter.fetchPayOrderSourceSplit(poiId, yesterday, yesterday, lifeAccountId).catch((e) => { console.error('[buildReport] srcYday err', String(e)); return null; }),
-      BusinessCompassAdapter.fetchPayOrderSourceSplit(poiId, monthStart, date, lifeAccountId).catch((e) => { console.error('[buildReport] srcMonth err', String(e)); return null; }),
+      BusinessCompassAdapter.fetchPayOrderSourceSplit(poiId, monthStart, yesterday, lifeAccountId).catch((e) => { console.error('[buildReport] srcMonth err', String(e)); return null; }),
       // 直播内容分析 — 场次 / 时长 / 达人数（不再取 GMV）
       BusinessCompassAdapter.fetchLiveAnalysis(poiId, yesterday, yesterday).catch((e) => { console.error('[buildReport] liveYday err', String(e)); return null; }),
-      BusinessCompassAdapter.fetchLiveAnalysis(poiId, monthStart, date).catch((e) => { console.error('[buildReport] liveMonth err', String(e)); return null; }),
+      BusinessCompassAdapter.fetchLiveAnalysis(poiId, monthStart, yesterday).catch((e) => { console.error('[buildReport] liveMonth err', String(e)); return null; }),
       // 核销来源拆分 — 自播 / 达播 / POI / 短视频
       BusinessCompassAdapter.fetchVerifyOrderSourceSplit(poiId, yesterday, yesterday, lifeAccountId).catch((e) => { console.error('[buildReport] verYday err', String(e)); return null; }),
-      BusinessCompassAdapter.fetchVerifyOrderSourceSplit(poiId, monthStart, date, lifeAccountId).catch((e) => { console.error('[buildReport] verMonth err', String(e)); return null; }),
+      BusinessCompassAdapter.fetchVerifyOrderSourceSplit(poiId, monthStart, yesterday, lifeAccountId).catch((e) => { console.error('[buildReport] verMonth err', String(e)); return null; }),
     ]);
     console.log(`[buildReport] srcYday=${srcYday ? `official=${srcYday.officialLiveGmv} dabo=${srcYday.daboGmv}` : 'null'} srcMonth=${srcMonth ? `official=${srcMonth.officialLiveGmv} dabo=${srcMonth.daboGmv}` : 'null'}`);
     console.log(`[buildReport] liveYday=${liveYday ? `cnt=${liveYday.daboCnt} dur=${liveYday.daboDurationSec}s` : 'null'} liveMonth=${liveMonth ? `cnt=${liveMonth.daboCnt}` : 'null'}`);
@@ -386,7 +388,7 @@ export async function buildReport(brandId: string, date: string): Promise<DailyR
     brandName: brand?.name || (account?.name ?? brandId),
     accountExternalId: account?.externalId,
     date,
-    timeProgress: timeProgressOf(date),
+    timeProgress: timeProgressOf(yesterday),
     gmvRows,
     redeemRows,
     liveDetail,
