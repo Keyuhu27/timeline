@@ -1,5 +1,8 @@
 // 加载 .env 环境变量
 import { readFileSync as _rfs, existsSync as _ex } from 'node:fs';
+// OCEANENGINE_LOCALADS_* 这几个变量值很长（JSON/cookie），用户有时通过 export 设过截断值，
+// 必须让 .env 强制覆盖 shell，否则 JSON.parse 失败导致 statQuery 跳过天鸿。
+const _FORCE_OVERRIDE = new Set(['OCEANENGINE_LOCALADS_COOKIE_MAP','OCEANENGINE_LOCALADS_COOKIE','OCEANENGINE_LOCALADS_HEADERS_MAP','OCEANENGINE_LOCALADS_DATASET_MAP']);
 if (_ex('.env')) {
   _rfs('.env', 'utf8').split('\n').forEach(line => {
     const trimmed = line.trim();
@@ -8,8 +11,9 @@ if (_ex('.env')) {
     if (eq < 0) return;
     const k = trimmed.slice(0, eq).trim();
     const v = trimmed.slice(eq + 1).trim();
-    // 命令行/系统已设置的非空值优先；.env 只填充缺失或为空的键
-    if (k && (!(k in process.env) || !process.env[k])) process.env[k] = v;
+    // LOCALADS 变量强制用 .env 值（防止 shell 里残留的截断 export 覆盖）；
+    // 其余变量仍让命令行/系统已有的非空值优先。
+    if (k && (_FORCE_OVERRIDE.has(k) || !(k in process.env) || !process.env[k])) process.env[k] = v;
   });
 }
 
