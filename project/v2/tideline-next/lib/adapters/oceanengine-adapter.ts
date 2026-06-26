@@ -646,13 +646,6 @@ export class OceanEngineAdapter implements IAdAdapter {
       }
     } catch { /* ignore malformed */ }
 
-    // 对比时段：startTime 前一天同时间段
-    const prev = (ts: string) => {
-      const d = new Date(ts.replace(' ', 'T') + '+08:00');
-      d.setDate(d.getDate() - 1);
-      return d.toISOString().replace('T', ' ').slice(0, 19);
-    };
-
     // 支持按 advid 指定数据集：OCEANENGINE_LOCALADS_DATASET_MAP={"advid":"standard"}
     // "standard" → pc_home_standard_promotion（标准推广类账户，如天鸿；后台首页「标准推广」口径）
     // 默认 "roi2" → pc_home_roi2（本地推/门店全域投放类账户）
@@ -663,6 +656,51 @@ export class OceanEngineAdapter implements IAdAdapter {
         if (dm[advid]) datasetAlias = dm[advid];
       }
     } catch { /* ignore malformed */ }
+
+    // 主口径请求（standard 账户=天鸿，本身就是「账户整体」口径，一发即准）
+    const result = await OceanEngineAdapter._runStatQueryDataset(advid, startTime, endTime, datasetAlias, cookie, extraHeaders);
+
+    // 混合口径：roi2 的过滤条件(adlab_mode=1/create_channel=64)只圈到部分全域消耗，
+    // 总数会比后台「全域投放消耗/账户整体」少。故对 roi2 账户额外发一个 standard 请求，
+    // 用 standard 的 stat_cost（=账户整体，标准投放为 0 时即等于全域）校正「今日消耗」，
+    // 但直播/短视频/GMV/ROI 拆分仍保留 roi2（standard 不返回这些拆分字段）。
+    if (datasetAlias !== 'standard') {
+      try {
+        const std = await OceanEngineAdapter._runStatQueryDataset(advid, startTime, endTime, 'standard', cookie, extraHeaders);
+        if (std.spent > 0) {
+          console.log(`[LocalAds] advid=${advid} 混合口径：今日消耗 ${result.spent}→${std.spent}(standard 账户整体)，直播/短视频/GMV/ROI 拆分仍用 roi2`);
+          result.spent = std.spent;
+          result.orderCost = result.orders > 0 ? std.spent / result.orders : result.orderCost;
+        }
+      } catch (e) {
+        console.warn(`[LocalAds] advid=${advid} standard 总数校正失败，沿用 roi2 今日消耗=${result.spent}: ${String(e)}`);
+      }
+    }
+    return result;
+  }
+
+  /** 单数据集 statQuery 请求（roi2 或 standard），供 fetchHomeRoi2StatQuery 编排混合口径调用。 */
+  private static async _runStatQueryDataset(
+    advid: string,
+    startTime: string,
+    endTime: string,
+    datasetAlias: string,
+    cookie: string,
+    extraHeaders: Record<string, string>,
+  ): Promise<{
+    spent: number; liveSpent: number; videoSpent: number;
+    liveGmv: number; videoGmv: number; gmv: number;
+    liveRoi: number; videoRoi: number; roi: number;
+    orders: number; orderCost: number;
+    rawTotals: Record<string, unknown>; totalsKeys: string[];
+    httpStatus: number; source: string;
+  }> {
+    // 对比时段：startTime 前一天同时间段
+    const prev = (ts: string) => {
+      const d = new Date(ts.replace(' ', 'T') + '+08:00');
+      d.setDate(d.getDate() - 1);
+      return d.toISOString().replace('T', ' ').slice(0, 19);
+    };
 
     const isStandard = datasetAlias === 'standard';
     // 各数据集的 DataSetKey / ModuleId / Filters / Metrics 都不同——实测自浏览器真实请求
