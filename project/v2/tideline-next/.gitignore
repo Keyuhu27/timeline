@@ -13,3 +13,10 @@ data/
 # 系统文件
 .DS_Store
 Thumbs.db
+
+# 抓包 / 调试导出（含完整 Cookie / header，绝不提交）
+*.curl.txt
+*.har
+
+# 本地备份文件
+*.bak
