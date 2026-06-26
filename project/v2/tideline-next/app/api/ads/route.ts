@@ -49,11 +49,14 @@ export const GET: RouteHandler = (req, res) => {
   let statQueryReport: (NonNullable<import('../../../types/index').Account['statQueryReport']> & { localAccountId?: string }) | null = null;
   let accountReport: (NonNullable<import('../../../types/index').Account['globalReport']> & { localAccountId?: string }) | null = null;
   if (brand) {
-    // 先找种子账户，再找持久化账户（externalId 匹配）
+    // 天鸿等账户在内存里可能有「种子 a11 + 持久化 a_1844…」两个同 externalId 的对象，
+    // statQueryReport 可能只挂在其中一个上。所以在「同 brand 或同 externalId」的所有候选里，
+    // 优先取带报表的那个，而不是无脑取第一个（原 ?? 短路 bug 导致拿到无报表的种子账户）。
     const seedAcctForReport = accounts.find(a => a.brand === brand);
     const extIdForReport = seedAcctForReport?.externalId;
-    const acct = seedAcctForReport ??
-      (extIdForReport ? accounts.find(a => a.externalId === extIdForReport && (a.statQueryReport || a.globalReport)) : undefined);
+    const candidates = accounts.filter(a =>
+      a.brand === brand || (extIdForReport && a.externalId === extIdForReport));
+    const acct = candidates.find(a => a.statQueryReport || a.globalReport) ?? seedAcctForReport;
     if (acct?.statQueryReport) statQueryReport = { ...acct.statQueryReport, localAccountId: acct.externalId };
     if (acct?.globalReport)    accountReport   = { ...acct.globalReport,   localAccountId: acct.externalId };
   }
