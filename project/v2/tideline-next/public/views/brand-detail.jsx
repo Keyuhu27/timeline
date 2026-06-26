@@ -78,8 +78,11 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
   const campIds = new Set(campaigns.map(c => c.id));
   const brandLogs = logs.filter(l => l.campaignId && campIds.has(l.campaignId));
 
-  // 只要有项目就展示列表+状态（即便今日消耗为 0，例如全域投放品牌）；仅当完全没有项目时才显示空态
-  const hasData = campaigns.length > 0;
+  // 有项目、或有后台全域 statQuery 报表、或有账户报表消耗，都算有数据。
+  // 天鸿这类「纯本地推账户」没有 project 映射，但有 statQueryReport（全域消耗），不能误判为空态。
+  const hasData = campaigns.length > 0
+    || !!statQueryReport
+    || (accountReport && accountReport.spent > 0);
 
   // 今日消耗数据来源优先级：
   //   1. statQuery_pc_home_roi2（后台首页全域口径，与巨量后台数字一致）
