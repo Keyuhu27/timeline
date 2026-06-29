@@ -11,6 +11,9 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(null);
   const [showInternal, setShowInternal] = useState(false);
+  // 投流诊断（独立数据源，单品牌只读，不触发任何同步）
+  const [diag, setDiag] = useState(null);
+  const [diagLoading, setDiagLoading] = useState(true);
 
   const brand = TL.brandById ? TL.brandById(brandId) : (TL.brands || []).find(b => b.id === brandId);
   const account = (TL.accounts || []).find(a => a.brand === brandId);
@@ -30,6 +33,15 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
   }, [brandId]);
 
   useEffect(load, [load]);
+
+  // 投流诊断：单品牌 GET，date 缺省=后端今天（北京时）。不影响 load() / 同步 / 日报。
+  useEffect(() => {
+    setDiagLoading(true);
+    fetch('/api/ad-diagnosis?brand=' + encodeURIComponent(brandId))
+      .then(r => r.json()).catch(() => null)
+      .then(d => setDiag(d?.data || null))
+      .finally(() => setDiagLoading(false));
+  }, [brandId]);
 
   const toggle = async (c) => {
     setActing(c.id);
@@ -285,8 +297,95 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
             </section>
           </>
         )}
+
+        {/* ── 投流诊断（独立模块，始终展示于品牌详情页下方）─────────────────── */}
+        <AdDiagnosisSection diag={diag} loading={diagLoading} />
       </div>
     </div>
+  );
+};
+
+// 投流诊断模块 —— 渲染 GET /api/ad-diagnosis 返回结构
+const AdDiagnosisSection = function AdDiagnosisSection({ diag, loading }) {
+  const moneyN = (v) => (v == null ? '—' : `¥ ${TL.fmtMoney(v)}`);
+  const roiN   = (v) => (v == null ? '—' : Number(v).toFixed(2));
+  const SOURCE_LABEL = { localAds: '本地推', businessCompass: '生意经', mixed: '混合' };
+  const LEVEL = {
+    info: { tone: 'info',   label: '提示' },
+    warn: { tone: 'warn',   label: '关注' },
+    risk: { tone: 'danger', label: '风险' },
+  };
+
+  return (
+    <section style={{ marginTop: 24, marginBottom: 24 }}>
+      <SectionTitle title="投流诊断" sub={diag?.meta ? `${diag.meta.brandName} · ${diag.meta.date}` : null} />
+      {loading ? (
+        <div className="card card-b muted" style={{ fontSize: 12.5 }}>诊断加载中…</div>
+      ) : !diag ? (
+        <div className="card card-b muted" style={{ fontSize: 12.5 }}>暂无诊断数据。</div>
+      ) : (
+        <div className="card" style={{ padding: 16 }}>
+          {/* 数据源状态 */}
+          <div className="row tight" style={{ marginBottom: 14, flexWrap: 'wrap', gap: 6 }}>
+            <Chip tone={diag.meta.hasLocalAds ? 'success' : ''}>
+              本地推：{diag.meta.hasLocalAds ? '已接入' : '该数据源暂未配置'}
+            </Chip>
+            <Chip tone={diag.meta.hasBusiness ? 'success' : ''}>
+              生意经：{diag.meta.hasBusiness ? '已接入' : '该数据源暂未配置'}
+            </Chip>
+          </div>
+
+          {/* 投放消耗 / ROI */}
+          <div className="stat-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 12 }}>
+            {[
+              { label: '总消耗',     value: moneyN(diag.spend.totalSpent) },
+              { label: '直播消耗',   value: moneyN(diag.spend.liveSpent) },
+              { label: '短视频消耗', value: moneyN(diag.spend.videoSpent) },
+              { label: '直播ROI',    value: roiN(diag.spend.liveRoi) },
+              { label: '短视频ROI',  value: roiN(diag.spend.videoRoi) },
+            ].map((o, i) => (
+              <div className="stat" key={i}>
+                <div className="stat-label">{o.label}</div>
+                <div className="stat-value" style={{ fontSize: 18 }}>{o.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* GMV 渠道拆分 */}
+          <div className="stat-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
+            {[
+              { label: '自播 GMV',   value: moneyN(diag.gmvSplit.zibo) },
+              { label: '达播 GMV',   value: moneyN(diag.gmvSplit.dabo) },
+              { label: 'POI GMV',    value: moneyN(diag.gmvSplit.poi) },
+              { label: '短视频 GMV', value: moneyN(diag.gmvSplit.video) },
+            ].map((o, i) => (
+              <div className="stat" key={i}>
+                <div className="stat-label">{o.label}</div>
+                <div className="stat-value" style={{ fontSize: 18 }}>{o.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* 诊断建议列表 */}
+          <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>诊断建议</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {(diag.findings || []).map((f, i) => {
+              const lv = LEVEL[f.level] || LEVEL.info;
+              return (
+                <div key={f.code || i} className="card-b" style={{ border: '1px solid var(--divider)', borderRadius: 8, padding: '10px 14px' }}>
+                  <div className="row tight" style={{ alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                    <Chip tone={lv.tone}>{lv.label}</Chip>
+                    <Chip>{SOURCE_LABEL[f.source] || f.source}</Chip>
+                    <b style={{ fontWeight: 600, fontSize: 13 }}>{f.title}</b>
+                  </div>
+                  <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5 }}>{f.detail}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </section>
   );
 };
 
