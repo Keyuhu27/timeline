@@ -305,86 +305,152 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
   );
 };
 
-// 投流诊断模块 —— 渲染 GET /api/ad-diagnosis 返回结构
+// 投流诊断模块 —— 渲染 GET /api/ad-diagnosis 返回结构（规则版）
+const moneyN = (v) => (v == null ? '—' : `¥ ${TL.fmtMoney(v)}`);
+const roiN   = (v) => (v == null ? '—' : Number(v).toFixed(2));
+const pctN   = (v) => (v == null ? '—' : `${(Number(v) * 100).toFixed(1)}%`);
+const SOURCE_LABEL = { localAds: '本地推', businessCompass: '生意经', mixed: '混合' };
+const LEVEL = {
+  info: { tone: 'info',   label: '提示' },
+  warn: { tone: 'warn',   label: '关注' },
+  risk: { tone: 'danger', label: '风险' },
+};
+const PRIORITY = {
+  high:   { tone: 'danger', label: '高优先' },
+  medium: { tone: 'warn',   label: '中优先' },
+  low:    { tone: '',       label: '低优先' },
+};
+
+const StatGrid = function StatGrid({ items, cols }) {
+  return (
+    <div className="stat-row" style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 10 }}>
+      {items.map((o, i) => (
+        <div className="stat" key={i}>
+          <div className="stat-label">{o.label}</div>
+          <div className="stat-value" style={{ fontSize: 18 }}>{o.value}</div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const FindingCard = function FindingCard({ f, showPriority }) {
+  const lv = LEVEL[f.level] || LEVEL.info;
+  const pr = PRIORITY[f.priority] || PRIORITY.low;
+  return (
+    <div className="card-b" style={{ border: '1px solid var(--divider)', borderRadius: 8, padding: '10px 14px' }}>
+      <div className="row tight" style={{ alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
+        <Chip tone={lv.tone}>{lv.label}</Chip>
+        {showPriority && <Chip tone={pr.tone}>{pr.label}</Chip>}
+        <Chip>{SOURCE_LABEL[f.source] || f.source}</Chip>
+        <b style={{ fontWeight: 600, fontSize: 13 }}>{f.title}</b>
+      </div>
+      <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5 }}>{f.detail}</div>
+      {f.evidence && f.evidence.length > 0 && (
+        <div className="row tight" style={{ gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+          {f.evidence.map((e, i) => <Chip key={i}>{e}</Chip>)}
+        </div>
+      )}
+      {f.action && (
+        <div style={{ fontSize: 12.5, marginTop: 6, color: 'var(--accent)' }}>→ {f.action}</div>
+      )}
+    </div>
+  );
+};
+
 const AdDiagnosisSection = function AdDiagnosisSection({ diag, loading }) {
-  const moneyN = (v) => (v == null ? '—' : `¥ ${TL.fmtMoney(v)}`);
-  const roiN   = (v) => (v == null ? '—' : Number(v).toFixed(2));
-  const SOURCE_LABEL = { localAds: '本地推', businessCompass: '生意经', mixed: '混合' };
-  const LEVEL = {
-    info: { tone: 'info',   label: '提示' },
-    warn: { tone: 'warn',   label: '关注' },
-    risk: { tone: 'danger', label: '风险' },
-  };
+  if (loading) {
+    return (
+      <section style={{ marginTop: 24, marginBottom: 24 }}>
+        <SectionTitle title="投流诊断" />
+        <div className="card card-b muted" style={{ fontSize: 12.5 }}>诊断加载中…</div>
+      </section>
+    );
+  }
+  if (!diag) {
+    return (
+      <section style={{ marginTop: 24, marginBottom: 24 }}>
+        <SectionTitle title="投流诊断" />
+        <div className="card card-b muted" style={{ fontSize: 12.5 }}>暂无诊断数据。</div>
+      </section>
+    );
+  }
+
+  const { meta, spend, liveDiagnosis, videoDiagnosis, findings } = diag;
+  const lm = (liveDiagnosis && liveDiagnosis.metrics) || {};
+  const vm = (videoDiagnosis && videoDiagnosis.metrics) || {};
 
   return (
     <section style={{ marginTop: 24, marginBottom: 24 }}>
-      <SectionTitle title="投流诊断" sub={diag?.meta ? `${diag.meta.brandName} · ${diag.meta.date}` : null} />
-      {loading ? (
-        <div className="card card-b muted" style={{ fontSize: 12.5 }}>诊断加载中…</div>
-      ) : !diag ? (
-        <div className="card card-b muted" style={{ fontSize: 12.5 }}>暂无诊断数据。</div>
-      ) : (
-        <div className="card" style={{ padding: 16 }}>
-          {/* 数据源状态 */}
-          <div className="row tight" style={{ marginBottom: 14, flexWrap: 'wrap', gap: 6 }}>
-            <Chip tone={diag.meta.hasLocalAds ? 'success' : ''}>
-              本地推：{diag.meta.hasLocalAds ? '已接入' : '该数据源暂未配置'}
-            </Chip>
-            <Chip tone={diag.meta.hasBusiness ? 'success' : ''}>
-              生意经：{diag.meta.hasBusiness ? '已接入' : '该数据源暂未配置'}
-            </Chip>
-          </div>
+      <SectionTitle title="投流诊断" sub={`${meta.brandName} · ${meta.date}`} />
 
-          {/* 投放消耗 / ROI */}
-          <div className="stat-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 12 }}>
-            {[
-              { label: '总消耗',     value: moneyN(diag.spend.totalSpent) },
-              { label: '直播消耗',   value: moneyN(diag.spend.liveSpent) },
-              { label: '短视频消耗', value: moneyN(diag.spend.videoSpent) },
-              { label: '直播ROI',    value: roiN(diag.spend.liveRoi) },
-              { label: '短视频ROI',  value: roiN(diag.spend.videoRoi) },
-            ].map((o, i) => (
-              <div className="stat" key={i}>
-                <div className="stat-label">{o.label}</div>
-                <div className="stat-value" style={{ fontSize: 18 }}>{o.value}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* GMV 渠道拆分 */}
-          <div className="stat-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
-            {[
-              { label: '自播 GMV',   value: moneyN(diag.gmvSplit.zibo) },
-              { label: '达播 GMV',   value: moneyN(diag.gmvSplit.dabo) },
-              { label: 'POI GMV',    value: moneyN(diag.gmvSplit.poi) },
-              { label: '短视频 GMV', value: moneyN(diag.gmvSplit.video) },
-            ].map((o, i) => (
-              <div className="stat" key={i}>
-                <div className="stat-label">{o.label}</div>
-                <div className="stat-value" style={{ fontSize: 18 }}>{o.value}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* 诊断建议列表 */}
-          <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>诊断建议</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {(diag.findings || []).map((f, i) => {
-              const lv = LEVEL[f.level] || LEVEL.info;
-              return (
-                <div key={f.code || i} className="card-b" style={{ border: '1px solid var(--divider)', borderRadius: 8, padding: '10px 14px' }}>
-                  <div className="row tight" style={{ alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                    <Chip tone={lv.tone}>{lv.label}</Chip>
-                    <Chip>{SOURCE_LABEL[f.source] || f.source}</Chip>
-                    <b style={{ fontWeight: 600, fontSize: 13 }}>{f.title}</b>
-                  </div>
-                  <div className="muted" style={{ fontSize: 12.5, lineHeight: 1.5 }}>{f.detail}</div>
-                </div>
-              );
-            })}
-          </div>
+      {/* 数据源状态 + 口径说明 */}
+      <div className="card" style={{ padding: 16, marginBottom: 12 }}>
+        <div className="row tight" style={{ marginBottom: 10, flexWrap: 'wrap', gap: 6 }}>
+          <Chip tone={meta.hasLocalAds ? 'success' : ''}>本地推：{meta.hasLocalAds ? '已接入' : '该数据源暂未配置'}</Chip>
+          <Chip tone={meta.hasBusiness ? 'success' : ''}>生意经：{meta.hasBusiness ? '已接入' : '该数据源暂未配置'}</Chip>
         </div>
-      )}
+        <div className="muted" style={{ fontSize: 12, lineHeight: 1.5 }}>
+          {meta.note || '投放消耗来自巨量本地推全域投放口径；GMV 拆分来自生意经经营口径，仅用于投流诊断参考。'}
+        </div>
+      </div>
+
+      {/* 投放口径总览 */}
+      <div className="card" style={{ padding: 16, marginBottom: 12 }}>
+        <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>投放口径总览（本地推）</div>
+        <StatGrid cols={5} items={[
+          { label: '账户整体消耗',   value: moneyN(spend.accountTotalSpent) },
+          { label: '标准投放消耗',   value: moneyN(spend.standardSpent) },
+          { label: '全域总消耗',     value: moneyN(spend.roi2TotalSpent) },
+          { label: '直播全域消耗',   value: moneyN(spend.liveSpent) },
+          { label: '短视频全域消耗', value: moneyN(spend.videoSpent) },
+        ]} />
+      </div>
+
+      {/* 直播诊断 */}
+      <div className="card" style={{ padding: 16, marginBottom: 12 }}>
+        <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>直播诊断</div>
+        <StatGrid cols={5} items={[
+          { label: '直播消耗',  value: moneyN(lm.liveSpent) },
+          { label: '直播 GMV',  value: moneyN(lm.liveGmv) },
+          { label: '直播 ROI',  value: roiN(lm.liveRoi) },
+          { label: '自播 GMV',  value: moneyN(lm.ziboGmv) },
+          { label: '达播 GMV',  value: moneyN(lm.daboGmv) },
+        ]} />
+        {(lm.daboShare != null || lm.ziboShare != null) && (
+          <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+            自播占比 {pctN(lm.ziboShare)} · 达播占比 {pctN(lm.daboShare)}
+          </div>
+        )}
+        {liveDiagnosis && liveDiagnosis.findings && liveDiagnosis.findings.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+            {liveDiagnosis.findings.map((f, i) => <FindingCard key={f.code || i} f={f} />)}
+          </div>
+        )}
+      </div>
+
+      {/* 短视频诊断 */}
+      <div className="card" style={{ padding: 16, marginBottom: 12 }}>
+        <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>短视频诊断</div>
+        <StatGrid cols={3} items={[
+          { label: '短视频消耗', value: moneyN(vm.videoSpent) },
+          { label: '短视频 GMV', value: moneyN(vm.videoGmv) },
+          { label: '短视频 ROI', value: roiN(vm.videoRoi) },
+        ]} />
+        {videoDiagnosis && videoDiagnosis.findings && videoDiagnosis.findings.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+            {videoDiagnosis.findings.map((f, i) => <FindingCard key={f.code || i} f={f} />)}
+          </div>
+        )}
+      </div>
+
+      {/* 今日重点建议（按 priority 排序，高优先在前）*/}
+      <div className="card" style={{ padding: 16 }}>
+        <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>今日重点建议</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {(findings || []).map((f, i) => <FindingCard key={f.code || i} f={f} showPriority />)}
+        </div>
+      </div>
     </section>
   );
 };
