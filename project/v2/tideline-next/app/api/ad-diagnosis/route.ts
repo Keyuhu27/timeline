@@ -63,7 +63,11 @@ export const GET: RouteHandler = async (req, res) => {
   const date = (req.query.date ?? '').trim() || bjToday();
   console.log(`[AdDiagnosis] brandId=${brandId} date=${date} start`);
 
-  const ctx = buildReportContext(brandId, date);
+  // 投流诊断口径：数据日 = 选择日「当天」，与品牌详情页「当日数据概览」/巨量后台一致。
+  // 日报流水线默认口径是「昨日已结算」（ctx.yesterday = date−1），这里仅在诊断处覆盖取数日，
+  // 不改动 generateReportForBrand / 日报本身。月口径同步对齐当天所在月（诊断不展示月值，仅防越界）。
+  const base = buildReportContext(brandId, date);
+  const ctx = { ...base, yesterday: date, monthStart: date.slice(0, 8) + '01' };
   const [business, localAds] = await Promise.all([
     fetchBusinessCompassForBrand(ctx),
     syncLocalAdsForBrand(ctx),
