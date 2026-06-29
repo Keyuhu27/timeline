@@ -18,6 +18,7 @@ export const brands: Brand[] = [
   { id: 'b7',  name: '武义宏马文化发展',            cat: '文旅',     logo: '宏' },
   { id: 'b10', name: '半日懒竹林漂流',              cat: '户外休闲', logo: '竹' },
   { id: 'b11', name: '天鸿丝绸福田三区店',          cat: '本地推',   logo: '天' },
+  { id: 'b12', name: '浙江武义文旅资源运营发展有限公司', cat: '文旅', logo: '武' },
 ];
 
 // ─── Team ────────────────────────────────────────────────────────────────
@@ -58,6 +59,7 @@ export const accounts: Account[] = [
   { id: 'a10', name: '半日懒竹林漂流',                        externalId: '1770545948162062', brand: 'b10', color: 'c10', followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
   // 天鸿丝绸福田三区店：仅本地推 statQuery 数据，无生意经日报映射
   { id: 'a11', name: '天鸿丝绸福田三区店',                    externalId: '1844144155187404', brand: 'b11', color: 'c1',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  { id: 'a12', name: '浙江武义文旅资源运营发展有限公司',      externalId: '1809564038287363', brand: 'b12', color: 'c2',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
 ];
 
 // ─── Live Sessions ────────────────────────────────────────────────────────
@@ -147,6 +149,7 @@ export const REAL_DATA_EXTERNAL_IDS = new Set<string>([
   '1845654470244352',  // 武义蝶来望境温泉酒店
   '1839229761224026',  // 广州烨道餐饮上城钱江路
   '1845654181143703',  // 武义宏马文化发展
+  '1809564038287363',  // 浙江武义文旅资源运营发展有限公司
 ]);
 
 // 占位名（同步接口未回填真实门店名时的兜底名），这些品牌/账户在侧栏隐藏。
