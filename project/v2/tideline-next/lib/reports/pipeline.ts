@@ -61,6 +61,11 @@ function bjDateStr(date: string, offsetDays = 0): string {
 function bjMonthStartStr(date: string): string {
   return date.slice(0, 8) + '01';
 }
+/** 北京时（UTC+8）今天 YYYY-MM-DD —— endpoint date 缺省时使用 */
+export function bjToday(): string {
+  const d = new Date(Date.now() + 8 * 3600 * 1000);
+  return d.toISOString().slice(0, 10);
+}
 function sq(dt: string, hms: string) { return `${dt} ${hms}`; }
 
 // ─── 共享上下文 ──────────────────────────────────────────────────────────────

@@ -54,6 +54,7 @@ import * as routeAiWorkflow  from '../app/api/ai/workflow/route';
 import * as routeDebugOE     from '../app/api/debug/oe/route';
 import * as routeDebugReplay from '../app/api/debug/replay/route';
 import * as routeReports      from '../app/api/reports/route';
+import * as routeAdDiagnosis  from '../app/api/ad-diagnosis/route';
 
 // 启动即注水：把上次同步的真实数据从磁盘恢复到内存
 loadPersisted();
@@ -97,6 +98,7 @@ const ROUTES: Record<string, RouteModule> = {
   '/api/debug/business/replay': { POST: routeDebugReplay.businessReplay },
   '/api/debug/business/live':   { GET: routeDebugReplay.businessLiveDebug, POST: routeDebugReplay.businessLiveDebug },
   '/api/reports':    routeReports,
+  '/api/ad-diagnosis': routeAdDiagnosis,
 };
 
 const PUBLIC_ROUTES = new Set(['/api/auth/login', '/api/auth', '/api/auth/callback']);
