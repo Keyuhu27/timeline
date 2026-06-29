@@ -66,15 +66,17 @@ export const GET: RouteHandler = async (req, res) => {
   const r = (v: unknown): number | null => (v == null ? null : Number(v));
 
   // ── spend：投放口径拆分（缺失为 null，不写 0）─────────────────────────────
-  // 账户整体 / 标准投放：当前 statQuery 仅暴露混合后的「全域」单值，无法单独拆出 → null。
+  // 账户整体 / 标准投放：来自 statQuery 的 standard 子请求；该账户未圈到（返回 0）或失败 → null，
+  // 不虚报 ¥0。全域 = roi2 数据集；账户整体 = 全域 + 标准（仅 standard>0 时由 adapter 算出）。
+  const standardSpent = (sq?.standardSpent != null && sq.standardSpent > 0) ? n(sq.standardSpent) : null;
   const spend = {
-    accountTotalSpent: null as number | null,  // TODO: 账户整体口径需 standard 数据集单独暴露
-    standardSpent:     null as number | null,  // TODO: 标准投放口径同上
-    roi2TotalSpent:    n(sq?.spent),           // 全域投放消耗（本地推 roi2）
-    liveSpent:         n(sq?.liveSpent),       // 直播全域消耗
-    videoSpent:        n(sq?.videoSpent),      // 短视频全域消耗
-    liveRoi:           r(sq?.liveRoi),         // 直播全域 ROI
-    videoRoi:          r(sq?.videoRoi),        // 短视频全域 ROI
+    accountTotalSpent: n(sq?.accountTotalSpent),       // 账户整体消耗
+    standardSpent,                                     // 标准投放消耗
+    roi2TotalSpent:    n(sq?.roi2Spent ?? sq?.spent),  // 全域投放消耗（本地推 roi2）
+    liveSpent:         n(sq?.liveSpent),               // 直播全域消耗
+    videoSpent:        n(sq?.videoSpent),              // 短视频全域消耗
+    liveRoi:           r(sq?.liveRoi),                 // 直播全域 ROI
+    videoRoi:          r(sq?.videoRoi),                // 短视频全域 ROI
   };
 
   // ── gmvSplit：生意经经营口径渠道拆分（缺失为 null）───────────────────────

@@ -605,7 +605,10 @@ export class OceanEngineAdapter implements IAdAdapter {
     startTime: string,  // 'YYYY-MM-DD HH:mm:ss'
     endTime:   string,
   ): Promise<{
-    spent:      number;  // Totals.stat_cost.Value          全域总消耗
+    spent:      number;  // Totals.stat_cost.Value          全域总消耗（混合校正后的「今日消耗」）
+    roi2Spent:  number | null;  // roi2 数据集全域消耗（校正前原值）；standard 账户为 null
+    standardSpent: number | null; // standard 数据集消耗（标准投放）；子请求失败为 null
+    accountTotalSpent: number | null; // 账户整体 = 全域 + 标准（仅当标准>0 时计算，否则 null）
     liveSpent:  number;  // Totals.live_stat_cost_for_roi2.Value
     videoSpent: number;  // Totals.video_stat_cost_for_roi2.Value
     liveGmv:    number;  // Totals.live_oto_pay_order_stat_amount_for_roi2.Value
@@ -660,23 +663,33 @@ export class OceanEngineAdapter implements IAdAdapter {
     // 主口径请求（standard 账户=天鸿，本身就是「账户整体」口径，一发即准）
     const result = await OceanEngineAdapter._runStatQueryDataset(advid, startTime, endTime, datasetAlias, cookie, extraHeaders);
 
+    // 口径拆分（供投流诊断展示「账户整体 / 标准投放 / 全域」三栏）：
+    //   · roi2 账户：roi2Spent=本路全域消耗（校正前原值），standardSpent=standard 子请求消耗，
+    //     账户整体 = 全域 + 标准（仅当标准>0 时计算，否则 null——避免子请求返回 0 时虚报）；
+    //   · standard 账户（如天鸿）：本路即标准/账户整体口径，roi2Spent 留 null。
+    let roi2Spent: number | null = datasetAlias === 'standard' ? null : result.spent;
+    let standardSpent: number | null = datasetAlias === 'standard' ? result.spent : null;
+    let accountTotalSpent: number | null = datasetAlias === 'standard' ? result.spent : null;
+
     // 混合口径：roi2 的过滤条件(adlab_mode=1/create_channel=64)只圈到部分全域消耗，
-    // 总数会比后台「全域投放消耗/账户整体」少。故对 roi2 账户额外发一个 standard 请求，
-    // 用 standard 的 stat_cost（=账户整体，标准投放为 0 时即等于全域）校正「今日消耗」，
+    // 故对 roi2 账户额外发一个 standard 请求，用其 stat_cost 校正「今日消耗」并拆出标准投放，
     // 但直播/短视频/GMV/ROI 拆分仍保留 roi2（standard 不返回这些拆分字段）。
     if (datasetAlias !== 'standard') {
       try {
         const std = await OceanEngineAdapter._runStatQueryDataset(advid, startTime, endTime, 'standard', cookie, extraHeaders);
+        standardSpent = std.spent;  // 可能为 0（无标准投放或未圈到）
         if (std.spent > 0) {
-          console.log(`[LocalAds] advid=${advid} 混合口径：今日消耗 ${result.spent}→${std.spent}(standard 账户整体)，直播/短视频/GMV/ROI 拆分仍用 roi2`);
+          console.log(`[LocalAds] advid=${advid} 混合口径：今日消耗 ${result.spent}→${std.spent}(standard)，直播/短视频/GMV/ROI 拆分仍用 roi2`);
           result.spent = std.spent;
           result.orderCost = result.orders > 0 ? std.spent / result.orders : result.orderCost;
+          accountTotalSpent = (roi2Spent != null) ? roi2Spent + std.spent : std.spent;
         }
       } catch (e) {
         console.warn(`[LocalAds] advid=${advid} standard 总数校正失败，沿用 roi2 今日消耗=${result.spent}: ${String(e)}`);
+        standardSpent = null;  // 子请求失败 → 未知，保持 null（不发明）
       }
     }
-    return result;
+    return { ...result, roi2Spent, standardSpent, accountTotalSpent };
   }
 
   /** 单数据集 statQuery 请求（roi2 或 standard），供 fetchHomeRoi2StatQuery 编排混合口径调用。 */
