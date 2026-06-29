@@ -65,13 +65,12 @@ export const GET: RouteHandler = async (req, res) => {
   const n = (v: unknown): number | null => (v == null ? null : Math.round(Number(v)));
   const r = (v: unknown): number | null => (v == null ? null : Number(v));
 
-  // ── spend：投放口径拆分（缺失为 null，不写 0）─────────────────────────────
-  // 账户整体 / 标准投放：来自 statQuery 的 standard 子请求；该账户未圈到（返回 0）或失败 → null，
-  // 不虚报 ¥0。全域 = roi2 数据集；账户整体 = 全域 + 标准（仅 standard>0 时由 adapter 算出）。
-  const standardSpent = (sq?.standardSpent != null && sq.standardSpent > 0) ? n(sq.standardSpent) : null;
+  // ── spend：投放口径拆分（缺失为 null，不写 0、不双算）─────────────────────
+  // 全域 = roi2 数据集（可靠）；账户整体 / 标准投放仅 standard 账户能直接取得，roi2 账户为 null
+  // （statQuery 无法把后台「标准投放」独立桶单独拆出，详见 adapter 注释）。
   const spend = {
     accountTotalSpent: n(sq?.accountTotalSpent),       // 账户整体消耗
-    standardSpent,                                     // 标准投放消耗
+    standardSpent:     n(sq?.standardSpent),           // 标准投放消耗
     roi2TotalSpent:    n(sq?.roi2Spent ?? sq?.spent),  // 全域投放消耗（本地推 roi2）
     liveSpent:         n(sq?.liveSpent),               // 直播全域消耗
     videoSpent:        n(sq?.videoSpent),              // 短视频全域消耗

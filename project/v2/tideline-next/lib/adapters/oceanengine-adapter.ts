@@ -667,26 +667,27 @@ export class OceanEngineAdapter implements IAdAdapter {
     //   · roi2 账户：roi2Spent=本路全域消耗（校正前原值），standardSpent=standard 子请求消耗，
     //     账户整体 = 全域 + 标准（仅当标准>0 时计算，否则 null——避免子请求返回 0 时虚报）；
     //   · standard 账户（如天鸿）：本路即标准/账户整体口径，roi2Spent 留 null。
-    let roi2Spent: number | null = datasetAlias === 'standard' ? null : result.spent;
-    let standardSpent: number | null = datasetAlias === 'standard' ? result.spent : null;
-    let accountTotalSpent: number | null = datasetAlias === 'standard' ? result.spent : null;
+    // 口径拆分（供投流诊断展示「账户整体 / 标准投放 / 全域」）：
+    //   · roi2 账户（如快乐蜂）：roi2Spent=本路全域消耗（可靠，≈后台全域投放）。
+    //     但 standard 子请求对这类账户返回的是「全域等价」消耗（≈roi2），并非后台「标准投放」
+    //     的独立小桶（如 150.24），与全域相加会重复计数 → 标准投放/账户整体留 null，不发明不双算。
+    //   · standard 账户（如天鸿）：本路即标准/账户整体口径，roi2Spent 留 null。
+    const roi2Spent: number | null = datasetAlias === 'standard' ? null : result.spent;
+    const standardSpent: number | null = datasetAlias === 'standard' ? result.spent : null;
+    const accountTotalSpent: number | null = datasetAlias === 'standard' ? result.spent : null;
 
-    // 混合口径：roi2 的过滤条件(adlab_mode=1/create_channel=64)只圈到部分全域消耗，
-    // 故对 roi2 账户额外发一个 standard 请求，用其 stat_cost 校正「今日消耗」并拆出标准投放，
-    // 但直播/短视频/GMV/ROI 拆分仍保留 roi2（standard 不返回这些拆分字段）。
+    // 混合口径：仍用 standard 子请求校正 roi2 账户的「今日消耗」(sq.spent，日报口径，保持原有行为)，
+    // 但不再据此推导标准投放/账户整体（口径不等价，见上）。
     if (datasetAlias !== 'standard') {
       try {
         const std = await OceanEngineAdapter._runStatQueryDataset(advid, startTime, endTime, 'standard', cookie, extraHeaders);
-        standardSpent = std.spent;  // 可能为 0（无标准投放或未圈到）
         if (std.spent > 0) {
           console.log(`[LocalAds] advid=${advid} 混合口径：今日消耗 ${result.spent}→${std.spent}(standard)，直播/短视频/GMV/ROI 拆分仍用 roi2`);
           result.spent = std.spent;
           result.orderCost = result.orders > 0 ? std.spent / result.orders : result.orderCost;
-          accountTotalSpent = (roi2Spent != null) ? roi2Spent + std.spent : std.spent;
         }
       } catch (e) {
         console.warn(`[LocalAds] advid=${advid} standard 总数校正失败，沿用 roi2 今日消耗=${result.spent}: ${String(e)}`);
-        standardSpent = null;  // 子请求失败 → 未知，保持 null（不发明）
       }
     }
     return { ...result, roi2Spent, standardSpent, accountTotalSpent };
