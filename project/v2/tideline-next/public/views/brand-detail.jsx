@@ -137,9 +137,16 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
   // 全域投放数据未同步：cookie 未配置或 statQuery 调用失败
   const noStatQuery = !loading && !sq && !rng;
   const spendLabel = rng ? '区间消耗' : '今日消耗';
+  // 账户整体/标准投放/全域投放 三个口径：选了区间用 rng.sq，否则复用投流诊断已拉的今日 spend
+  const yuanOr = (v) => (v == null ? '—' : `¥ ${TL.fmtMoney(v)}`);
+  const buckets = rng?.sq
+    ? { account: rng.sq.accountTotalSpent, standard: rng.sq.standardSpent, roi2: rng.sq.roi2TotalSpent ?? rng.sq.spent }
+    : { account: diag?.spend?.accountTotalSpent ?? null, standard: diag?.spend?.standardSpent ?? null, roi2: diag?.spend?.roi2TotalSpent ?? (sq ? sq.spent : null) };
 
   const overview = sq ? [
-    { label: spendLabel,       value: `¥ ${TL.fmtMoney(sq.spent)}` },
+    { label: '账户整体消耗',   value: yuanOr(buckets.account) },
+    { label: '标准投放消耗',   value: yuanOr(buckets.standard) },
+    { label: '全域投放消耗',   value: yuanOr(buckets.roi2) },
     { label: '直播全域消耗',   value: `¥ ${TL.fmtMoney(sq.liveSpent)}` },
     { label: '短视频全域消耗', value: `¥ ${TL.fmtMoney(sq.videoSpent)}` },
     { label: '全域成交金额',   value: `¥ ${TL.fmtMoney(sq.gmv)}` },

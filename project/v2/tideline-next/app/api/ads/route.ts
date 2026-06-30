@@ -28,13 +28,27 @@ export const statQueryRange: RouteHandler = async (req, res) => {
 
   try {
     const sq = await OceanEngineAdapter.fetchHomeRoi2StatQuery(advid, startTime, endTime);
+    // 标准投放（platform_version=2 口径）→ 账户整体 = 全域 + 标准（与投流诊断一致）
+    const stdPromo = await OceanEngineAdapter.fetchStandardPromotionSpent(advid, startTime, endTime);
+    const roi2TotalSpent = sq.roi2Spent ?? sq.spent;
+    let standardSpent: number | null;
+    let accountTotalSpent: number | null;
+    if (sq.roi2Spent != null) {
+      // roi2 账户：标准用 standard_promotion 口径，账户整体 = 全域 + 标准
+      standardSpent = (stdPromo != null && stdPromo > 0) ? stdPromo : null;
+      accountTotalSpent = (standardSpent != null && roi2TotalSpent != null) ? roi2TotalSpent + standardSpent : null;
+    } else {
+      // standard 账户（如天鸿）：沿用 sq 内值
+      standardSpent = sq.standardSpent;
+      accountTotalSpent = sq.accountTotalSpent;
+    }
     const statQueryReport = {
       spent: sq.spent, liveSpent: sq.liveSpent, videoSpent: sq.videoSpent,
       gmv: sq.gmv, liveGmv: sq.liveGmv, videoGmv: sq.videoGmv,
       roi: sq.roi, liveRoi: sq.liveRoi, videoRoi: sq.videoRoi,
       orders: sq.orders, orderCost: sq.orderCost,
       liveOrders: sq.liveOrders, videoOrders: sq.videoOrders,
-      roi2Spent: sq.roi2Spent, standardSpent: sq.standardSpent, accountTotalSpent: sq.accountTotalSpent,
+      roi2TotalSpent, standardSpent, accountTotalSpent,
       localAccountId: advid,
     };
     ok(res, { statQueryReport, range: { start, end } });
