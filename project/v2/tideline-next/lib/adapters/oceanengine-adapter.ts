@@ -693,7 +693,38 @@ export class OceanEngineAdapter implements IAdAdapter {
     return { ...result, roi2Spent, standardSpent, accountTotalSpent };
   }
 
-  /** 单数据集 statQuery 请求（roi2 或 standard），供 fetchHomeRoi2StatQuery 编排混合口径调用。 */
+  /** 标准投放消耗（后台「数据概览 · 标准投放消耗」卡口径，platform_version==2）。
+   *  独立于日报路径，供投流诊断算「账户整体 = 全域 + 标准」。拿不到返回 null（不发明）。 */
+  static async fetchStandardPromotionSpent(advid: string, startTime: string, endTime: string): Promise<number | null> {
+    let cookie = process.env.OCEANENGINE_LOCALADS_COOKIE;
+    try {
+      if (process.env.OCEANENGINE_LOCALADS_COOKIE_MAP) {
+        const m = JSON.parse(process.env.OCEANENGINE_LOCALADS_COOKIE_MAP) as Record<string, string>;
+        if (m[advid]) cookie = m[advid];
+      }
+    } catch { /* ignore malformed */ }
+    if (!cookie) return null;
+    let extraHeaders: Record<string, string> = {};
+    try {
+      if (process.env.OCEANENGINE_LOCALADS_HEADERS)
+        extraHeaders = JSON.parse(process.env.OCEANENGINE_LOCALADS_HEADERS) as Record<string, string>;
+    } catch { /* ignore malformed */ }
+    try {
+      if (process.env.OCEANENGINE_LOCALADS_HEADERS_MAP) {
+        const hm = JSON.parse(process.env.OCEANENGINE_LOCALADS_HEADERS_MAP) as Record<string, Record<string, string>>;
+        if (hm[advid]) extraHeaders = { ...extraHeaders, ...hm[advid] };
+      }
+    } catch { /* ignore malformed */ }
+    try {
+      const r = await OceanEngineAdapter._runStatQueryDataset(advid, startTime, endTime, 'standard_promotion', cookie, extraHeaders);
+      return r.spent; // Totals.stat_cost = 标准投放消耗
+    } catch (e) {
+      console.warn(`[LocalAds] advid=${advid} 标准投放 statQuery 失败: ${String(e)}`);
+      return null;
+    }
+  }
+
+  /** 单数据集 statQuery 请求（roi2 / standard / standard_promotion），供编排调用。 */
   private static async _runStatQueryDataset(
     advid: string,
     startTime: string,
@@ -717,13 +748,20 @@ export class OceanEngineAdapter implements IAdAdapter {
     };
 
     const isStandard = datasetAlias === 'standard';
+    const isStdPromo = datasetAlias === 'standard_promotion'; // 真·标准投放口径（platform_version==2）
+    const useStdDataset = isStandard || isStdPromo;
     // 各数据集的 DataSetKey / ModuleId / Filters / Metrics 都不同——实测自浏览器真实请求
-    const dataSetKey = isStandard ? 'pc_home_standard_promotion' : 'pc_home_roi2';
-    const moduleId   = isStandard ? '7399754894837612581' : '7396885770868375562';
-    const conditions = isStandard
+    const dataSetKey = useStdDataset ? 'pc_home_standard_promotion' : 'pc_home_roi2';
+    const moduleId   = useStdDataset ? '7399754894837612581' : '7396885770868375562';
+    const conditions = isStdPromo
       ? [
-          // 只按 advertiser_id + platform_version=2 取「账户整体」口径（含标准+全域）。
-          // 不要加 derivate_is_order=0——那会只剩「标准投放」，而标准投放常为 0。
+          // platform_version == 2（Operator 7）→ 后台「标准投放消耗」卡口径（实测自浏览器请求）。
+          { Field: 'advertiser_id', Operator: 7, Values: [advid] },
+          { Field: 'platform_version', Operator: 7, Values: ['2'] },
+        ]
+      : isStandard
+      ? [
+          // platform_version Operator 8（!=2）：历史「账户整体/全域等价」口径，供日报今日消耗校正用，勿动。
           { Field: 'advertiser_id', Operator: 7, Values: [advid] },
           { Field: 'platform_version', Operator: 8, Values: ['2'] },
         ]
@@ -732,7 +770,7 @@ export class OceanEngineAdapter implements IAdAdapter {
           { Field: 'adlab_mode',    Operator: 7, Values: ['1'] },
           { Field: 'create_channel', Operator: 7, Values: ['64'] },
         ];
-    const metrics = isStandard
+    const metrics = useStdDataset
       ? ['stat_cost', 'show_cnt', 'click_cnt', 'oto_pay_order_count', 'oto_pay_order_amount', 'oto_pay_order_roi']
       : [
           'live_stat_cost_for_roi2',

@@ -16,6 +16,7 @@ import {
   syncLocalAdsForBrand,
   bjToday,
 } from '../../../lib/reports/pipeline';
+import { OceanEngineAdapter } from '../../../lib/adapters/oceanengine-adapter';
 import type { RouteHandler } from '../../../lib/api';
 
 type FindingSource = 'localAds' | 'businessCompass' | 'mixed';
@@ -55,9 +56,12 @@ export const GET: RouteHandler = async (req, res) => {
   // 不改动 generateReportForBrand / 日报本身；月口径同步对齐当天所在月（诊断不展示月值，仅防越界）。
   const base = buildReportContext(brandId, date);
   const ctx = { ...base, yesterday: date, monthStart: date.slice(0, 8) + '01' };
-  const [business, localAds] = await Promise.all([
+  const advid = ctx.account?.externalId;
+  const [business, localAds, standardPromoSpent] = await Promise.all([
     fetchBusinessCompassForBrand(ctx),
     syncLocalAdsForBrand(ctx),
+    // 标准投放消耗（后台「标准投放消耗」卡口径），用于算账户整体 = 全域 + 标准
+    advid ? OceanEngineAdapter.fetchStandardPromotionSpent(advid, `${date} 00:00:00`, `${date} 23:59:59`).catch(() => null) : Promise.resolve(null),
   ]);
 
   const sq  = localAds?.sqYday ?? null;   // 本地推 statQuery（roi2 全域口径）
@@ -66,16 +70,27 @@ export const GET: RouteHandler = async (req, res) => {
   const r = (v: unknown): number | null => (v == null ? null : Number(v));
 
   // ── spend：投放口径拆分（缺失为 null，不写 0、不双算）─────────────────────
-  // 全域 = roi2 数据集（可靠）；账户整体 / 标准投放仅 standard 账户能直接取得，roi2 账户为 null
-  // （statQuery 无法把后台「标准投放」独立桶单独拆出，详见 adapter 注释）。
+  // 全域 = roi2 数据集（可靠）。
+  // roi2 账户：标准投放 ← 专门的 standard_promotion 口径（platform_version==2）；账户整体 = 全域 + 标准。
+  // standard 账户（如天鸿）：roi2Spent 为 null，账户整体/标准沿用 sq 内的值。
+  const roi2TotalSpent = n(sq?.roi2Spent ?? sq?.spent);
+  let standardSpent: number | null;
+  let accountTotalSpent: number | null;
+  if (sq?.roi2Spent != null) {
+    standardSpent = n(standardPromoSpent);
+    accountTotalSpent = (roi2TotalSpent != null && standardSpent != null) ? roi2TotalSpent + standardSpent : null;
+  } else {
+    standardSpent = n(sq?.standardSpent);
+    accountTotalSpent = n(sq?.accountTotalSpent);
+  }
   const spend = {
-    accountTotalSpent: n(sq?.accountTotalSpent),       // 账户整体消耗
-    standardSpent:     n(sq?.standardSpent),           // 标准投放消耗
-    roi2TotalSpent:    n(sq?.roi2Spent ?? sq?.spent),  // 全域投放消耗（本地推 roi2）
-    liveSpent:         n(sq?.liveSpent),               // 直播全域消耗
-    videoSpent:        n(sq?.videoSpent),              // 短视频全域消耗
-    liveRoi:           r(sq?.liveRoi),                 // 直播全域 ROI
-    videoRoi:          r(sq?.videoRoi),                // 短视频全域 ROI
+    accountTotalSpent,                                 // 账户整体消耗 = 全域 + 标准
+    standardSpent,                                     // 标准投放消耗
+    roi2TotalSpent,                                    // 全域投放消耗（本地推 roi2）
+    liveSpent:  n(sq?.liveSpent),                      // 直播全域消耗
+    videoSpent: n(sq?.videoSpent),                     // 短视频全域消耗
+    liveRoi:    r(sq?.liveRoi),                        // 直播全域 ROI
+    videoRoi:   r(sq?.videoRoi),                       // 短视频全域 ROI
   };
 
   // ── gmvSplit：生意经经营口径渠道拆分（缺失为 null）───────────────────────
