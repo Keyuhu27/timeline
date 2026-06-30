@@ -5,9 +5,43 @@
 import { adCampaigns, brands, accounts, normalizeOceanEngineAccountId, visibleAccounts } from '../../../lib/db';
 import { ok, err, paginate }             from '../../../lib/api';
 import { adAdapter }                     from '../../../lib/adapters/index';
+import { OceanEngineAdapter }            from '../../../lib/adapters/oceanengine-adapter';
 import { saveSnapshot }                  from '../../../lib/persist';
 import type { RouteHandler }             from '../../../lib/api';
 import type { AdCampaign }              from '../../../types/index';
+
+// GET /api/ads/stat-query?brand=b1&start=YYYY-MM-DD&end=YYYY-MM-DD
+// 按品牌 + 自定义日期区间实时拉取本地推 statQuery（不落盘）。start/end 缺省=今天（北京时）。
+// 返回 statQueryReport（与 /api/ads 的同名字段同形，供品牌详情页「数据概览」复用渲染）。
+export const statQueryRange: RouteHandler = async (req, res) => {
+  const brand = (req.query.brand ?? '').trim();
+  if (!brand) return err(res, 'brand 必填');
+  const acct = accounts.find(a => a.brand === brand);
+  const advid = acct?.externalId;
+  if (!advid) return err(res, `品牌 ${brand} 无关联本地推账户`, 404);
+
+  const today = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
+  const start = (req.query.start ?? '').trim() || today;
+  const end   = (req.query.end ?? '').trim() || start;
+  const startTime = `${start} 00:00:00`;
+  const endTime   = `${end} 23:59:59`;
+
+  try {
+    const sq = await OceanEngineAdapter.fetchHomeRoi2StatQuery(advid, startTime, endTime);
+    const statQueryReport = {
+      spent: sq.spent, liveSpent: sq.liveSpent, videoSpent: sq.videoSpent,
+      gmv: sq.gmv, liveGmv: sq.liveGmv, videoGmv: sq.videoGmv,
+      roi: sq.roi, liveRoi: sq.liveRoi, videoRoi: sq.videoRoi,
+      orders: sq.orders, orderCost: sq.orderCost,
+      liveOrders: sq.liveOrders, videoOrders: sq.videoOrders,
+      roi2Spent: sq.roi2Spent, standardSpent: sq.standardSpent, accountTotalSpent: sq.accountTotalSpent,
+      localAccountId: advid,
+    };
+    ok(res, { statQueryReport, range: { start, end } });
+  } catch (e) {
+    ok(res, { statQueryReport: null, range: { start, end }, error: String(e) });
+  }
+};
 
 export const GET: RouteHandler = (req, res) => {
   const { brand, status } = req.query;

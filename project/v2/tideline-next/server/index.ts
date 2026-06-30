@@ -77,6 +77,7 @@ const ROUTES: Record<string, RouteModule> = {
   '/api/finance':    routeFinance,
   '/api/team':       routeTeam,
   '/api/ads':        routeAds,
+  '/api/ads/stat-query': { GET: routeAds.statQueryRange },
   '/api/schedule':   routeSchedule,
   '/api/monitor':    routeMonitor,
   '/api/auth/login': routeAuth,

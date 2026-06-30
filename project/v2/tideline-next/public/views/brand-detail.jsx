@@ -14,6 +14,11 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
   // 投流诊断（独立数据源，单品牌只读，不触发任何同步）
   const [diag, setDiag] = useState(null);
   const [diagLoading, setDiagLoading] = useState(true);
+  // 数据概览日期区间筛选（rng 非空时覆盖默认「今日」统计）
+  const [qStart, setQStart] = useState('');
+  const [qEnd, setQEnd] = useState('');
+  const [qLoading, setQLoading] = useState(false);
+  const [rng, setRng] = useState(null); // { start, end, sq, err } —— 应用后覆盖概览数据
 
   const brand = TL.brandById ? TL.brandById(brandId) : (TL.brands || []).find(b => b.id === brandId);
   const account = (TL.accounts || []).find(a => a.brand === brandId);
@@ -42,6 +47,21 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
       .then(d => setDiag(d?.data || null))
       .finally(() => setDiagLoading(false));
   }, [brandId]);
+
+  // 按选定区间实时拉 statQuery（不触发同步、单品牌）
+  const runRange = async () => {
+    const bjToday = new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
+    const s = qStart || bjToday;
+    const e = qEnd || s;
+    setQLoading(true);
+    try {
+      const r = await fetch(`/api/ads/stat-query?brand=${encodeURIComponent(brandId)}&start=${s}&end=${e}`).then(r => r.json());
+      setRng({ start: s, end: e, sq: r?.data?.statQueryReport || null, err: r?.data?.error || null });
+    } catch (ex) {
+      setRng({ start: s, end: e, sq: null, err: String(ex) });
+    } finally { setQLoading(false); }
+  };
+  const resetRange = () => { setRng(null); setQStart(''); setQEnd(''); };
 
   const toggle = async (c) => {
     setActing(c.id);
@@ -94,13 +114,15 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
   // 天鸿这类「纯本地推账户」没有 project 映射，但有 statQueryReport（全域消耗），不能误判为空态。
   const hasData = campaigns.length > 0
     || !!statQueryReport
+    || (rng && rng.sq)
     || (accountReport && accountReport.spent > 0);
 
   // 今日消耗数据来源优先级：
   //   1. statQuery_pc_home_roi2（后台首页全域口径，与巨量后台数字一致）
   //   2. project_report_aggregated（开放平台项目报表聚合，标准投放有效）
   //   3. account_report（开放平台账户报表，实测全域账户返回 0，仅备用）
-  const sq = statQueryReport;
+  // 选了日期区间（rng）则覆盖默认「今日」概览数据；否则用 load() 缓存的今日 statQueryReport
+  const sq = rng ? rng.sq : statQueryReport;
   const ar = (!sq && accountReport && accountReport.spent > 0) ? accountReport : null;
   const dataSource = sq ? 'statQuery_pc_home_roi2'
     : ar ? 'account_report'
@@ -113,10 +135,11 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
   }[dataSource] || null;
 
   // 全域投放数据未同步：cookie 未配置或 statQuery 调用失败
-  const noStatQuery = !loading && !statQueryReport;
+  const noStatQuery = !loading && !sq && !rng;
+  const spendLabel = rng ? '区间消耗' : '今日消耗';
 
   const overview = sq ? [
-    { label: '今日消耗',       value: `¥ ${TL.fmtMoney(sq.spent)}` },
+    { label: spendLabel,       value: `¥ ${TL.fmtMoney(sq.spent)}` },
     { label: '直播全域消耗',   value: `¥ ${TL.fmtMoney(sq.liveSpent)}` },
     { label: '短视频全域消耗', value: `¥ ${TL.fmtMoney(sq.videoSpent)}` },
     { label: '全域成交金额',   value: `¥ ${TL.fmtMoney(sq.gmv)}` },
@@ -129,7 +152,7 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
     { label: '活跃计划',       value: agg.active },
     { label: '暂停计划',       value: agg.paused },
   ] : ar ? [
-    { label: '今日消耗',     value: `¥ ${TL.fmtMoney(ar.spent)}` },
+    { label: spendLabel,     value: `¥ ${TL.fmtMoney(ar.spent)}` },
     { label: '全域成交金额', value: `¥ ${TL.fmtMoney(ar.gmv)}` },
     { label: '全域成交订单', value: ar.orders },
     { label: '全域支付ROI',  value: (ar.roi || 0).toFixed(2) },
@@ -208,14 +231,32 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
 
             {/* 当日概览 */}
             <section style={{ marginBottom: 24 }}>
-              <div className="row" style={{ alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <SectionTitle title="当日数据概览" />
+              <div className="row" style={{ alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                <SectionTitle title={rng ? '数据概览' : '当日数据概览'} />
                 {dataSourceLabel && (
-                  <Chip tone={dataSource === 'statQuery_pc_home_roi2' ? 'success' : dataSource === 'account_report' ? '' : ''}>
+                  <Chip tone={dataSource === 'statQuery_pc_home_roi2' ? 'success' : ''}>
                     数据来源：{dataSourceLabel}
                   </Chip>
                 )}
+                {/* 日期区间筛选 */}
+                <div className="row tight" style={{ gap: 6, marginLeft: 'auto', alignItems: 'center' }}>
+                  <input type="date" value={qStart} max={qEnd || undefined}
+                    onChange={e => setQStart(e.target.value)}
+                    style={{ fontSize: 12, padding: '4px 8px', border: '1px solid var(--divider)', borderRadius: 6, background: 'var(--bg)', color: 'var(--text)' }} />
+                  <span className="muted" style={{ fontSize: 12 }}>~</span>
+                  <input type="date" value={qEnd} min={qStart || undefined}
+                    onChange={e => setQEnd(e.target.value)}
+                    style={{ fontSize: 12, padding: '4px 8px', border: '1px solid var(--divider)', borderRadius: 6, background: 'var(--bg)', color: 'var(--text)' }} />
+                  <button className="btn sm" onClick={runRange} disabled={qLoading}>{qLoading ? '查询中…' : '查询'}</button>
+                  {rng && <button className="btn ghost sm" onClick={resetRange}>重置为今日</button>}
+                </div>
               </div>
+              {rng && (
+                <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+                  统计区间：{rng.start} ~ {rng.end}
+                  {!rng.sq && '（该区间无数据或拉取失败）'}
+                </div>
+              )}
               <div className="stat-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
                 {overview.map((o, i) => (
                   <div className="stat" key={i}>
