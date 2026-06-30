@@ -222,8 +222,8 @@ export const GET: RouteHandler = async (req, res) => {
       brandName: brand.name,
       date,
       dataDay: ctx.yesterday,          // 实际数据日（= 选择日当天）
-      hasBusiness: !!business,
-      hasLocalAds: !!localAds,
+      hasBusiness: !!(business && business.srcYday),
+      hasLocalAds: !!(localAds && localAds.sqYday),  // 只有 statQuery 真正返回才算已接入（失败/无数据则 false）
       spendScope: 'localads_roi2_quanyu', // 口径标识：本地推 roi2 全域投放
       note: '投放消耗、ROI、直播/短视频全域成交来自巨量本地推全域投放口径；自播/达播 GMV 拆分来自生意经经营口径，仅用于投流诊断参考。',
     },
