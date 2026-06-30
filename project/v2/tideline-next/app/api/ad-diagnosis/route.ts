@@ -105,20 +105,21 @@ export const GET: RouteHandler = async (req, res) => {
   const ziboGmv = gmvSplit.zibo;
   const daboGmv = gmvSplit.dabo;
   const liveTotalGmv = (ziboGmv != null && daboGmv != null) ? ziboGmv + daboGmv : null;
-  // GMV 统一用生意经经营口径（与 meta.note 一致）；消耗 / ROI 用本地推投放口径。
+  // 直播/短视频「总成交 GMV」用本地推全域投放口径（与消耗/ROI 同源，= 后台「直播/短视频全域投放」页
+  // 的全域成交金额）；自播/达播拆分用生意经经营口径（未配置则为 0/null）。
   const liveMetrics = {
-    liveSpent: n(sq?.liveSpent),        // 本地推投放口径
-    liveGmv:   liveTotalGmv,            // 生意经口径直播总成交（自播 + 达播）
-    liveRoi:   r(sq?.liveRoi),          // 本地推投放口径 ROI
+    liveSpent: n(sq?.liveSpent),        // 本地推 直播全域消耗
+    liveGmv:   n(sq?.liveGmv),          // 本地推 直播全域成交（与 liveRoi/liveSpent 同源）
+    liveRoi:   r(sq?.liveRoi),          // 本地推 直播全域 ROI
     ziboGmv,                            // 生意经自播
     daboGmv,                            // 生意经达播
     daboShare: (liveTotalGmv && liveTotalGmv > 0) ? daboGmv! / liveTotalGmv : null,
     ziboShare: (liveTotalGmv && liveTotalGmv > 0) ? ziboGmv! / liveTotalGmv : null,
   };
   const videoMetrics = {
-    videoSpent: n(sq?.videoSpent),      // 本地推投放口径
-    videoGmv:   gmvSplit.video,         // 生意经口径短视频成交
-    videoRoi:   r(sq?.videoRoi),        // 本地推投放口径 ROI
+    videoSpent: n(sq?.videoSpent),      // 本地推 短视频全域消耗
+    videoGmv:   n(sq?.videoGmv),        // 本地推 短视频全域成交
+    videoRoi:   r(sq?.videoRoi),        // 本地推 短视频全域 ROI
   };
 
   // ── 规则评估（保守措辞；缺失字段不触发）──────────────────────────────────
@@ -158,14 +159,14 @@ export const GET: RouteHandler = async (req, res) => {
     });
   }
 
-  // 短视频 1：有消耗但无成交（消耗本地推 + 经营成交生意经 → mixed）
+  // 短视频 1：有消耗但无成交（本地推全域口径，与展示一致）
   if (videoMetrics.videoSpent != null && videoMetrics.videoSpent > SPEND_HIGH
-      && gmvSplit.video != null && gmvSplit.video === 0) {
+      && videoMetrics.videoGmv != null && videoMetrics.videoGmv === 0) {
     videoFindings.push({
-      level: 'warn', priority: 'high', source: 'mixed', code: 'VIDEO_SPEND_NO_GMV',
+      level: 'warn', priority: 'high', source: 'localAds', code: 'VIDEO_SPEND_NO_GMV',
       title: '短视频有消耗但无成交',
-      detail: '短视频投放产生消耗，但生意经短视频成交为 0。',
-      evidence: [`短视频全域消耗 ${yuan(videoMetrics.videoSpent)}`, `短视频 GMV ¥0`],
+      detail: '短视频投放产生消耗，但短视频全域成交为 0。',
+      evidence: [`短视频全域消耗 ${yuan(videoMetrics.videoSpent)}`, `短视频全域成交 ¥0`],
       action: '建议检查素材方向、商品承接、团购价格，并降低低效计划预算。',
     });
   }
@@ -221,7 +222,7 @@ export const GET: RouteHandler = async (req, res) => {
       hasBusiness: !!business,
       hasLocalAds: !!localAds,
       spendScope: 'localads_roi2_quanyu', // 口径标识：本地推 roi2 全域投放
-      note: '投放消耗来自巨量本地推全域投放口径；GMV 拆分来自生意经经营口径，仅用于投流诊断参考。',
+      note: '投放消耗、ROI、直播/短视频全域成交来自巨量本地推全域投放口径；自播/达播 GMV 拆分来自生意经经营口径，仅用于投流诊断参考。',
     },
     spend,
     gmvSplit,
