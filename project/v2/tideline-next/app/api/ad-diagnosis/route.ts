@@ -107,11 +107,14 @@ export const GET: RouteHandler = async (req, res) => {
   const liveTotalGmv = (ziboGmv != null && daboGmv != null) ? ziboGmv + daboGmv : null;
   // 直播/短视频「总成交 GMV」用本地推全域投放口径（与消耗/ROI 同源，= 后台「直播/短视频全域投放」页
   // 的全域成交金额）；自播/达播拆分用生意经经营口径（未配置则为 0/null）。
+  const liveOrders = (sq?.liveOrders != null && sq.liveOrders > 0) ? sq.liveOrders : null;
   const liveMetrics = {
     liveSpent: n(sq?.liveSpent),        // 本地推 直播全域消耗
     liveGmv:   n(sq?.liveGmv),          // 本地推 直播全域成交（与 liveRoi/liveSpent 同源）
     liveRoi:   r(sq?.liveRoi),          // 本地推 直播全域 ROI
-    ziboGmv,                            // 生意经自播
+    liveOrders,                         // 直播全域成交订单数
+    liveOrderCost: (liveOrders != null && sq?.liveSpent != null) ? sq.liveSpent / liveOrders : null, // 全域成交订单成本
+    ziboGmv,                            // 生意经自播（保留在响应里，前端默认不展示）
     daboGmv,                            // 生意经达播
     daboShare: (liveTotalGmv && liveTotalGmv > 0) ? daboGmv! / liveTotalGmv : null,
     ziboShare: (liveTotalGmv && liveTotalGmv > 0) ? ziboGmv! / liveTotalGmv : null,

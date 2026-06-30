@@ -411,17 +411,12 @@ const AdDiagnosisSection = function AdDiagnosisSection({ diag, loading }) {
       <div className="card" style={{ padding: 16, marginBottom: 12 }}>
         <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>直播诊断</div>
         <StatGrid cols={5} items={[
-          { label: '直播消耗',  value: moneyN(lm.liveSpent) },
-          { label: '直播 GMV',  value: moneyN(lm.liveGmv) },
-          { label: '直播 ROI',  value: roiN(lm.liveRoi) },
-          { label: '自播 GMV',  value: moneyN(lm.ziboGmv) },
-          { label: '达播 GMV',  value: moneyN(lm.daboGmv) },
+          { label: '直播消耗',       value: moneyN(lm.liveSpent) },
+          { label: '直播 GMV',       value: moneyN(lm.liveGmv) },
+          { label: '直播 ROI',       value: roiN(lm.liveRoi) },
+          { label: '全域成交订单数',  value: lm.liveOrders == null ? '—' : lm.liveOrders },
+          { label: '全域成交订单成本', value: lm.liveOrderCost == null ? '—' : `¥ ${Number(lm.liveOrderCost).toFixed(2)}` },
         ]} />
-        {(lm.daboShare != null || lm.ziboShare != null) && (
-          <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
-            自播占比 {pctN(lm.ziboShare)} · 达播占比 {pctN(lm.daboShare)}
-          </div>
-        )}
         {liveDiagnosis && liveDiagnosis.findings && liveDiagnosis.findings.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
             {liveDiagnosis.findings.map((f, i) => <FindingCard key={f.code || i} f={f} />)}

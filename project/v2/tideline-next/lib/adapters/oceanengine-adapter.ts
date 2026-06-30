@@ -617,8 +617,10 @@ export class OceanEngineAdapter implements IAdAdapter {
     liveRoi:    number;  // Totals.live_oto_pay_order_roi2_new.Value
     videoRoi:   number;  // Totals.video_oto_pay_order_roi2_new.Value
     roi:        number;  // gmv / spent（前端展示用，避免后台加权 ROI 口径差异）
-    orders:     number;  // 全域成交订单数（如该数据集返回则带出，否则 0）
+    orders:     number;  // 全域成交订单数（直播+短视频）
     orderCost:  number;  // 全域成交订单成本（spent/orders，无订单则 0）
+    liveOrders: number;  // 直播全域成交订单数（live_oto_pay_order_count_for_roi2）
+    videoOrders:number;  // 短视频全域成交订单数
     rawTotals:  Record<string, unknown>;  // 原始 Totals，供 debug
     totalsKeys: string[];
     httpStatus: number;
@@ -736,7 +738,7 @@ export class OceanEngineAdapter implements IAdAdapter {
     spent: number; liveSpent: number; videoSpent: number;
     liveGmv: number; videoGmv: number; gmv: number;
     liveRoi: number; videoRoi: number; roi: number;
-    orders: number; orderCost: number;
+    orders: number; orderCost: number; liveOrders: number; videoOrders: number;
     rawTotals: Record<string, unknown>; totalsKeys: string[];
     httpStatus: number; source: string;
   }> {
@@ -777,8 +779,10 @@ export class OceanEngineAdapter implements IAdAdapter {
           'video_stat_cost_for_roi2',
           'live_oto_pay_order_stat_amount_for_roi2',
           'live_oto_pay_order_roi2_new',
+          'live_oto_pay_order_count_for_roi2',
           'video_oto_pay_order_stat_amount_for_roi2',
           'video_oto_pay_order_roi2_new',
+          'video_oto_pay_order_count_for_roi2',
           'stat_cost',
         ];
 
@@ -866,9 +870,9 @@ export class OceanEngineAdapter implements IAdAdapter {
     // standard 数据集直接给 stat_cost / oto_pay_order_amount / oto_pay_order_roi（无直播/视频拆分）
     const spent      = tv('stat_cost') || (liveSpent + videoSpent);
     const gmv        = tv('oto_pay_order_amount') || (liveGmv + videoGmv);
-    const orders = tv('oto_pay_order_count')
-      || tv('live_oto_pay_order_count_for_roi2')
-      || tv('video_oto_pay_order_count_for_roi2');
+    const liveOrders  = tv('live_oto_pay_order_count_for_roi2');
+    const videoOrders = tv('video_oto_pay_order_count_for_roi2');
+    const orders = tv('oto_pay_order_count') || (liveOrders + videoOrders);
     const orderCost = orders > 0 ? spent / orders : 0;
     // standard 直接有 oto_pay_order_roi；roi2 用 gmv/spent 自算
     const directRoi = tv('oto_pay_order_roi');
@@ -887,7 +891,7 @@ export class OceanEngineAdapter implements IAdAdapter {
       liveRoi:  tv('live_oto_pay_order_roi2_new'),
       videoRoi: tv('video_oto_pay_order_roi2_new'),
       roi: directRoi || (spent > 0 ? gmv / spent : 0),
-      orders, orderCost,
+      orders, orderCost, liveOrders, videoOrders,
       rawTotals: totals,
       totalsKeys,
       httpStatus: res.status,
