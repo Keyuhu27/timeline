@@ -726,6 +726,65 @@ export class OceanEngineAdapter implements IAdAdapter {
     }
   }
 
+  /** 短视频素材分析（后台「数据 → 视频分析」口径，material_center）。仅取消耗 + 转化数。
+   *  与 statQuery 不同的接口；scene 各账户不同，按 advid 从 OCEANENGINE_MATERIAL_SCENE_MAP 解析。
+   *  拿不到 scene / cookie 或失败 → 返回 null（不发明）。 */
+  static async fetchVideoAnalysisMetrics(advid: string, startTime: string, endTime: string): Promise<{ spent: number | null; convertCnt: number | null } | null> {
+    let scene = '';
+    try {
+      if (process.env.OCEANENGINE_MATERIAL_SCENE_MAP) {
+        const m = JSON.parse(process.env.OCEANENGINE_MATERIAL_SCENE_MAP) as Record<string, string>;
+        if (m[advid]) scene = m[advid];
+      }
+    } catch { /* ignore malformed */ }
+    if (!scene) return null;
+
+    let cookie = process.env.OCEANENGINE_LOCALADS_COOKIE;
+    try {
+      if (process.env.OCEANENGINE_LOCALADS_COOKIE_MAP) {
+        const m = JSON.parse(process.env.OCEANENGINE_LOCALADS_COOKIE_MAP) as Record<string, string>;
+        if (m[advid]) cookie = m[advid];
+      }
+    } catch { /* ignore */ }
+    if (!cookie) return null;
+    let extraHeaders: Record<string, string> = {};
+    try { if (process.env.OCEANENGINE_LOCALADS_HEADERS) extraHeaders = JSON.parse(process.env.OCEANENGINE_LOCALADS_HEADERS) as Record<string, string>; } catch { /* ignore */ }
+    try {
+      if (process.env.OCEANENGINE_LOCALADS_HEADERS_MAP) {
+        const hm = JSON.parse(process.env.OCEANENGINE_LOCALADS_HEADERS_MAP) as Record<string, Record<string, string>>;
+        if (hm[advid]) extraHeaders = { ...extraHeaders, ...hm[advid] };
+      }
+    } catch { /* ignore */ }
+
+    // 与浏览器真实请求一致：空格用 +，冒号保留字面量
+    const qs = `statistic_start_time=${startTime.replace(/ /g, '+')}&statistic_end_time=${endTime.replace(/ /g, '+')}&scene=${encodeURIComponent(scene)}&advid=${encodeURIComponent(advid)}`;
+    const url = `https://localads.chengzijianzhan.cn/material_center/api/v1/analysis/adv/overview/metrics?${qs}`;
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Cookie': cookie,
+          'Accept': 'application/json, text/plain, */*',
+          'Referer': `https://localads.chengzijianzhan.cn/lamp/pc/home?advid=${encodeURIComponent(advid)}`,
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
+          ...extraHeaders,
+        },
+      });
+      const text = await res.text();
+      const json = safeJsonParse<Record<string, unknown>>(text);
+      const code = json.code ?? (json.BaseResp as Record<string, unknown>)?.StatusCode;
+      if (code !== 0 && code !== undefined) { console.warn(`[VideoAnalysis] advid=${advid} code=${code}`); return null; }
+      const met = ((json.data as Record<string, unknown>)?.metrics ?? {}) as Record<string, unknown>;
+      return {
+        spent:      met.stat_cost   != null ? Number(met.stat_cost)   : null,
+        convertCnt: met.convert_cnt != null ? Number(met.convert_cnt) : null,
+      };
+    } catch (e) {
+      console.warn(`[VideoAnalysis] advid=${advid} 短视频素材分析失败: ${String(e)}`);
+      return null;
+    }
+  }
+
   /** 单数据集 statQuery 请求（roi2 / standard / standard_promotion），供编排调用。 */
   private static async _runStatQueryDataset(
     advid: string,

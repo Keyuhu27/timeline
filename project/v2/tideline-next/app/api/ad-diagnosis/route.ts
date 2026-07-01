@@ -57,11 +57,14 @@ export const GET: RouteHandler = async (req, res) => {
   const base = buildReportContext(brandId, date);
   const ctx = { ...base, yesterday: date, monthStart: date.slice(0, 8) + '01' };
   const advid = ctx.account?.externalId;
-  const [business, localAds, standardPromoSpent] = await Promise.all([
+  const dayS = `${date} 00:00:00`, dayE = `${date} 23:59:59`;
+  const [business, localAds, standardPromoSpent, videoMat] = await Promise.all([
     fetchBusinessCompassForBrand(ctx),
     syncLocalAdsForBrand(ctx),
     // 标准投放消耗（后台「标准投放消耗」卡口径），用于算账户整体 = 全域 + 标准
-    advid ? OceanEngineAdapter.fetchStandardPromotionSpent(advid, `${date} 00:00:00`, `${date} 23:59:59`).catch(() => null) : Promise.resolve(null),
+    advid ? OceanEngineAdapter.fetchStandardPromotionSpent(advid, dayS, dayE).catch(() => null) : Promise.resolve(null),
+    // 短视频素材分析（后台「数据→视频分析」口径）：只取消耗 + 转化数
+    advid ? OceanEngineAdapter.fetchVideoAnalysisMetrics(advid, dayS, dayE).catch(() => null) : Promise.resolve(null),
   ]);
 
   const sq  = localAds?.sqYday ?? null;   // 本地推 statQuery（roi2 全域口径）
@@ -231,8 +234,10 @@ export const GET: RouteHandler = async (req, res) => {
     },
     spend,
     gmvSplit,
-    liveDiagnosis: { metrics: liveMetrics, findings: liveFindings },
-    poiDiagnosis:  { metrics: poiMetrics,  findings: poiFindings },
+    liveDiagnosis:  { metrics: liveMetrics, findings: liveFindings },
+    poiDiagnosis:   { metrics: poiMetrics,  findings: poiFindings },
+    // 真短视频（素材口径，独立接口）：仅消耗 + 转化数
+    videoDiagnosis: { metrics: { videoSpent: n(videoMat?.spent), videoConvert: videoMat?.convertCnt ?? null } },
     findings,
   };
 

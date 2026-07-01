@@ -424,9 +424,10 @@ const AdDiagnosisSection = function AdDiagnosisSection({ diag, loading }) {
     );
   }
 
-  const { meta, spend, liveDiagnosis, poiDiagnosis, findings } = diag;
+  const { meta, spend, liveDiagnosis, poiDiagnosis, videoDiagnosis, findings } = diag;
   const lm = (liveDiagnosis && liveDiagnosis.metrics) || {};
   const pm = (poiDiagnosis && poiDiagnosis.metrics) || {};
+  const vm = (videoDiagnosis && videoDiagnosis.metrics) || {};
 
   return (
     <section style={{ marginTop: 24, marginBottom: 24 }}>
@@ -485,6 +486,15 @@ const AdDiagnosisSection = function AdDiagnosisSection({ diag, loading }) {
             {poiDiagnosis.findings.map((f, i) => <FindingCard key={f.code || i} f={f} />)}
           </div>
         )}
+      </div>
+
+      {/* 短视频诊断（素材口径：仅消耗 + 转化数）*/}
+      <div className="card" style={{ padding: 16, marginBottom: 12 }}>
+        <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>短视频诊断<span style={{ marginLeft: 6 }}>（视频素材口径）</span></div>
+        <StatGrid cols={2} items={[
+          { label: '短视频消耗',   value: moneyN(vm.videoSpent) },
+          { label: '短视频转化数', value: vm.videoConvert == null ? '—' : vm.videoConvert },
+        ]} />
       </div>
 
       {/* 今日重点建议（按 priority 排序，高优先在前）*/}
