@@ -729,7 +729,7 @@ export class OceanEngineAdapter implements IAdAdapter {
   /** 短视频素材分析（后台「数据 → 视频分析」口径，material_center）。仅取消耗 + 转化数。
    *  与 statQuery 不同的接口；scene 各账户不同，按 advid 从 OCEANENGINE_MATERIAL_SCENE_MAP 解析。
    *  拿不到 scene / cookie 或失败 → 返回 null（不发明）。 */
-  static async fetchVideoAnalysisMetrics(advid: string, startTime: string, endTime: string): Promise<{ spent: number | null; convertCnt: number | null } | null> {
+  static async fetchVideoAnalysisMetrics(advid: string, startTime: string, endTime: string): Promise<{ spent: number | null; convertCnt: number | null; clickCnt: number | null } | null> {
     let scene = '';
     try {
       if (process.env.OCEANENGINE_MATERIAL_SCENE_MAP) {
@@ -778,6 +778,7 @@ export class OceanEngineAdapter implements IAdAdapter {
       return {
         spent:      met.stat_cost   != null ? Number(met.stat_cost)   : null,
         convertCnt: met.convert_cnt != null ? Number(met.convert_cnt) : null,
+        clickCnt:   met.click_cnt   != null ? Number(met.click_cnt)   : null,
       };
     } catch (e) {
       console.warn(`[VideoAnalysis] advid=${advid} 短视频素材分析失败: ${String(e)}`);

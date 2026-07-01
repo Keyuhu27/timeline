@@ -143,22 +143,45 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
     ? { account: rng.sq.accountTotalSpent, standard: rng.sq.standardSpent, roi2: rng.sq.roi2TotalSpent ?? rng.sq.spent }
     : { account: diag?.spend?.accountTotalSpent ?? null, standard: diag?.spend?.standardSpent ?? null, roi2: diag?.spend?.roi2TotalSpent ?? (sq ? sq.spent : null) };
 
-  const overview = sq ? [
-    { label: '账户整体消耗',   value: yuanOr(buckets.account) },
-    { label: '标准投放消耗',   value: yuanOr(buckets.standard) },
-    { label: '全域投放消耗',   value: yuanOr(buckets.roi2) },
-    { label: '直播全域消耗',   value: `¥ ${TL.fmtMoney(sq.liveSpent)}` },
-    { label: '门店(POI)全域消耗', value: `¥ ${TL.fmtMoney(sq.videoSpent)}` },
-    { label: '全域成交金额',   value: `¥ ${TL.fmtMoney(sq.gmv)}` },
-    { label: '全域支付ROI',    value: sq.roi > 0 ? sq.roi.toFixed(2) : '—' },
-    { label: '全域成交订单',   value: sq.orders > 0 ? sq.orders : '—' },
-    { label: '订单成本',       value: sq.orderCost > 0 ? `¥ ${sq.orderCost.toFixed(1)}` : '—' },
-    { label: '直播成交金额',   value: `¥ ${TL.fmtMoney(sq.liveGmv)}` },
-    { label: '直播全域ROI',    value: sq.liveRoi > 0 ? sq.liveRoi.toFixed(2) : '—' },
-    { label: '门店(POI)成交金额', value: `¥ ${TL.fmtMoney(sq.videoGmv)}` },
-    { label: '活跃计划',       value: agg.active },
-    { label: '暂停计划',       value: agg.paused },
-  ] : ar ? [
+  // 短视频（素材口径）：选区间用 rng.sq，否则复用投流诊断今日
+  const vs = rng?.sq
+    ? { spent: rng.sq.videoMatSpent, convert: rng.sq.videoMatConvert }
+    : { spent: diag?.videoDiagnosis?.metrics?.videoSpent ?? null, convert: diag?.videoDiagnosis?.metrics?.videoConvert ?? null };
+  const numOr = (v) => (v == null ? '—' : v);
+  const roiOr = (v) => (v > 0 ? Number(v).toFixed(2) : '—');
+
+  // 分组行布局：账户口径 / 直播 / 门店(POI) / 短视频 / 总计
+  const groupedRows = sq ? [
+    { title: '账户口径', items: [
+      { label: '账户整体消耗', value: yuanOr(buckets.account) },
+      { label: '全域投放消耗', value: yuanOr(buckets.roi2) },
+      { label: '标准投放消耗', value: yuanOr(buckets.standard) },
+    ]},
+    { title: '直播', items: [
+      { label: '直播全域消耗', value: `¥ ${TL.fmtMoney(sq.liveSpent)}` },
+      { label: '直播成交金额', value: `¥ ${TL.fmtMoney(sq.liveGmv)}` },
+      { label: '直播全域ROI',  value: roiOr(sq.liveRoi) },
+    ]},
+    { title: '门店(POI)', items: [
+      { label: '门店(POI)全域消耗', value: `¥ ${TL.fmtMoney(sq.videoSpent)}` },
+      { label: '门店(POI)成交金额', value: `¥ ${TL.fmtMoney(sq.videoGmv)}` },
+      { label: '门店(POI) ROI',    value: roiOr(sq.videoRoi) },
+    ]},
+    { title: '短视频（素材口径）', items: [
+      { label: '短视频消耗',   value: yuanOr(vs.spent) },
+      { label: '短视频转化数', value: numOr(vs.convert) },
+    ]},
+    { title: '总计', items: [
+      { label: '全域成交金额', value: `¥ ${TL.fmtMoney(sq.gmv)}` },
+      { label: '全域支付ROI',  value: roiOr(sq.roi) },
+      { label: '全域成交订单', value: sq.orders > 0 ? sq.orders : '—' },
+      { label: '订单成本',     value: sq.orderCost > 0 ? `¥ ${sq.orderCost.toFixed(1)}` : '—' },
+      { label: '活跃计划',     value: agg.active },
+      { label: '暂停计划',     value: agg.paused },
+    ]},
+  ] : null;
+
+  const overview = ar ? [
     { label: spendLabel,     value: `¥ ${TL.fmtMoney(ar.spent)}` },
     { label: '全域成交金额', value: `¥ ${TL.fmtMoney(ar.gmv)}` },
     { label: '全域成交订单', value: ar.orders },
@@ -264,14 +287,32 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
                   {!rng.sq && '（该区间无数据或拉取失败）'}
                 </div>
               )}
-              <div className="stat-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
-                {overview.map((o, i) => (
-                  <div className="stat" key={i}>
-                    <div className="stat-label">{o.label}</div>
-                    <div className="stat-value" style={{ fontSize: 20 }}>{o.value}</div>
-                  </div>
-                ))}
-              </div>
+              {groupedRows ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  {groupedRows.map((g, gi) => (
+                    <div key={gi}>
+                      <div className="muted" style={{ fontSize: 11.5, marginBottom: 6 }}>{g.title}</div>
+                      <div className="stat-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
+                        {g.items.map((o, i) => (
+                          <div className="stat" key={i}>
+                            <div className="stat-label">{o.label}</div>
+                            <div className="stat-value" style={{ fontSize: 20 }}>{o.value}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="stat-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
+                  {overview.map((o, i) => (
+                    <div className="stat" key={i}>
+                      <div className="stat-label">{o.label}</div>
+                      <div className="stat-value" style={{ fontSize: 20 }}>{o.value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
 
             {/* 当日计划列表 */}
@@ -491,9 +532,10 @@ const AdDiagnosisSection = function AdDiagnosisSection({ diag, loading }) {
       {/* 短视频诊断（素材口径：仅消耗 + 转化数）*/}
       <div className="card" style={{ padding: 16, marginBottom: 12 }}>
         <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>短视频诊断<span style={{ marginLeft: 6 }}>（视频素材口径）</span></div>
-        <StatGrid cols={2} items={[
+        <StatGrid cols={3} items={[
           { label: '短视频消耗',   value: moneyN(vm.videoSpent) },
           { label: '短视频转化数', value: vm.videoConvert == null ? '—' : vm.videoConvert },
+          { label: '短视频转化率', value: vm.videoConvertRate == null ? '—' : `${(vm.videoConvertRate * 100).toFixed(1)}%` },
         ]} />
       </div>
 

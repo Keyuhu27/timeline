@@ -236,8 +236,13 @@ export const GET: RouteHandler = async (req, res) => {
     gmvSplit,
     liveDiagnosis:  { metrics: liveMetrics, findings: liveFindings },
     poiDiagnosis:   { metrics: poiMetrics,  findings: poiFindings },
-    // 真短视频（素材口径，独立接口）：仅消耗 + 转化数
-    videoDiagnosis: { metrics: { videoSpent: n(videoMat?.spent), videoConvert: videoMat?.convertCnt ?? null } },
+    // 真短视频（素材口径，独立接口）：消耗 + 转化数 + 转化率（转化数/点击数）
+    videoDiagnosis: { metrics: {
+      videoSpent:   n(videoMat?.spent),
+      videoConvert: videoMat?.convertCnt ?? null,
+      videoConvertRate: (videoMat?.convertCnt != null && videoMat?.clickCnt != null && videoMat.clickCnt > 0)
+        ? videoMat.convertCnt / videoMat.clickCnt : null,
+    } },
     findings,
   };
 

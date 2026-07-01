@@ -30,6 +30,8 @@ export const statQueryRange: RouteHandler = async (req, res) => {
     const sq = await OceanEngineAdapter.fetchHomeRoi2StatQuery(advid, startTime, endTime);
     // 标准投放（platform_version=2 口径）→ 账户整体 = 全域 + 标准（与投流诊断一致）
     const stdPromo = await OceanEngineAdapter.fetchStandardPromotionSpent(advid, startTime, endTime);
+    // 短视频素材分析（消耗 + 转化数），供概览「短视频」一行
+    const vmat = await OceanEngineAdapter.fetchVideoAnalysisMetrics(advid, startTime, endTime).catch(() => null);
     const roi2TotalSpent = sq.roi2Spent ?? sq.spent;
     let standardSpent: number | null;
     let accountTotalSpent: number | null;
@@ -49,6 +51,7 @@ export const statQueryRange: RouteHandler = async (req, res) => {
       orders: sq.orders, orderCost: sq.orderCost,
       liveOrders: sq.liveOrders, videoOrders: sq.videoOrders,
       roi2TotalSpent, standardSpent, accountTotalSpent,
+      videoMatSpent: vmat?.spent ?? null, videoMatConvert: vmat?.convertCnt ?? null,
       localAccountId: advid,
     };
     ok(res, { statQueryReport, range: { start, end } });
