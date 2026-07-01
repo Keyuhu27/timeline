@@ -730,6 +730,7 @@ export class OceanEngineAdapter implements IAdAdapter {
    *  与 statQuery 不同的接口；scene 各账户不同，按 advid 从 OCEANENGINE_MATERIAL_SCENE_MAP 解析。
    *  拿不到 scene / cookie 或失败 → 返回 null（不发明）。 */
   static async fetchVideoAnalysisMetrics(advid: string, startTime: string, endTime: string): Promise<{ spent: number | null; convertCnt: number | null; clickCnt: number | null } | null> {
+    // scene 各账户实测相同（页面级常量），故优先 MAP（按 advid 覆盖），回落全局 OCEANENGINE_MATERIAL_SCENE
     let scene = '';
     try {
       if (process.env.OCEANENGINE_MATERIAL_SCENE_MAP) {
@@ -737,6 +738,7 @@ export class OceanEngineAdapter implements IAdAdapter {
         if (m[advid]) scene = m[advid];
       }
     } catch { /* ignore malformed */ }
+    if (!scene) scene = process.env.OCEANENGINE_MATERIAL_SCENE ?? '';
     if (!scene) return null;
 
     let cookie = process.env.OCEANENGINE_LOCALADS_COOKIE;
