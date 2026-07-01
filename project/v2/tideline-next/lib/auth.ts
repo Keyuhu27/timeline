@@ -82,11 +82,33 @@ export function getSession(req: IncomingMessage): Session | null {
   return token ? verifyToken(token) : null;
 }
 
+// ─── 机器鉴权（API Key）────────────────────────────────────────────────────
+// 供外部程序（worker / Codex 等）调用接口用。请求头 `X-Api-Key: <key>`，
+// key 从 process.env.API_KEY 读取（逗号分隔可配多把，便于轮换/多客户端）。
+// 命中则返回一个合成的机器会话，等价于已登录（主理人权限）。
+// 时间恒定比较，防止时序侧信道。
+function checkApiKey(req: IncomingMessage): Session | null {
+  const raw = process.env.API_KEY;
+  if (!raw) return null;
+  const header = req.headers['x-api-key'];
+  const provided = Array.isArray(header) ? header[0] : header;
+  if (!provided) return null;
+  const provBuf = Buffer.from(provided);
+  const valid = raw.split(',').map(k => k.trim()).filter(Boolean).some(key => {
+    const keyBuf = Buffer.from(key);
+    return keyBuf.length === provBuf.length && timingSafeEqual(keyBuf, provBuf);
+  });
+  if (!valid) return null;
+  const now = Math.floor(Date.now() / 1000);
+  return { userId: 'machine', name: 'API Client', role: '主理人', orgId: 'system', iat: now, exp: now + TOKEN_TTL };
+}
+
 export function requireAuth(req: IncomingMessage, res: ServerResponse): Session | null {
-  const session = getSession(req);
+  // 优先浏览器会话，其次 API Key（机器对机器）
+  const session = getSession(req) ?? checkApiKey(req);
   if (!session) {
     res.writeHead(401, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: '未登录，请先登录工作台' }));
+    res.end(JSON.stringify({ error: '未登录，请先登录工作台（或提供有效 X-Api-Key）' }));
     return null;
   }
   return session;
