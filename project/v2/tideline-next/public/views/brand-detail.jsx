@@ -485,18 +485,6 @@ const AdDiagnosisSection = function AdDiagnosisSection({ diag, loading }) {
         </div>
       </div>
 
-      {/* 投放口径总览 */}
-      <div className="card" style={{ padding: 16, marginBottom: 12 }}>
-        <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>投放口径总览（本地推）</div>
-        <StatGrid cols={5} items={[
-          { label: '账户整体消耗',   value: moneyN(spend.accountTotalSpent) },
-          { label: '标准投放消耗',   value: moneyN(spend.standardSpent) },
-          { label: '全域总消耗',     value: moneyN(spend.roi2TotalSpent) },
-          { label: '直播全域消耗',   value: moneyN(spend.liveSpent) },
-          { label: '门店(POI)全域消耗', value: moneyN(spend.videoSpent) },
-        ]} />
-      </div>
-
       {/* 直播诊断 */}
       <div className="card" style={{ padding: 16, marginBottom: 12 }}>
         <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>直播诊断</div>
