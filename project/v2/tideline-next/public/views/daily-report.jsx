@@ -483,14 +483,14 @@ TL.openDailyReport = function (brandId, date) {
           {/* 场次明细 */}
           {bl.rooms?.length > 0 && (
             <div>
-              <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 6 }}>达播场次明细（Top {bl.rooms.length}）</div>
+              <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 6 }}>直播间列表（{bl.rooms.length} 场 · 按 GMV 排序）</div>
               <div style={{ overflowX: 'auto' }}>
                 <table className="tbl">
                   <thead><tr>
-                    <th>直播账号</th>
-                    <th className="num">GMV</th>
+                    <th>直播间</th>
+                    <th>开播时间</th>
                     <th className="num">时长</th>
-                    <th className="num">核销券数</th>
+                    <th className="num">直播间成交金额</th>
                     <th className="num">成交券数</th>
                     <th className="num">成交人数</th>
                   </tr></thead>
@@ -498,14 +498,14 @@ TL.openDailyReport = function (brandId, date) {
                     {bl.rooms.map((r, i) => (
                       <tr key={i}>
                         <td style={{ fontSize: 12 }}>
-                          <div style={{ fontWeight: 600 }}>{r.nickname || r.roomTypeTag || '—'}</div>
+                          <div style={{ fontWeight: 600 }}>{r.roomTitle || r.nickname || '—'}</div>
                           <div style={{ fontSize: 11, color: '#8c8c8c' }}>
-                            {[r.uniqueId && `抖音号 ${r.uniqueId}`, r.roomTypeTag].filter(Boolean).join(' · ') || '—'}
+                            {[r.nickname, r.uniqueId && `抖音号 ${r.uniqueId}`, r.roomTypeTag].filter(Boolean).join(' · ') || '—'}
                           </div>
                         </td>
-                        <td className="num" style={{ fontSize: 12 }}>{fmtY(r.gmv)}</td>
+                        <td style={{ fontSize: 12 }}>{r.liveStartStr || '—'}</td>
                         <td className="num" style={{ fontSize: 12 }}>{fmtDur(r.durationSec)}</td>
-                        <td className="num" style={{ fontSize: 12 }}>{fmtN(r.verifyCertNum)}</td>
+                        <td className="num" style={{ fontSize: 12 }}>{fmtY(r.gmv)}</td>
                         <td className="num" style={{ fontSize: 12 }}>{fmtN(r.payCertNum)}</td>
                         <td className="num" style={{ fontSize: 12 }}>{fmtN(r.payUser)}</td>
                       </tr>

@@ -547,42 +547,66 @@ export class BusinessCompassAdapter {
     const authorCnt     = Number(measure?.author_cnt ?? 0);
     console.log(`[BusinessLive] parsed ${startDate}~${endDate}: cnt=${daboCnt} dur=${daboDurationSec}s authorCnt=${authorCnt}`);
 
-    // 场次明细列表：达播聚合指标(daboCnt/时长/达人数)仍按 TALENT 口径，但明细表用 ALL 口径
-    // 再拉一次，让「达播场次明细」同时显示达人 + 商家自播场次。失败则退回 TALENT 明细。
+    // 场次明细列表 = 后台「直播分析 · 直播间列表」(LiveListTable_1)：每行 = 一场直播间。
+    // 关键：明细用「开播日口径」(is_gray_live_trade_date=false，去掉 trade_date)，
+    // 与后台默认视图一致——否则达人一带多会被归成 24h 滚动汇总，账号/时长/GMV 全对不上。
+    // 聚合卡片(daboCnt/时长/达人数)仍沿用上面的 TALENT 口径不变。
     try {
-      const allPayload = JSON.parse(JSON.stringify(payload)) as typeof payload;
-      allPayload.biz_params.common_params.room_type_filter = 'ALL';
-      const res2 = await fetch(url, { method: 'POST', headers: headers(lifeAccountId), body: JSON.stringify(allPayload) });
+      const listPayload = {
+        biz_params: {
+          path: '/flow/content/analysis/live',
+          query: {},
+          first_render: false,
+          common_params: {
+            is_sub_account: false,
+            poi_id: poiId,
+            start_date: startDate,
+            end_date: endDate,
+            date_type: 'custom',
+            is_gray_live_trade_date: false,
+            room_type_filter: 'ALL',
+            author_id: [],
+          },
+          module_params: {
+            RoomParam:    { limit: 50, offset: 0, search_keywords: '' },
+            FlowSourceV2: { group: 'date' },
+            ProductRank:  {},
+            RoomRank:     { limit: 50, offset: 0, order_type: 'desc', order_field: '' },
+            UserFeature:  {},
+          },
+        },
+        dito_params: {
+          is_event: true,
+          node_update_map: [{ type: 'refresh', node: 'LiveListTable_1' }],
+        },
+      };
+      const res2 = await fetch(url, { method: 'POST', headers: headers(lifeAccountId), body: JSON.stringify(listPayload) });
       if (res2.ok) {
         const parsed2 = JSON.parse(await res2.text()) as Record<string, unknown>;
         const dataObj2 = (parsed2?.data ?? parsed2) as Record<string, unknown>;
-        const layout2 = (Array.isArray(dataObj2?.layout) ? dataObj2.layout : []) as Array<{ data?: Record<string, unknown> }>;
-        const allRooms: typeof rooms = [];
-        for (const section of layout2) {
-          const d = section?.data ?? {};
-          const rrKey = Object.keys(d).find(k => k.toLowerCase() === 'roomrank');
-          if (!rrKey) continue;
-          const rr = d[rrKey] as { data?: Array<{ room_type_tag?: string; nickname?: string; unique_id?: string; room_title?: string; live_start_str?: string; gmv?: number; duration?: number; room_verify_order_amt_td?: number; room_verify_cert_num_td?: number; room_pay_cert_num_td?: number; room_pay_user_td?: number }> } | undefined;
-          for (const r of rr?.data ?? []) {
-            allRooms.push({
-              roomTypeTag: r.room_type_tag ?? '',
-              nickname: r.nickname ?? '',
-              uniqueId: r.unique_id ?? '',
-              roomTitle: r.room_title ?? '',
-              liveStartStr: r.live_start_str ?? '',
-              gmv: fen2yuan(r.gmv),
-              durationSec: Number(r.duration ?? 0),
-              verifyOrderAmt: fen2yuan(r.room_verify_order_amt_td),
-              verifyCertNum: Number(r.room_verify_cert_num_td ?? 0),
-              payCertNum: Number(r.room_pay_cert_num_td ?? 0),
-              payUser: Number(r.room_pay_user_td ?? 0),
-            });
-          }
-          break;
-        }
-        if (allRooms.length > 0) { rooms.length = 0; rooms.push(...allRooms); }
+        const layout2 = (Array.isArray(dataObj2?.layout) ? dataObj2.layout : []) as Array<{ id?: string; data?: Record<string, unknown> }>;
+        // 优先取 LiveListTable_1（逐场次），退回任意 roomRank 节点
+        const listSection = layout2.find(s => s.id === 'LiveListTable_1') ?? layout2.find(s => s.data && Object.keys(s.data).some(k => k.toLowerCase() === 'roomrank'));
+        const d = listSection?.data ?? {};
+        const rrKey = Object.keys(d).find(k => k.toLowerCase() === 'roomrank');
+        const rr = rrKey ? (d[rrKey] as { data?: Array<{ room_type_tag?: string; nickname?: string; unique_id?: string; room_title?: string; live_start_str?: string; gmv?: number; duration?: number; room_verify_order_amt_td?: number; room_verify_cert_num_td?: number; room_pay_cert_num_td?: number; room_pay_user_td?: number }> } | undefined) : undefined;
+        const listRooms: typeof rooms = (rr?.data ?? []).map(r => ({
+          roomTypeTag: r.room_type_tag ?? '',
+          nickname: r.nickname ?? '',
+          uniqueId: r.unique_id ?? '',
+          roomTitle: r.room_title ?? '',
+          liveStartStr: r.live_start_str ?? '',
+          gmv: fen2yuan(r.gmv),
+          durationSec: Number(r.duration ?? 0),
+          verifyOrderAmt: fen2yuan(r.room_verify_order_amt_td),
+          verifyCertNum: Number(r.room_verify_cert_num_td ?? 0),
+          payCertNum: Number(r.room_pay_cert_num_td ?? 0),
+          payUser: Number(r.room_pay_user_td ?? 0),
+        }));
+        listRooms.sort((a, b) => b.gmv - a.gmv);
+        if (listRooms.length > 0) { rooms.length = 0; rooms.push(...listRooms); }
       }
-    } catch (e) { console.warn('[BusinessLive] ALL 场次明细拉取失败，沿用 TALENT 明细:', String(e)); }
+    } catch (e) { console.warn('[BusinessLive] 直播间列表(LiveListTable)拉取失败，沿用 TALENT 明细:', String(e)); }
 
     return {
       daboCnt,
