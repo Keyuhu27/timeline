@@ -60,6 +60,8 @@ npm run start      # 本地试跑，访问 http://localhost:3005
 | `OCEANENGINE_LOCALADS_COOKIE_MAP` | 单行 JSON：`{"<advid>":"<cookie>"}`，按 advid 覆盖。**必须单行不换行** |
 | `OCEANENGINE_LOCALADS_HEADERS_MAP` | 单行 JSON：按 advid 覆盖额外 header（csrf-token 等） |
 | `OCEANENGINE_LOCALADS_DATASET_MAP` | 单行 JSON：advid → `standard`/`roi2`，如 `{"1844144155187404":"standard"}` |
+| `OCEANENGINE_MATERIAL_SCENE` | 短视频素材分析接口的 `scene` 参数，**全账户通用同一值**，配这一个即可 |
+| `OCEANENGINE_MATERIAL_SCENE_MAP` | 单行 JSON：`{"<advid>":"<scene>"}`，按 advid 覆盖（值都相同时可不配，用上面全局值兜底） |
 
 ### 生意经 / 来客（日报数据，按需）
 
@@ -80,6 +82,47 @@ npm run start      # 本地试跑，访问 http://localhost:3005
 
 > **JSON 类变量（`*_MAP` / `*_JSON`）必须是单行、不能换行**，否则解析失败会跳过 statQuery。
 > 在平台面板里粘贴时确认没有被自动折行。
+
+---
+
+## 2.5 按品牌四套配置总清单
+
+一个品牌要在详情页看到完整数据，涉及**四套配置**。它们全部**按 advid（本地推账户 ID）索引**，
+互相独立、缺哪套就少哪块数据：
+
+| 套 | 变量 | 索引键 | 缺失后果 |
+|----|------|--------|----------|
+| ① Cookie | `OCEANENGINE_LOCALADS_COOKIE_MAP`（或全局 `_COOKIE`） | advid | 全域/直播/POI/短视频**全部拉不到**（登录态） |
+| ② Dataset | `OCEANENGINE_LOCALADS_DATASET_MAP` | advid | 仅「标准投放型」账户需配 `standard`；roi2 型不配（默认 roi2） |
+| ③ Life-Account | `BUSINESS_COMPASS_LIFE_ACCOUNT_MAP` | poiId | 生意经自播/达播 GMV 拆分拉不到（日报用） |
+| ④ Material-Scene | `OCEANENGINE_MATERIAL_SCENE`（全局，通用值） | —（通用） | 短视频（素材口径）消耗/转化数拉不到 |
+
+> **① Cookie 是总开关**：没有它其余三套都无意义。判断是否接入成功——详情页「全域投放消耗」
+> 有数（哪怕 ¥0）且顶部 statQuery 绿色 chip 亮，即 Cookie 有效。
+
+### 各品牌 advid 对照（配 ①②④ 用 advid，③ 用 poiId）
+
+| 品牌 | advid（本地推账户 ID） | Dataset |
+|------|----------------------|---------|
+| 快乐蜂（中国）餐饮 | `1745303406415880` | roi2（默认，不配） |
+| 耀银-广州烨道餐饮 | `1847915308786764` | roi2 |
+| 广州烨道餐饮上城钱江 | `1839229761224026` | roi2 |
+| 亿滋本地推 | `1851121699721292` | roi2 |
+| 武义蝶来望境温泉酒店 | `1845654470244352` | roi2 |
+| 武义宏马文化发展 | `1845654181143703` | roi2 |
+| 半日懒竹林漂流 | `1770545948162062` | roi2 |
+| 天鸿丝绸福田三区店 | `1844144155187404` | **standard**（须配 DATASET_MAP） |
+| 浙江武义文旅资源运营发展 | `1809564038287363` | roi2 |
+
+### ④ Material-Scene 一次配好即全站生效
+
+`scene` 值在所有账户间通用（同一个字符串），因此**只需配一个全局变量**：
+
+```
+OCEANENGINE_MATERIAL_SCENE=<你的 scene 值>
+```
+
+无需逐品牌 `_MAP`。之后每个已接入 Cookie 的品牌都会自动带出短视频（素材口径）数据。
 
 ---
 
