@@ -396,7 +396,7 @@ TL.openDailyReport = function (brandId, date) {
     const hasTrend = bl.dailyTrend?.length > 0;
     return (
       <section style={{ marginBottom: 16 }}>
-        <SectionTitle title="生意经达播分析" sub={`来源：生意经 dito/query TALENT · ${bl.fetchedAt?.slice(0,10) ?? ''}`} badge="business" />
+        <SectionTitle title="生意经达播分析" sub={`来源：生意经 dito/query TALENT · 数据日 ${bl.dataDate ?? bl.fetchedAt?.slice(0,10) ?? ''}`} badge="business" />
         <div className="card" style={{ padding: '14px 16px' }}>
           {/* 昨日汇总 */}
           <div style={{ fontSize: 11, color: '#8c8c8c', marginBottom: 6, fontWeight: 500 }}>昨日</div>

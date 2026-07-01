@@ -523,6 +523,7 @@ export interface DailyReport {
       payCertNum: number;
       payUser: number;
     }>;
+    dataDate?: string;        // 数据日（YYYY-MM-DD），与投放数据对齐
     fetchedAt: string;
   };
 }

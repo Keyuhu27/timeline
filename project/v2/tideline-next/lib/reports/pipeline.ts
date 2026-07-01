@@ -361,6 +361,7 @@ export function mergeDailyReportData(ctx: ReportContext, sources: ReportSources)
         verifyCertCnt: 0,
         rooms:         liveBase?.rooms         ?? [],
         dailyTrend:    liveBase?.dailyTrend    ?? [],
+        dataDate:      ctx.yesterday,   // 数据日（= 报告数据日，与投放数据对齐），非拉取时间
         fetchedAt:     new Date().toISOString(),
         ...(srcMonth ? {
           monthGmv:         Math.round(srcMonth.daboGmv),
