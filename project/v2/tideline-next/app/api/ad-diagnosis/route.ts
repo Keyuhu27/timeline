@@ -119,15 +119,17 @@ export const GET: RouteHandler = async (req, res) => {
     daboShare: (liveTotalGmv && liveTotalGmv > 0) ? daboGmv! / liveTotalGmv : null,
     ziboShare: (liveTotalGmv && liveTotalGmv > 0) ? ziboGmv! / liveTotalGmv : null,
   };
-  const videoMetrics = {
-    videoSpent: n(sq?.videoSpent),      // 本地推 短视频全域消耗
-    videoGmv:   n(sq?.videoGmv),        // 本地推 短视频全域成交
-    videoRoi:   r(sq?.videoRoi),        // 本地推 短视频全域 ROI
+  // 注意：本地推 roi2 的 video_*_for_roi2 字段实际圈的是「门店全域投放 = POI」，不是短视频
+  // （实测与后台「门店全域投放」页消耗/成交/订单逐项对齐）。真短视频后续走独立数据源。
+  const poiMetrics = {
+    poiSpent: n(sq?.videoSpent),        // 本地推 门店全域(POI)消耗
+    poiGmv:   n(sq?.videoGmv),          // 本地推 门店全域(POI)成交
+    poiRoi:   r(sq?.videoRoi),          // 本地推 门店全域(POI) ROI
   };
 
   // ── 规则评估（保守措辞；缺失字段不触发）──────────────────────────────────
   const liveFindings: Finding[] = [];
-  const videoFindings: Finding[] = [];
+  const poiFindings: Finding[] = [];
 
   // 直播 1：ROI 较好
   if (liveMetrics.liveRoi != null && liveMetrics.liveSpent != null
@@ -162,42 +164,42 @@ export const GET: RouteHandler = async (req, res) => {
     });
   }
 
-  // 短视频 1：有消耗但无成交（本地推全域口径，与展示一致）
-  if (videoMetrics.videoSpent != null && videoMetrics.videoSpent > SPEND_HIGH
-      && videoMetrics.videoGmv != null && videoMetrics.videoGmv === 0) {
-    videoFindings.push({
-      level: 'warn', priority: 'high', source: 'localAds', code: 'VIDEO_SPEND_NO_GMV',
-      title: '短视频有消耗但无成交',
-      detail: '短视频投放产生消耗，但短视频全域成交为 0。',
-      evidence: [`短视频全域消耗 ${yuan(videoMetrics.videoSpent)}`, `短视频全域成交 ¥0`],
-      action: '建议检查素材方向、商品承接、团购价格，并降低低效计划预算。',
+  // POI 1：有消耗但无成交
+  if (poiMetrics.poiSpent != null && poiMetrics.poiSpent > SPEND_HIGH
+      && poiMetrics.poiGmv != null && poiMetrics.poiGmv === 0) {
+    poiFindings.push({
+      level: 'warn', priority: 'high', source: 'localAds', code: 'POI_SPEND_NO_GMV',
+      title: '门店(POI)有消耗但无成交',
+      detail: '门店全域投放产生消耗，但门店全域成交为 0。',
+      evidence: [`门店全域消耗 ${yuan(poiMetrics.poiSpent)}`, `门店全域成交 ¥0`],
+      action: '建议检查门店承接、商品机制、团购价格，并降低低效计划预算。',
     });
   }
-  // 短视频 2：ROI 较好
-  if (videoMetrics.videoRoi != null && videoMetrics.videoSpent != null
-      && videoMetrics.videoRoi >= ROI_GOOD && videoMetrics.videoSpent > SPEND_OBS) {
-    videoFindings.push({
-      level: 'info', priority: 'low', source: 'localAds', code: 'VIDEO_HIGH_ROI',
-      title: '短视频投流 ROI 较好',
-      detail: '短视频全域 ROI 表现较好且有一定消耗。',
-      evidence: [`短视频全域消耗 ${yuan(videoMetrics.videoSpent)}`, `短视频全域 ROI ${videoMetrics.videoRoi.toFixed(2)}`],
-      action: '短视频投流 ROI 较好，建议观察是否可小幅测试放量。',
+  // POI 2：ROI 较好
+  if (poiMetrics.poiRoi != null && poiMetrics.poiSpent != null
+      && poiMetrics.poiRoi >= ROI_GOOD && poiMetrics.poiSpent > SPEND_OBS) {
+    poiFindings.push({
+      level: 'info', priority: 'low', source: 'localAds', code: 'POI_HIGH_ROI',
+      title: '门店(POI)投流 ROI 较好',
+      detail: '门店全域 ROI 表现较好且有一定消耗。',
+      evidence: [`门店全域消耗 ${yuan(poiMetrics.poiSpent)}`, `门店全域 ROI ${poiMetrics.poiRoi.toFixed(2)}`],
+      action: '门店投流 ROI 较好，建议观察是否可小幅测试放量。',
     });
   }
-  // 短视频 3：ROI 偏低
-  if (videoMetrics.videoRoi != null && videoMetrics.videoSpent != null
-      && videoMetrics.videoRoi < ROI_LOW && videoMetrics.videoSpent > SPEND_HIGH) {
-    videoFindings.push({
-      level: 'warn', priority: 'high', source: 'localAds', code: 'VIDEO_LOW_ROI',
-      title: '短视频投流 ROI 偏低',
-      detail: '短视频全域 ROI 偏低但消耗较高。',
-      evidence: [`短视频全域消耗 ${yuan(videoMetrics.videoSpent)}`, `短视频全域 ROI ${videoMetrics.videoRoi.toFixed(2)}`],
-      action: '建议检查素材、定向、人群与商品承接。',
+  // POI 3：ROI 偏低
+  if (poiMetrics.poiRoi != null && poiMetrics.poiSpent != null
+      && poiMetrics.poiRoi < ROI_LOW && poiMetrics.poiSpent > SPEND_HIGH) {
+    poiFindings.push({
+      level: 'warn', priority: 'high', source: 'localAds', code: 'POI_LOW_ROI',
+      title: '门店(POI)投流 ROI 偏低',
+      detail: '门店全域 ROI 偏低但消耗较高。',
+      evidence: [`门店全域消耗 ${yuan(poiMetrics.poiSpent)}`, `门店全域 ROI ${poiMetrics.poiRoi.toFixed(2)}`],
+      action: '建议检查门店承接、定向、人群与商品机制。',
     });
   }
 
   // ── 顶层 findings：合并 + 按 priority 排序（高→低）──────────────────────
-  const findings: Finding[] = [...liveFindings, ...videoFindings]
+  const findings: Finding[] = [...liveFindings, ...poiFindings]
     .sort((a, b) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority]);
 
   if (!business && !localAds) {
@@ -225,15 +227,15 @@ export const GET: RouteHandler = async (req, res) => {
       hasBusiness: !!(business && business.srcYday),
       hasLocalAds: !!(localAds && localAds.sqYday),  // 只有 statQuery 真正返回才算已接入（失败/无数据则 false）
       spendScope: 'localads_roi2_quanyu', // 口径标识：本地推 roi2 全域投放
-      note: '投放消耗、ROI、直播/短视频全域成交来自巨量本地推全域投放口径；自播/达播 GMV 拆分来自生意经经营口径，仅用于投流诊断参考。',
+      note: '投放消耗、ROI、直播/门店(POI)全域成交来自巨量本地推全域投放口径；自播/达播 GMV 拆分来自生意经经营口径，仅用于投流诊断参考。短视频为独立口径，另行接入。',
     },
     spend,
     gmvSplit,
-    liveDiagnosis:  { metrics: liveMetrics,  findings: liveFindings },
-    videoDiagnosis: { metrics: videoMetrics, findings: videoFindings },
+    liveDiagnosis: { metrics: liveMetrics, findings: liveFindings },
+    poiDiagnosis:  { metrics: poiMetrics,  findings: poiFindings },
     findings,
   };
 
-  console.log(`[AdDiagnosis] brandId=${brandId} date=${date} done (hasBusiness=${!!business} hasLocalAds=${!!localAds} live=${liveFindings.length} video=${videoFindings.length})`);
+  console.log(`[AdDiagnosis] brandId=${brandId} date=${date} done (hasBusiness=${!!business} hasLocalAds=${!!localAds} live=${liveFindings.length} poi=${poiFindings.length})`);
   return ok(res, result);
 };

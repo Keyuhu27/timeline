@@ -148,14 +148,14 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
     { label: '标准投放消耗',   value: yuanOr(buckets.standard) },
     { label: '全域投放消耗',   value: yuanOr(buckets.roi2) },
     { label: '直播全域消耗',   value: `¥ ${TL.fmtMoney(sq.liveSpent)}` },
-    { label: '短视频全域消耗', value: `¥ ${TL.fmtMoney(sq.videoSpent)}` },
+    { label: '门店(POI)全域消耗', value: `¥ ${TL.fmtMoney(sq.videoSpent)}` },
     { label: '全域成交金额',   value: `¥ ${TL.fmtMoney(sq.gmv)}` },
     { label: '全域支付ROI',    value: sq.roi > 0 ? sq.roi.toFixed(2) : '—' },
     { label: '全域成交订单',   value: sq.orders > 0 ? sq.orders : '—' },
     { label: '订单成本',       value: sq.orderCost > 0 ? `¥ ${sq.orderCost.toFixed(1)}` : '—' },
     { label: '直播成交金额',   value: `¥ ${TL.fmtMoney(sq.liveGmv)}` },
     { label: '直播全域ROI',    value: sq.liveRoi > 0 ? sq.liveRoi.toFixed(2) : '—' },
-    { label: '短视频成交金额', value: `¥ ${TL.fmtMoney(sq.videoGmv)}` },
+    { label: '门店(POI)成交金额', value: `¥ ${TL.fmtMoney(sq.videoGmv)}` },
     { label: '活跃计划',       value: agg.active },
     { label: '暂停计划',       value: agg.paused },
   ] : ar ? [
@@ -424,9 +424,9 @@ const AdDiagnosisSection = function AdDiagnosisSection({ diag, loading }) {
     );
   }
 
-  const { meta, spend, liveDiagnosis, videoDiagnosis, findings } = diag;
+  const { meta, spend, liveDiagnosis, poiDiagnosis, findings } = diag;
   const lm = (liveDiagnosis && liveDiagnosis.metrics) || {};
-  const vm = (videoDiagnosis && videoDiagnosis.metrics) || {};
+  const pm = (poiDiagnosis && poiDiagnosis.metrics) || {};
 
   return (
     <section style={{ marginTop: 24, marginBottom: 24 }}>
@@ -451,7 +451,7 @@ const AdDiagnosisSection = function AdDiagnosisSection({ diag, loading }) {
           { label: '标准投放消耗',   value: moneyN(spend.standardSpent) },
           { label: '全域总消耗',     value: moneyN(spend.roi2TotalSpent) },
           { label: '直播全域消耗',   value: moneyN(spend.liveSpent) },
-          { label: '短视频全域消耗', value: moneyN(spend.videoSpent) },
+          { label: '门店(POI)全域消耗', value: moneyN(spend.videoSpent) },
         ]} />
       </div>
 
@@ -472,17 +472,17 @@ const AdDiagnosisSection = function AdDiagnosisSection({ diag, loading }) {
         )}
       </div>
 
-      {/* 短视频诊断 */}
+      {/* 门店(POI)诊断 */}
       <div className="card" style={{ padding: 16, marginBottom: 12 }}>
-        <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>短视频诊断</div>
+        <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>门店(POI)诊断</div>
         <StatGrid cols={3} items={[
-          { label: '短视频消耗', value: moneyN(vm.videoSpent) },
-          { label: '短视频 GMV', value: moneyN(vm.videoGmv) },
-          { label: '短视频 ROI', value: roiN(vm.videoRoi) },
+          { label: '门店(POI)消耗', value: moneyN(pm.poiSpent) },
+          { label: '门店(POI) GMV', value: moneyN(pm.poiGmv) },
+          { label: '门店(POI) ROI', value: roiN(pm.poiRoi) },
         ]} />
-        {videoDiagnosis && videoDiagnosis.findings && videoDiagnosis.findings.length > 0 && (
+        {poiDiagnosis && poiDiagnosis.findings && poiDiagnosis.findings.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
-            {videoDiagnosis.findings.map((f, i) => <FindingCard key={f.code || i} f={f} />)}
+            {poiDiagnosis.findings.map((f, i) => <FindingCard key={f.code || i} f={f} />)}
           </div>
         )}
       </div>
