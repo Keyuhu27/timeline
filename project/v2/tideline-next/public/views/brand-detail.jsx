@@ -171,14 +171,6 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
       { label: '短视频消耗',   value: yuanOr(vs.spent) },
       { label: '短视频转化数', value: numOr(vs.convert) },
     ]},
-    { title: '总计', items: [
-      { label: '全域成交金额', value: `¥ ${TL.fmtMoney(sq.gmv)}` },
-      { label: '全域支付ROI',  value: roiOr(sq.roi) },
-      { label: '全域成交订单', value: sq.orders > 0 ? sq.orders : '—' },
-      { label: '订单成本',     value: sq.orderCost > 0 ? `¥ ${sq.orderCost.toFixed(1)}` : '—' },
-      { label: '活跃计划',     value: agg.active },
-      { label: '暂停计划',     value: agg.paused },
-    ]},
   ] : null;
 
   const overview = ar ? [
