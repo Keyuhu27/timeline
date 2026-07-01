@@ -547,6 +547,43 @@ export class BusinessCompassAdapter {
     const authorCnt     = Number(measure?.author_cnt ?? 0);
     console.log(`[BusinessLive] parsed ${startDate}~${endDate}: cnt=${daboCnt} dur=${daboDurationSec}s authorCnt=${authorCnt}`);
 
+    // 场次明细列表：达播聚合指标(daboCnt/时长/达人数)仍按 TALENT 口径，但明细表用 ALL 口径
+    // 再拉一次，让「达播场次明细」同时显示达人 + 商家自播场次。失败则退回 TALENT 明细。
+    try {
+      const allPayload = JSON.parse(JSON.stringify(payload)) as typeof payload;
+      allPayload.biz_params.common_params.room_type_filter = 'ALL';
+      const res2 = await fetch(url, { method: 'POST', headers: headers(lifeAccountId), body: JSON.stringify(allPayload) });
+      if (res2.ok) {
+        const parsed2 = JSON.parse(await res2.text()) as Record<string, unknown>;
+        const dataObj2 = (parsed2?.data ?? parsed2) as Record<string, unknown>;
+        const layout2 = (Array.isArray(dataObj2?.layout) ? dataObj2.layout : []) as Array<{ data?: Record<string, unknown> }>;
+        const allRooms: typeof rooms = [];
+        for (const section of layout2) {
+          const d = section?.data ?? {};
+          const rrKey = Object.keys(d).find(k => k.toLowerCase() === 'roomrank');
+          if (!rrKey) continue;
+          const rr = d[rrKey] as { data?: Array<{ room_type_tag?: string; nickname?: string; unique_id?: string; room_title?: string; live_start_str?: string; gmv?: number; duration?: number; room_verify_order_amt_td?: number; room_verify_cert_num_td?: number; room_pay_cert_num_td?: number; room_pay_user_td?: number }> } | undefined;
+          for (const r of rr?.data ?? []) {
+            allRooms.push({
+              roomTypeTag: r.room_type_tag ?? '',
+              nickname: r.nickname ?? '',
+              uniqueId: r.unique_id ?? '',
+              roomTitle: r.room_title ?? '',
+              liveStartStr: r.live_start_str ?? '',
+              gmv: fen2yuan(r.gmv),
+              durationSec: Number(r.duration ?? 0),
+              verifyOrderAmt: fen2yuan(r.room_verify_order_amt_td),
+              verifyCertNum: Number(r.room_verify_cert_num_td ?? 0),
+              payCertNum: Number(r.room_pay_cert_num_td ?? 0),
+              payUser: Number(r.room_pay_user_td ?? 0),
+            });
+          }
+          break;
+        }
+        if (allRooms.length > 0) { rooms.length = 0; rooms.push(...allRooms); }
+      }
+    } catch (e) { console.warn('[BusinessLive] ALL 场次明细拉取失败，沿用 TALENT 明细:', String(e)); }
+
     return {
       daboCnt,
       daboDurationSec,
