@@ -307,53 +307,6 @@ const BrandDetail = function BrandDetail({ brandId, onBack }) {
               )}
             </section>
 
-            {/* 当日计划列表 */}
-            <section style={{ marginBottom: 24 }}>
-              <SectionTitle title="当日计划" sub={`${campaigns.length} 个项目`} />
-              <div className="card">
-                <table className="tbl">
-                  <thead>
-                    <tr>
-                      <th>计划 / project_id</th><th className="num">预算</th><th className="num">今日花费</th>
-                      <th className="num">线索</th><th className="num">CPL</th><th className="num">ROAS</th>
-                      <th>状态</th><th>操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {campaigns.map(c => {
-                      const leads = c.leads || 0;
-                      const ccpl = leads > 0 ? (c.spent / leads).toFixed(1) : '—';
-                      const norm = TL._normStatus(c.status);
-                      return (
-                        <tr key={c.id}>
-                          <td>
-                            <div style={{ fontWeight: 500 }}>{TL.displayCampaignName(c)}</div>
-                            <div className="muted mono" style={{ fontSize: 10.5 }}>{c.externalId || '—'}</div>
-                          </td>
-                          <td className="num">¥ {TL.fmtMoney(c.budget || 0)}</td>
-                          <td className="num">¥ {TL.fmtMoney(c.spent || 0)}</td>
-                          <td className="num">{leads}</td>
-                          <td className="num">{ccpl === '—' ? '—' : `¥ ${ccpl}`}</td>
-                          <td className="num">{(c.roas || 0).toFixed(2)}</td>
-                          <td><Chip tone={TL.statusTone(c.status)}>{TL.statusLabel(c.status)}</Chip></td>
-                          <td>
-                            <div className="row tight">
-                              <button className="btn ghost icon sm" disabled={acting === c.id} title={norm === 'active' ? '暂停' : '恢复'} onClick={() => toggle(c)}>
-                                <Icon name={norm === 'active' ? 'pause' : 'play'} size={12} />
-                              </button>
-                              <button className="btn ghost icon sm" disabled={acting === c.id} title="调预算" onClick={() => adjustBudget(c)}>
-                                <Icon name="wallet" size={12} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-
             {/* 规则触发记录 */}
             <section style={{ marginBottom: 24 }}>
               <SectionTitle title="规则触发记录" sub={`${brandLogs.length} 条`} />
