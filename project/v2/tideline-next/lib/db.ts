@@ -158,7 +158,13 @@ const isPlaceholderName = (s?: string) => !s || PLACEHOLDER_NAME.test(s.trim());
 
 // 列表黑名单：测试/废弃门店（上前小店0733、上前小店-gfs1 等）一律不在侧栏显示
 const HIDDEN_NAME_PATTERN = /上前小店/;
-const isHiddenName = (s?: string) => !!s && HIDDEN_NAME_PATTERN.test(s.trim());
+// 精确名黑名单：需完全一致才隐藏，避免误伤子串（如「武义蝶来望境温泉酒店」不应被「蝶来望境」命中）
+const HIDDEN_EXACT_NAMES = new Set<string>(['蝶来望境', '永和大王']);
+const isHiddenName = (s?: string) => {
+  if (!s) return false;
+  const t = s.trim();
+  return HIDDEN_NAME_PATTERN.test(t) || HIDDEN_EXACT_NAMES.has(t);
+};
 
 /**
  * 可见账户：去掉占位名账户，并按 externalId 去重（种子账户优先于持久化 a_* 账户）。

@@ -179,14 +179,15 @@ TL.copyTemplates = [
 ];
 
 // Helpers
+// 全平台数字口径：不用「万」缩写，一律实际数字，保留一位小数（千分位分隔）。
 TL.fmtMoney = (n) => {
-  if (n >= 10000) return (n/10000).toFixed(n>=1000000?0:1) + ' 万';
-  return n.toLocaleString();
+  const v = Number(n) || 0;
+  return v.toLocaleString('zh-CN', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 };
 TL.fmtPct = (n, sign=true) => (sign && n>0 ? '+' : '') + (n*100).toFixed(1) + '%';
 TL.fmtCount = (n) => {
-  if (n >= 10000) return (n/10000).toFixed(1) + ' 万';
-  return n.toLocaleString();
+  const v = Number(n) || 0;
+  return v.toLocaleString('zh-CN', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 };
 
 TL.brandById = (id) => TL.brands.find(b => b.id === id);
