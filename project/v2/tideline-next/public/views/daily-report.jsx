@@ -487,7 +487,7 @@ TL.openDailyReport = function (brandId, date) {
               <div style={{ overflowX: 'auto' }}>
                 <table className="tbl">
                   <thead><tr>
-                    <th>直播类型</th>
+                    <th>直播账号</th>
                     <th className="num">GMV</th>
                     <th className="num">时长</th>
                     <th className="num">核销券数</th>
@@ -497,7 +497,12 @@ TL.openDailyReport = function (brandId, date) {
                   <tbody>
                     {bl.rooms.map((r, i) => (
                       <tr key={i}>
-                        <td style={{ fontSize: 12 }}>{r.roomTypeTag || '—'}</td>
+                        <td style={{ fontSize: 12 }}>
+                          <div style={{ fontWeight: 600 }}>{r.nickname || r.roomTypeTag || '—'}</div>
+                          <div style={{ fontSize: 11, color: '#8c8c8c' }}>
+                            {[r.uniqueId && `抖音号 ${r.uniqueId}`, r.roomTypeTag].filter(Boolean).join(' · ') || '—'}
+                          </div>
+                        </td>
                         <td className="num" style={{ fontSize: 12 }}>{fmtY(r.gmv)}</td>
                         <td className="num" style={{ fontSize: 12 }}>{fmtDur(r.durationSec)}</td>
                         <td className="num" style={{ fontSize: 12 }}>{fmtN(r.verifyCertNum)}</td>

@@ -512,6 +512,10 @@ export interface DailyReport {
     // 场次明细（roomRank.data[]）
     rooms: Array<{
       roomTypeTag: string;
+      nickname: string;
+      uniqueId: string;
+      roomTitle: string;
+      liveStartStr: string;
       gmv: number;
       durationSec: number;
       verifyOrderAmt: number;

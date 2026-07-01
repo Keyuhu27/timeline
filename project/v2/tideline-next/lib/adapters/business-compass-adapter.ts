@@ -428,7 +428,7 @@ export class BusinessCompassAdapter {
    */
   static async fetchLiveAnalysis(poiId: string, startDate: string, endDate: string): Promise<{
     daboCnt: number; daboDurationSec: number; authorCnt: number;
-    rooms: Array<{ roomTypeTag: string; gmv: number; durationSec: number; verifyOrderAmt: number; verifyCertNum: number; payCertNum: number; payUser: number }>;
+    rooms: Array<{ roomTypeTag: string; nickname: string; uniqueId: string; roomTitle: string; liveStartStr: string; gmv: number; durationSec: number; verifyOrderAmt: number; verifyCertNum: number; payCertNum: number; payUser: number }>;
     dailyTrend: Array<{ date: string; gmv: number; durationSec: number; liveCnt: number; authorCnt: number; verifyAmount: number }>;
     fetchedAt: string;
   } | null> {
@@ -490,7 +490,7 @@ export class BusinessCompassAdapter {
     const layout = (Array.isArray(dataObj?.layout) ? dataObj.layout : []) as Array<{ id?: string; data?: Record<string, unknown> }>;
 
     interface MeasureRow { live_cnt?: number; room_cnt?: number; duration?: number; author_cnt?: number; verify_amount?: number; verify_cert_cnt?: number; gmv?: number; }
-    const rooms: Array<{ roomTypeTag: string; gmv: number; durationSec: number; verifyOrderAmt: number; verifyCertNum: number; payCertNum: number; payUser: number }> = [];
+    const rooms: Array<{ roomTypeTag: string; nickname: string; uniqueId: string; roomTitle: string; liveStartStr: string; gmv: number; durationSec: number; verifyOrderAmt: number; verifyCertNum: number; payCertNum: number; payUser: number }> = [];
     const dailyTrend: Array<{ date: string; gmv: number; durationSec: number; liveCnt: number; authorCnt: number; verifyAmount: number }> = [];
     let measure: MeasureRow | null = null;
 
@@ -523,10 +523,14 @@ export class BusinessCompassAdapter {
       // roomRank — 直播间明细
       const rrKey = Object.keys(d).find(k => k.toLowerCase() === 'roomrank');
       if (rrKey) {
-        const rr = d[rrKey] as { data?: Array<{ room_type_tag?: string; gmv?: number; duration?: number; room_verify_order_amt_td?: number; room_verify_cert_num_td?: number; room_pay_cert_num_td?: number; room_pay_user_td?: number }> } | undefined;
+        const rr = d[rrKey] as { data?: Array<{ room_type_tag?: string; nickname?: string; unique_id?: string; room_title?: string; live_start_str?: string; gmv?: number; duration?: number; room_verify_order_amt_td?: number; room_verify_cert_num_td?: number; room_pay_cert_num_td?: number; room_pay_user_td?: number }> } | undefined;
         for (const r of rr?.data ?? []) {
           rooms.push({
             roomTypeTag: r.room_type_tag ?? '',
+            nickname: r.nickname ?? '',
+            uniqueId: r.unique_id ?? '',
+            roomTitle: r.room_title ?? '',
+            liveStartStr: r.live_start_str ?? '',
             gmv: fen2yuan(r.gmv),
             durationSec: Number(r.duration ?? 0),
             verifyOrderAmt: fen2yuan(r.room_verify_order_amt_td),
