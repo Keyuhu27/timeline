@@ -62,6 +62,7 @@ npm run start      # 本地试跑，访问 http://localhost:3005
 | `OCEANENGINE_LOCALADS_DATASET_MAP` | 单行 JSON：advid → `standard`/`roi2`，如 `{"1844144155187404":"standard"}` |
 | `OCEANENGINE_MATERIAL_SCENE` | 短视频素材分析接口的 `scene` 参数，**全账户通用同一值**，配这一个即可 |
 | `OCEANENGINE_MATERIAL_SCENE_MAP` | 单行 JSON：`{"<advid>":"<scene>"}`，按 advid 覆盖（值都相同时可不配，用上面全局值兜底） |
+| `OCEANENGINE_EXECUTE_WRITES` | 写保护总闸。**缺省/≠`true` = dry-run**（直播间优化投流与 AI 决策批准都只记录、不真实调 OpenAPI 写）。仅在确认要放开真实暂停/调预算时才设 `true` |
 
 ### 生意经 / 来客（日报数据，按需）
 

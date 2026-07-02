@@ -77,6 +77,10 @@ const Ads = function Ads() {
         </div>
 
         <div className="tabs">
+          <div className={`tab ${tab === 'brands'    ? 'active' : ''}`} onClick={() => setTab('brands')}>品牌汇总</div>
+          <div className={`tab ${tab === 'liveOpt'   ? 'active' : ''}`} onClick={() => setTab('liveOpt')}>
+            <Icon name="target" size={12} /> 直播间优化投流
+          </div>
           <div className={`tab ${tab === 'campaigns' ? 'active' : ''}`} onClick={() => setTab('campaigns')}>投放计划</div>
           <div className={`tab ${tab === 'rules'     ? 'active' : ''}`} onClick={() => setTab('rules')}>自动规则</div>
           <div className={`tab ${tab === 'logs'      ? 'active' : ''}`} onClick={() => setTab('logs')}>操作日志</div>
@@ -85,6 +89,8 @@ const Ads = function Ads() {
           </div>
         </div>
 
+        {tab === 'brands'    && <BrandsSummary />}
+        {tab === 'liveOpt'   && <LiveOptimization />}
         {tab === 'campaigns' && <Campaigns />}
         {tab === 'rules'     && <Rules />}
         {tab === 'logs'      && <Logs />}
@@ -100,6 +106,159 @@ function Stat3({ label, value, sub, tone }) {
       <div className="stat-label">{label}</div>
       <div className="stat-value" style={{ color: tone === 'success' ? 'var(--success)' : undefined }}>{value}</div>
       {sub && <div className="stat-delta">{sub}</div>}
+    </div>
+  );
+}
+
+// ── 品牌汇总（按品牌聚合投放计划）──────────────────────────────────────────
+function BrandsSummary() {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const money = (n) => `¥ ${(Number(n) || 0).toLocaleString('zh-CN', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`;
+
+  useEffect(() => {
+    fetch('/api/ads?pageSize=1000')
+      .then(r => r.json())
+      .then(d => {
+        const camps = d.data?.campaigns ?? [];
+        const byBrand = {};
+        for (const c of camps) {
+          const bid = c.brand;
+          const b = byBrand[bid] || (byBrand[bid] = { brand: bid, name: (TL.brandById(bid)?.name) || bid, count: 0, active: 0, spent: 0, gmv: 0 });
+          b.count++; if ((c.status === 'active')) b.active++;
+          b.spent += Number(c.spent) || 0; b.gmv += Number(c.gmv) || 0;
+        }
+        setRows(Object.values(byBrand).sort((a, b) => b.spent - a.spent));
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="card-b muted" style={{ fontSize: 12.5 }}>加载中…</div>;
+  if (!rows.length) return <div className="card-b muted" style={{ fontSize: 12.5 }}>暂无计划数据，请先「同步广告主」。</div>;
+  return (
+    <div className="card">
+      <table className="tbl">
+        <thead><tr>
+          <th>品牌</th><th className="num">计划数</th><th className="num">活跃</th>
+          <th className="num">消耗</th><th className="num">成交金额</th><th className="num">ROI</th>
+        </tr></thead>
+        <tbody>
+          {rows.map(b => (
+            <tr key={b.brand}>
+              <td style={{ fontWeight: 500 }}>{b.name}</td>
+              <td className="num">{b.count}</td>
+              <td className="num">{b.active}</td>
+              <td className="num">{money(b.spent)}</td>
+              <td className="num">{money(b.gmv)}</td>
+              <td className="num">{b.spent > 0 ? (b.gmv / b.spent).toFixed(2) : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── 直播间优化投流（计划级只读巡检 · dry-run）────────────────────────────────
+function LiveOptimization() {
+  const [scan, setScan] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [scanning, setScanning] = useState(false);
+  const money = (v) => v == null ? '—' : `¥ ${Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`;
+  const num = (v) => v == null ? '—' : Number(v).toLocaleString('zh-CN');
+
+  const load = useCallback(() => {
+    fetch('/api/live-optimization').then(r => r.json()).then(d => setScan(d.data || null)).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+  useEffect(load, [load]);
+
+  const runScan = async () => {
+    setScanning(true);
+    try {
+      const r = await fetch('/api/live-optimization', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'scan' }) });
+      const d = await r.json();
+      if (d.data) setScan(d.data);
+    } catch (e) { /* ignore */ } finally { setScanning(false); }
+  };
+
+  const decide = async (id, action) => {
+    await fetch('/api/ai/decisions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action, approvedBy: 'operator' }) });
+    load();
+  };
+
+  if (loading) return <div className="card-b muted" style={{ fontSize: 12.5 }}>加载中…</div>;
+  const control = (scan?.hits || []).filter(h => h.kind === 'control');
+  const pending = scan?.pending || [];
+  return (
+    <div>
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+          最近巡检：{scan?.at ? new Date(scan.at).toLocaleString('zh') : '尚未巡检'} · 状态 {scan?.status || '—'} · 检查 {scan?.checked ?? 0} 个计划
+          <span style={{ marginLeft: 8, padding: '1px 6px', background: '#fff7e6', color: '#d46b08', borderRadius: 4, fontSize: 11 }}>全程 dry-run，不真实执行</span>
+        </div>
+        <button className="btn" onClick={runScan} disabled={scanning}><Icon name="refresh" size={13} /> {scanning ? '巡检中…' : '立即巡检'}</button>
+      </div>
+
+      {/* 待审批放大建议 */}
+      <div style={{ fontSize: 12, fontWeight: 600, margin: '10px 0 6px' }}>待审批 · 放大建议（{pending.length}）</div>
+      {pending.length === 0 ? (
+        <div className="card-b muted" style={{ fontSize: 12.5 }}>暂无待审批放大建议。</div>
+      ) : (
+        <div className="card" style={{ marginBottom: 14 }}>
+          <table className="tbl">
+            <thead><tr><th>计划</th><th>建议</th><th>依据</th><th>操作</th></tr></thead>
+            <tbody>
+              {pending.map(d => (
+                <tr key={d.id}>
+                  <td>{d.campaignName}</td>
+                  <td><Chip tone="success">放大预算 +{d.recommendations?.[0]?.suggestedValue ?? 20}%</Chip></td>
+                  <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{d.recommendations?.[0]?.reason || '—'}</td>
+                  <td>
+                    <div className="row tight">
+                      <button className="btn sm" onClick={() => decide(d.id, 'approve')}>批准</button>
+                      <button className="btn ghost sm" onClick={() => decide(d.id, 'reject')}>驳回</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* 控损命中（dry-run） */}
+      <div style={{ fontSize: 12, fontWeight: 600, margin: '10px 0 6px' }}>控损命中 · dry-run（{control.length}）</div>
+      {control.length === 0 ? (
+        <div className="card-b muted" style={{ fontSize: 12.5 }}>本次巡检无控损命中。</div>
+      ) : (
+        <div className="card">
+          <div style={{ overflowX: 'auto' }}>
+            <table className="tbl">
+              <thead><tr>
+                <th>计划 / projectId</th><th className="num">消耗</th><th className="num">全域成交金额</th>
+                <th className="num">订单数</th><th className="num">支付ROI</th><th className="num">订单成本</th>
+                <th>命中规则</th><th>建议动作</th><th>状态</th>
+              </tr></thead>
+              <tbody>
+                {control.map((h, i) => (
+                  <tr key={i}>
+                    <td><div style={{ fontWeight: 500 }}>{h.materialName}</div><div className="muted mono" style={{ fontSize: 10.5 }}>{h.projectId}</div></td>
+                    <td className="num">{money(h.spent)}</td>
+                    <td className="num">{money(h.globalGmv)}</td>
+                    <td className="num">{num(h.globalOrderCount)}</td>
+                    <td className="num">{h.globalPayRoi == null ? '—' : Number(h.globalPayRoi).toFixed(2)}</td>
+                    <td className="num">{money(h.globalOrderCost)}</td>
+                    <td style={{ fontSize: 11 }}>{h.ruleName}</td>
+                    <td><Chip tone="warn">{h.suggestedAction}</Chip></td>
+                    <td><Chip tone="muted">dry-run</Chip></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

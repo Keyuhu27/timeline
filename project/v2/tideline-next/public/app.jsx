@@ -14,28 +14,9 @@ const NAV_GROUPS = [
   },
   {
     id: 'content',
-    label: '内容 & 投放',
+    label: '投放',
     items: [
-      { id: 'aiVideo',  label: 'AI 视频工作台', icon: 'sparkle', badge: 'AI' },
-      { id: 'aiCopy',   label: 'AI 文案/标题', icon: 'pen' },
-      { id: 'library',  label: '内容素材库',   icon: 'library' },
-      { id: 'ads',      label: '千川投流',     icon: 'target' },
-      { id: 'monitor',  label: '竞品/达人监控', icon: 'radar' },
-    ],
-  },
-  {
-    id: 'biz',
-    label: '经营',
-    items: [
-      { id: 'products', label: '选品中心', icon: 'cart' },
-      { id: 'finance',  label: '结算中心', icon: 'wallet' },
-    ],
-  },
-  {
-    id: 'org',
-    label: '组织',
-    items: [
-      { id: 'team',     label: '团队 & 权限', icon: 'team' },
+      { id: 'ads',      label: '本地推投放',  icon: 'target' },
     ],
   },
 ];

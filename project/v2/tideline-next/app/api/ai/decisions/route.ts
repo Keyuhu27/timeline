@@ -87,6 +87,28 @@ export const POST: RouteHandler = async (req, res) => {
     return res.json({ data: decision });
   }
 
+  // 写保护闸：未开 OCEANENGINE_EXECUTE_WRITES=true 时，批准也只标记为已确认，绝不真实调用 OpenAPI 写。
+  if (process.env.OCEANENGINE_EXECUTE_WRITES !== 'true') {
+    decision.status = 'executed';
+    decision.executedAt = new Date().toISOString();
+    decision.executionResult = { success: true };
+    operationLogs.unshift({
+      id: `log_ai_dryrun_${Date.now()}`,
+      source: 'ai_agent',
+      level: 'info',
+      campaignId: decision.campaignId,
+      campaignName: decision.campaignName,
+      action: `[dry-run] AI决策已批准但未真实执行（OCEANENGINE_EXECUTE_WRITES 未开）：${rec.action}${rec.suggestedValue ? ` ${rec.suggestedValue}%` : ''}`,
+      success: true,
+      aiReason: rec.reason,
+      approvedBy: decision.approvedBy,
+      dryRun: true,
+      suggestedAction: rec.action,
+      createdAt: new Date().toISOString(),
+    });
+    return res.json({ data: decision });
+  }
+
   // pause / increase_budget / decrease_budget → 调用真实 OceanEngine API
   const campaign = adCampaigns.find(c => c.id === decision.campaignId);
   if (!campaign) {

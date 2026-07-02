@@ -7,6 +7,7 @@
 //   每  1 分钟  → 预算低于 20% 预警
 
 import { runRulesOnce }      from './rule-engine';
+import { runLiveOptimizationOnce } from './live-optimization';
 import { runSchedulerOnce }  from './publish-executor';
 import { tokenManager, alertService } from '../adapters/index';
 import { adCampaigns }       from '../db';
@@ -28,6 +29,15 @@ const jobs: ScheduledJob[] = [
     fn: async () => {
       const r = await runRulesOnce();
       return `checked=${r.checked} triggered=${r.triggered} errors=${r.errors}`;
+    },
+  },
+  {
+    name:       '直播间优化投流巡检',
+    intervalMs: 10 * 60 * 1000,   // 10分钟（计划级只读巡检 + dry-run）
+    errorCount: 0,
+    fn: async () => {
+      const r = await runLiveOptimizationOnce();
+      return `checked=${r.checked} hits=${r.hits}`;
     },
   },
   {

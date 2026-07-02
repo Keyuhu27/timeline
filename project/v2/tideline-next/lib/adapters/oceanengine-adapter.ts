@@ -788,6 +788,113 @@ export class OceanEngineAdapter implements IAdAdapter {
     }
   }
 
+  /** 计划(adId)级全域成交汇总（getOrderStatsData · 只读）。
+   *  供「直播间优化投流」巡检用：每个计划取本期 totalMetrics 的 消耗/全域成交金额/订单数/ROI/订单成本。
+   *  只读、只用 Cookie（先不带 a_bogus/msToken）；风控/未配 cookie → 返回 null，不抛。
+   *  advid / adId 一律 string，不 Number()。绝不打印 cookie/token/msToken/a_bogus。 */
+  static async fetchOrderStatsForProject(advid: string, adId: string, date: string): Promise<{
+    advid: string; adId: string; date: string;
+    spent: number | null; globalGmv: number | null; globalOrderCount: number | null;
+    globalPayRoi: number | null; globalOrderCost: number | null; raw: Record<string, unknown> | null;
+  } | null> {
+    let cookie = process.env.OCEANENGINE_LOCALADS_COOKIE;
+    try {
+      if (process.env.OCEANENGINE_LOCALADS_COOKIE_MAP) {
+        const m = JSON.parse(process.env.OCEANENGINE_LOCALADS_COOKIE_MAP) as Record<string, string>;
+        if (m[advid]) cookie = m[advid];
+      }
+    } catch { /* ignore */ }
+    if (!cookie) return null;
+    let extraHeaders: Record<string, string> = {};
+    try { if (process.env.OCEANENGINE_LOCALADS_HEADERS) extraHeaders = JSON.parse(process.env.OCEANENGINE_LOCALADS_HEADERS) as Record<string, string>; } catch { /* ignore */ }
+    try {
+      if (process.env.OCEANENGINE_LOCALADS_HEADERS_MAP) {
+        const hm = JSON.parse(process.env.OCEANENGINE_LOCALADS_HEADERS_MAP) as Record<string, Record<string, string>>;
+        if (hm[advid]) extraHeaders = { ...extraHeaders, ...hm[advid] };
+      }
+    } catch { /* ignore */ }
+
+    const startTime = `${date} 00:00:00`;
+    const endTime   = `${date} 23:59:59`;
+    const metrics = 'stat_cost,live_oto_pay_order_count_for_roi2,live_oto_pay_order_stat_amount_for_roi2,live_oto_pay_order_roi2,live_cost_per_oto_pay_order_for_roi2,live_oto_pay_order_user_count_for_roi2,live_cost_per_oto_pay_order_user_for_roi2,live_oto_pay_qcpx_coupon_stat_amount_for_roi2,qcpx_coupon_live_oto_pay_order_count_for_roi2,qcpx_coupon_live_oto_pay_order_stat_amount_for_roi2';
+    const qs = [
+      `advid=${encodeURIComponent(advid)}`,
+      `adId=${encodeURIComponent(adId)}`,
+      `startTime=${startTime.replace(/ /g, '+')}`,
+      `endTime=${endTime.replace(/ /g, '+')}`,
+      `metrics=${encodeURIComponent(metrics)}`,
+      'MarGoal=2', 'DeliveryGoal=2',
+      'statTimeDimension=stat_time_hour', 'orderField=stat_time_hour', 'orderType=1',
+      'page=1', 'pageSize=10',
+    ].join('&');
+    const url = `https://localads.chengzijianzhan.cn/api/lamp/pc/v2/statistics/promotion/getOrderStatsData?${qs}`;
+    try {
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Cookie': cookie,
+          'Accept': 'application/json, text/plain, */*',
+          'Referer': `https://localads.chengzijianzhan.cn/lamp/pc/home?advid=${encodeURIComponent(advid)}`,
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
+          ...extraHeaders,
+        },
+      });
+      const text = await res.text();
+      const json = safeJsonParse<Record<string, unknown>>(text);
+      const code = json.status_code ?? json.code;
+      if (code !== 0 && code !== undefined) { console.warn(`[OrderStats] advid=${advid} adId=${adId} code=${code}`); return null; }
+      const totals = (((json.data as Record<string, unknown>)?.data as Record<string, unknown>)?.totalMetrics ?? {}) as Record<string, { value?: unknown } | undefined>;
+      const mv = (k: string): number | null => {
+        const cell = totals[k];
+        if (!cell || cell.value == null) return null;
+        const n = Number(cell.value);
+        return Number.isFinite(n) ? n : null;
+      };
+      return {
+        advid, adId, date,
+        spent:            mv('statCost'),
+        globalGmv:        mv('liveOtoPayOrderStatAmountForRoi2'),
+        globalOrderCount: mv('liveOtoPayOrderCountForRoi2'),
+        globalPayRoi:     mv('liveOtoPayOrderRoi2'),
+        globalOrderCost:  mv('liveCostPerOtoPayOrderForRoi2'),
+        raw: totals as Record<string, unknown>,
+      };
+    } catch (e) {
+      console.warn(`[OrderStats] advid=${advid} adId=${adId} 计划成交汇总失败: ${String(e)}`);
+      return null;
+    }
+  }
+
+  /** 品牌级：解析 advid → 拉该 advid 下计划(adId)列表 → 逐个取成交汇总（串行限流）。
+   *  未配 cookie / 无计划 → 返回 { rows: [] }，不抛。 */
+  static async fetchOrderStatsForBrand(advid: string, date: string, adIds: string[]): Promise<{
+    advid: string; date: string;
+    rows: Array<{ advid: string; adId: string; spent: number | null; globalGmv: number | null; globalOrderCount: number | null; globalPayRoi: number | null; globalOrderCost: number | null; raw: Record<string, unknown> | null }>;
+    totals: { spent: number | null; globalGmv: number | null; globalOrderCount: number | null; globalPayRoi: number | null; globalOrderCost: number | null };
+  } | null> {
+    if (!advid) return null;
+    const rows: Array<{ advid: string; adId: string; spent: number | null; globalGmv: number | null; globalOrderCount: number | null; globalPayRoi: number | null; globalOrderCost: number | null; raw: Record<string, unknown> | null }> = [];
+    let i = 0;
+    for (const adId of adIds) {
+      if (i++ > 0) await new Promise(r => setTimeout(r, 400)); // 限流，防 40110
+      const r = await this.fetchOrderStatsForProject(advid, adId, date);
+      if (r) rows.push({ advid: r.advid, adId: r.adId, spent: r.spent, globalGmv: r.globalGmv, globalOrderCount: r.globalOrderCount, globalPayRoi: r.globalPayRoi, globalOrderCost: r.globalOrderCost, raw: r.raw });
+    }
+    const sum = (k: 'spent' | 'globalGmv' | 'globalOrderCount'): number | null => {
+      const vals = rows.map(r => r[k]).filter((v): v is number => v != null);
+      return vals.length ? vals.reduce((s, v) => s + v, 0) : null;
+    };
+    const tSpent = sum('spent'), tGmv = sum('globalGmv'), tOrders = sum('globalOrderCount');
+    return {
+      advid, date, rows,
+      totals: {
+        spent: tSpent, globalGmv: tGmv, globalOrderCount: tOrders,
+        globalPayRoi: (tSpent != null && tGmv != null && tSpent > 0) ? Math.round(tGmv / tSpent * 100) / 100 : null,
+        globalOrderCost: (tSpent != null && tOrders != null && tOrders > 0) ? Math.round(tSpent / tOrders * 100) / 100 : null,
+      },
+    };
+  }
+
   /** 单数据集 statQuery 请求（roi2 / standard / standard_promotion），供编排调用。 */
   private static async _runStatQueryDataset(
     advid: string,

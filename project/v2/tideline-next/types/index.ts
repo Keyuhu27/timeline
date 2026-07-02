@@ -228,6 +228,15 @@ export interface OperationLog {
   aiReason?: string;
   approvedBy?: string;
   createdAt: string;
+  // 直播间优化投流（计划级巡检）扩展字段（可选，向后兼容旧日志）
+  brandId?: string;
+  advertiserId?: string;
+  projectId?: string;
+  materialId?: string;
+  ruleCode?: string;
+  evidence?: string;
+  suggestedAction?: string;
+  dryRun?: boolean;
 }
 
 // ─── AI 4层架构类型 ────────────────────────────────────────────────────────
