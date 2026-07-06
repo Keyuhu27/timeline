@@ -18,7 +18,7 @@ const COOKIE = process.env.PROBE_COOKIE || '';
 const ADVID  = process.env.PROBE_ADVID  || '';
 const ADID   = process.env.PROBE_ADID   || '';
 const DATE   = process.env.PROBE_DATE   || new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
-const EXEC   = process.env.PW_CHROMIUM  || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+const EXEC   = process.env.PW_CHROMIUM  || ''; // 留空 = 用 playwright 自带浏览器（本地 mac 用这个）
 
 function die(msg) { console.error('✗ ' + msg); process.exit(1); }
 if (!COOKIE) die('缺少 PROBE_COOKIE（本地推登录 Cookie，只放环境变量）');
@@ -36,7 +36,9 @@ const endTime   = `${DATE} 23:59:59`;
 const metrics = 'stat_cost,live_oto_pay_order_count_for_roi2,live_oto_pay_order_stat_amount_for_roi2,live_oto_pay_order_roi2,live_cost_per_oto_pay_order_for_roi2';
 
 const run = async () => {
-  const browser = await chromium.launch({ headless: true, executablePath: EXEC, args: ['--no-sandbox'] });
+  const launchOpts = { headless: true, args: ['--no-sandbox'] };
+  if (EXEC) launchOpts.executablePath = EXEC; // 仅当显式指定时才用系统 Chromium（如 Linux 服务器）
+  const browser = await chromium.launch(launchOpts);
   const ctx = await browser.newContext({ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36' });
   await ctx.addCookies(cookies);
   const page = await ctx.newPage();
