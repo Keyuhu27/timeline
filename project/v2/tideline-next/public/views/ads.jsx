@@ -81,6 +81,7 @@ const Ads = function Ads() {
           <div className={`tab ${tab === 'liveOpt'   ? 'active' : ''}`} onClick={() => setTab('liveOpt')}>
             <Icon name="target" size={12} /> 直播间优化投流
           </div>
+          <div className={`tab ${tab === 'review'    ? 'active' : ''}`} onClick={() => setTab('review')}>投流复盘</div>
           <div className={`tab ${tab === 'campaigns' ? 'active' : ''}`} onClick={() => setTab('campaigns')}>投放计划</div>
           <div className={`tab ${tab === 'rules'     ? 'active' : ''}`} onClick={() => setTab('rules')}>自动规则</div>
           <div className={`tab ${tab === 'logs'      ? 'active' : ''}`} onClick={() => setTab('logs')}>操作日志</div>
@@ -91,6 +92,7 @@ const Ads = function Ads() {
 
         {tab === 'brands'    && <BrandsSummary />}
         {tab === 'liveOpt'   && <LiveOptimization />}
+        {tab === 'review'    && <ExternalReports />}
         {tab === 'campaigns' && <Campaigns />}
         {tab === 'rules'     && <Rules />}
         {tab === 'logs'      && <Logs />}
@@ -156,6 +158,51 @@ function BrandsSummary() {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// ── 投流复盘（Codex 等外部代理写入，平台只展示）──────────────────────────────
+function ExternalReports() {
+  const [reports, setReports] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState({});
+
+  useEffect(() => {
+    fetch('/api/reports/external')
+      .then(r => r.json())
+      .then(d => setReports(d.data?.reports || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <div className="card-b muted" style={{ fontSize: 12.5 }}>加载中…</div>;
+  if (!reports.length) return (
+    <div className="card-b muted" style={{ fontSize: 12.5 }}>
+      暂无投流复盘。由 Codex 等外部代理通过 <span className="mono">POST /api/reports/external</span>（带 X-Api-Key）写入后在此展示。
+    </div>
+  );
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {reports.map(r => (
+        <div key={r.id} className="card" style={{ padding: '12px 14px' }}>
+          <div className="row" style={{ justifyContent: 'space-between', alignItems: 'baseline', cursor: 'pointer' }} onClick={() => setOpen(o => ({ ...o, [r.id]: !o[r.id] }))}>
+            <div>
+              <span style={{ fontWeight: 600 }}>{r.title}</span>
+              <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>
+                {r.date}{r.brandName ? ` · ${r.brandName}` : ''} · 来源 {r.source}
+              </span>
+            </div>
+            <span className="muted mono" style={{ fontSize: 11 }}>{open[r.id] ? '收起 ▲' : '展开 ▼'}</span>
+          </div>
+          {open[r.id] && (
+            // 纯文本安全渲染（white-space: pre-wrap），不解析 HTML，防 XSS
+            <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--text)' }}>
+              {r.content}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

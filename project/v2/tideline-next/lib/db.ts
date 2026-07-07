@@ -5,7 +5,7 @@
 import type {
   Brand, TeamMember, Task, Account, LiveSession,
   Product, FinanceRecord, AdCampaign, ScheduleItem, Competitor, AiDecision,
-  DailyReport,
+  DailyReport, ExternalReport,
 } from '../types/index';
 
 // ─── Brands ────────────────────────────────────────────────────────────────
@@ -308,6 +308,10 @@ export const aiDecisions: AiDecision[] = [];
 // ─── 经营日报 ─────────────────────────────────────────────────────────────
 // 运营生成/编辑后保存的日报。按 brandId + date 唯一。
 export const dailyReports: DailyReport[] = [];
+
+// ─── 外部投流复盘 ───────────────────────────────────────────────────────────
+// Codex 等外部代理通过 POST /api/reports/external 写入，平台只存+展示。
+export const externalReports: ExternalReport[] = [];
 
 // ─── 账户 ID 解析（统一入口，防止内部 DB ID 泄漏给 OceanEngine API）────────
 /**

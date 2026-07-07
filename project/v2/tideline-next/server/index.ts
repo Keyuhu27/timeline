@@ -57,6 +57,7 @@ import * as routeReports      from '../app/api/reports/route';
 import * as routeAdDiagnosis  from '../app/api/ad-diagnosis/route';
 import * as routeLiveOptim     from '../app/api/live-optimization/route';
 import * as routeLocaladsReach from '../app/api/debug/localads-reach/route';
+import * as routeReportsExternal from '../app/api/reports/external/route';
 
 // 启动即注水：把上次同步的真实数据从磁盘恢复到内存
 loadPersisted();
@@ -104,6 +105,7 @@ const ROUTES: Record<string, RouteModule> = {
   '/api/ad-diagnosis': routeAdDiagnosis,
   '/api/live-optimization': routeLiveOptim,
   '/api/debug/localads-reach': routeLocaladsReach,
+  '/api/reports/external': routeReportsExternal,
 };
 
 const PUBLIC_ROUTES = new Set(['/api/auth/login', '/api/auth', '/api/auth/callback']);

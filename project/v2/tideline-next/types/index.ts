@@ -239,6 +239,18 @@ export interface OperationLog {
   dryRun?: boolean;
 }
 
+// ─── 外部投流复盘（Codex 等外部代理写入，平台只存+展示）──────────────────────
+export interface ExternalReport {
+  id: string;
+  date: string;            // YYYY-MM-DD
+  brandId?: string;
+  brandName?: string;
+  title: string;
+  content: string;         // 纯文本 / Markdown 源文（前端按纯文本安全渲染，防 XSS）
+  source: string;          // 来源标记，如 'codex'
+  createdAt: string;
+}
+
 // ─── AI 4层架构类型 ────────────────────────────────────────────────────────
 
 // Layer 1: Performance Analyzer 输出
