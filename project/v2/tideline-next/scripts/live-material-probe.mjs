@@ -33,7 +33,12 @@ const cookies = COOKIE.split(';').map(s => s.trim()).filter(Boolean).map(pair =>
 
 const startTime = `${DATE} 00:00:00`;
 const endTime   = `${DATE} 23:59:59`;
-const metrics = 'stat_cost,live_oto_pay_order_count_for_roi2,live_oto_pay_order_stat_amount_for_roi2,live_oto_pay_order_roi2,live_cost_per_oto_pay_order_for_roi2';
+// 对比时段 = 前一天（后台真实请求必带 lastStartTime/lastEndTime，缺了会 40000 参数校验未通过）
+const prevDate  = new Date(new Date(DATE + 'T00:00:00+08:00').getTime() - 86400_000 + 8 * 3600_000).toISOString().slice(0, 10);
+const lastStartTime = `${prevDate} 00:00:00`;
+const lastEndTime   = `${prevDate} 23:59:59`;
+// 完整 metrics（与后台真实请求一致，别裁短）
+const metrics = 'stat_cost,live_oto_pay_order_count_for_roi2,live_oto_pay_order_stat_amount_for_roi2,live_oto_pay_order_roi2,live_cost_per_oto_pay_order_for_roi2,live_oto_pay_order_user_count_for_roi2,live_cost_per_oto_pay_order_user_for_roi2,live_oto_pay_qcpx_coupon_stat_amount_for_roi2,qcpx_coupon_live_oto_pay_order_count_for_roi2,qcpx_coupon_live_oto_pay_order_stat_amount_for_roi2';
 
 const run = async () => {
   const launchOpts = { headless: true, args: ['--no-sandbox'] };
@@ -54,10 +59,10 @@ const run = async () => {
   await page.waitForTimeout(4000);
 
   // 在页面上下文里发起请求 —— 站点自己的 fetch/XHR hook 会自动补上 a_bogus/msToken
-  const result = await page.evaluate(async ({ ADVID, ADID, startTime, endTime, metrics }) => {
+  const result = await page.evaluate(async ({ ADVID, ADID, startTime, endTime, lastStartTime, lastEndTime, metrics }) => {
     const qs = new URLSearchParams({
       advid: ADVID, adId: ADID,
-      startTime, endTime, metrics,
+      startTime, endTime, lastStartTime, lastEndTime, metrics,
       MarGoal: '2', DeliveryGoal: '2',
       statTimeDimension: 'stat_time_hour', orderField: 'stat_time_hour', orderType: '1',
       page: '1', pageSize: '10',
@@ -68,7 +73,7 @@ const run = async () => {
       const text = await r.text();
       return { httpStatus: r.status, body: text.slice(0, 1200) };
     } catch (e) { return { httpStatus: -1, body: 'fetch error: ' + String(e) }; }
-  }, { ADVID, ADID, startTime, endTime, metrics });
+  }, { ADVID, ADID, startTime, endTime, lastStartTime, lastEndTime, metrics });
 
   console.log(`[probe] getOrderStatsData HTTP=${result.httpStatus}`);
   let code, totals;
