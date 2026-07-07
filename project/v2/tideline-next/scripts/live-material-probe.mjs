@@ -71,7 +71,7 @@ const run = async () => {
     try {
       const r = await fetch(url, { method: 'GET', credentials: 'include', headers: { 'Accept': 'application/json, text/plain, */*' } });
       const text = await r.text();
-      return { httpStatus: r.status, body: text.slice(0, 1200) };
+      return { httpStatus: r.status, body: text };   // 完整返回，解析在 Node 端做，别在此截断
     } catch (e) { return { httpStatus: -1, body: 'fetch error: ' + String(e) }; }
   }, { ADVID, ADID, startTime, endTime, lastStartTime, lastEndTime, metrics });
 
@@ -95,7 +95,7 @@ const run = async () => {
     console.log('→ 结论：无头浏览器代签可行，可封装进 10 分钟巡检。');
   } else {
     console.log(`✗ 未拿到有效数据（code=${code ?? 'n/a'}）。响应前 1200 字：`);
-    console.log(result.body);
+    console.log(String(result.body).slice(0, 1200));
     console.log('→ 若 code=40010：页面内 fetch 未被 SDK 签名/或需先进到「素材」页触发。可再迭代。');
   }
 
