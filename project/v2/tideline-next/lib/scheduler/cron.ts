@@ -2,6 +2,7 @@
 // 零依赖，用 setInterval 驱动。
 // 任务：
 //   每 60 分钟  → 规则引擎巡检
+//   每  5 分钟  → 直播间优化投流巡检（ROI 红线命中进人工审批）
 //   每  5 分钟  → 排期执行器（检查是否有到期排期）
 //   每 30 分钟  → Token 预刷新检查
 //   每  1 分钟  → 预算低于 20% 预警
@@ -33,7 +34,7 @@ const jobs: ScheduledJob[] = [
   },
   {
     name:       '直播间优化投流巡检',
-    intervalMs: 10 * 60 * 1000,   // 10分钟（计划级只读巡检 + dry-run）
+    intervalMs: 5 * 60 * 1000,    // 5分钟（计划级只读巡检，ROI 红线命中进人工审批）
     errorCount: 0,
     fn: async () => {
       const r = await runLiveOptimizationOnce();

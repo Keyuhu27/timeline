@@ -237,20 +237,32 @@ function LiveOptimization() {
   if (loading) return <div className="card-b muted" style={{ fontSize: 12.5 }}>加载中…</div>;
   const control = (scan?.hits || []).filter(h => h.kind === 'control');
   const pending = scan?.pending || [];
+  const recChip = (rec) => {
+    if (!rec) return <Chip tone="muted">—</Chip>;
+    if (rec.action === 'pause') return <Chip tone="danger">关停计划</Chip>;
+    if (rec.action === 'increase_budget' || rec.action === 'decrease_budget') {
+      const sign = rec.action === 'increase_budget' ? '+' : '-';
+      const label = rec.budgetDeltaAbsolute != null
+        ? `${sign}¥${Math.abs(rec.budgetDeltaAbsolute)}`
+        : `${sign}${rec.suggestedValue ?? 20}%`;
+      return <Chip tone={rec.action === 'increase_budget' ? 'success' : 'warn'}>{rec.action === 'increase_budget' ? '追加预算' : '降低预算'} {label}</Chip>;
+    }
+    return <Chip tone="muted">{rec.action}</Chip>;
+  };
   return (
     <div>
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
           最近巡检：{scan?.at ? new Date(scan.at).toLocaleString('zh') : '尚未巡检'} · 状态 {scan?.status || '—'} · 检查 {scan?.checked ?? 0} 个计划
-          <span style={{ marginLeft: 8, padding: '1px 6px', background: '#fff7e6', color: '#d46b08', borderRadius: 4, fontSize: 11 }}>全程 dry-run，不真实执行</span>
+          <span style={{ marginLeft: 8, padding: '1px 6px', background: '#fff7e6', color: '#d46b08', borderRadius: 4, fontSize: 11 }}>命中 ROI 红线进人工审批；批准后是否真实执行取决于 OCEANENGINE_EXECUTE_WRITES</span>
         </div>
         <button className="btn" onClick={runScan} disabled={scanning}><Icon name="refresh" size={13} /> {scanning ? '巡检中…' : '立即巡检'}</button>
       </div>
 
-      {/* 待审批放大建议 */}
-      <div style={{ fontSize: 12, fontWeight: 600, margin: '10px 0 6px' }}>待审批 · 放大建议（{pending.length}）</div>
+      {/* 待审批：ROI 红线命中（关停 / 追投） */}
+      <div style={{ fontSize: 12, fontWeight: 600, margin: '10px 0 6px' }}>待审批 · ROI 红线命中（{pending.length}）</div>
       {pending.length === 0 ? (
-        <div className="card-b muted" style={{ fontSize: 12.5 }}>暂无待审批放大建议。</div>
+        <div className="card-b muted" style={{ fontSize: 12.5 }}>暂无待审批项。</div>
       ) : (
         <div className="card" style={{ marginBottom: 14 }}>
           <table className="tbl">
@@ -259,7 +271,7 @@ function LiveOptimization() {
               {pending.map(d => (
                 <tr key={d.id}>
                   <td>{d.campaignName}</td>
-                  <td><Chip tone="success">放大预算 +{d.recommendations?.[0]?.suggestedValue ?? 20}%</Chip></td>
+                  <td>{recChip(d.recommendations?.[0])}</td>
                   <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{d.recommendations?.[0]?.reason || '—'}</td>
                   <td>
                     <div className="row tight">
@@ -274,8 +286,8 @@ function LiveOptimization() {
         </div>
       )}
 
-      {/* 控损命中（dry-run） */}
-      <div style={{ fontSize: 12, fontWeight: 600, margin: '10px 0 6px' }}>控损命中 · dry-run（{control.length}）</div>
+      {/* 其余控损命中（暂仍只记录日志，无待审批操作） */}
+      <div style={{ fontSize: 12, fontWeight: 600, margin: '10px 0 6px' }}>控损命中（{control.length}）</div>
       {control.length === 0 ? (
         <div className="card-b muted" style={{ fontSize: 12.5 }}>本次巡检无控损命中。</div>
       ) : (
@@ -298,7 +310,7 @@ function LiveOptimization() {
                     <td className="num">{money(h.globalOrderCost)}</td>
                     <td style={{ fontSize: 11 }}>{h.ruleName}</td>
                     <td><Chip tone="warn">{h.suggestedAction}</Chip></td>
-                    <td><Chip tone="muted">dry-run</Chip></td>
+                    <td>{h.requiresApproval ? <Chip tone="warn">待审批</Chip> : <Chip tone="muted">dry-run</Chip>}</td>
                   </tr>
                 ))}
               </tbody>

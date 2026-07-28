@@ -1,8 +1,18 @@
 // GET /api/ai/decisions — 查询 AI 决策列表
 // POST /api/ai/decisions — 审批 { id, action: 'approve'|'reject', recommendationIndex?, approvedBy? }
 import type { RouteHandler } from '../../../../lib/api';
+import type { AiRecommendation } from '../../../../types/index';
 import { aiDecisions, adCampaigns, operationLogs, accounts } from '../../../../lib/db';
 import { adAdapter } from '../../../../lib/adapters/index';
+
+function describeBudgetChange(rec: AiRecommendation): string {
+  if (rec.action !== 'increase_budget' && rec.action !== 'decrease_budget') return '';
+  if (rec.budgetDeltaAbsolute != null) {
+    const sign = rec.action === 'increase_budget' ? '+' : '-';
+    return ` ${sign}¥${Math.abs(rec.budgetDeltaAbsolute)}`;
+  }
+  return rec.suggestedValue ? ` ${rec.suggestedValue}%` : '';
+}
 
 export const GET: RouteHandler = (req, res) => {
   const { status, campaignId } = req.query;
@@ -98,7 +108,7 @@ export const POST: RouteHandler = async (req, res) => {
       level: 'info',
       campaignId: decision.campaignId,
       campaignName: decision.campaignName,
-      action: `[dry-run] AI决策已批准但未真实执行（OCEANENGINE_EXECUTE_WRITES 未开）：${rec.action}${rec.suggestedValue ? ` ${rec.suggestedValue}%` : ''}`,
+      action: `[dry-run] AI决策已批准但未真实执行（OCEANENGINE_EXECUTE_WRITES 未开）：${rec.action}${describeBudgetChange(rec)}`,
       success: true,
       aiReason: rec.reason,
       approvedBy: decision.approvedBy,
@@ -128,9 +138,15 @@ export const POST: RouteHandler = async (req, res) => {
       await adAdapter.pauseCampaign(externalId, advertiserId);
       campaign.status = 'paused';
     } else if (rec.action === 'increase_budget' || rec.action === 'decrease_budget') {
-      const pct = (rec.suggestedValue ?? 20) / 100;
-      const delta = rec.action === 'increase_budget' ? pct : -pct;
-      const newBudget = Math.round(campaign.budget * (1 + delta));
+      let newBudget: number;
+      if (rec.budgetDeltaAbsolute != null) {
+        const delta = rec.action === 'increase_budget' ? rec.budgetDeltaAbsolute : -rec.budgetDeltaAbsolute;
+        newBudget = Math.max(0, Math.round(campaign.budget + delta));
+      } else {
+        const pct = (rec.suggestedValue ?? 20) / 100;
+        const delta = rec.action === 'increase_budget' ? pct : -pct;
+        newBudget = Math.round(campaign.budget * (1 + delta));
+      }
       await adAdapter.adjustBudget(externalId, advertiserId, newBudget);
       campaign.budget = newBudget;
     }
@@ -149,7 +165,7 @@ export const POST: RouteHandler = async (req, res) => {
       level: 'success',
       campaignId: campaign.id,
       campaignName: campaign.name,
-      action: `AI决策执行：${rec.action}${rec.suggestedValue ? ` ${rec.suggestedValue}%` : ''}`,
+      action: `AI决策执行：${rec.action}${describeBudgetChange(rec)}`,
       before,
       after: { status: campaign.status, budget: campaign.budget },
       success: true,

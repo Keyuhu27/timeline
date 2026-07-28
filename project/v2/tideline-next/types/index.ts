@@ -278,6 +278,8 @@ export interface AiRecommendation {
   priority: 'high' | 'medium' | 'low';
   action: AiAction;
   suggestedValue?: number;
+  /** increase_budget/decrease_budget 的固定金额（元），优先于 suggestedValue 的百分比语义 */
+  budgetDeltaAbsolute?: number;
   reason: string;
   riskLevel: 'low' | 'medium' | 'high';
   requiresApproval: boolean;
