@@ -6,6 +6,7 @@
 //     （未开闸时批准也只标记 dry-run，双重保险）。
 //   · 其余控损规则（空烧/订单成本）暂仍只写 operationLogs，不生成待审批项。
 // 护栏：缺数据/null 不触发；同 ruleCode+计划 30min 冷却不重复；新计划 30min 冷启动只观察不控损。
+// 测试白名单：设置 LIVE_OPT_ONLY_PROJECT_IDS（逗号分隔 project_id）可只巡检指定计划，验证单条规则时用。
 
 import { adCampaigns, operationLogs, aiDecisions, normalizeOceanEngineAccountId, brandById } from '../db';
 import { OceanEngineAdapter } from '../adapters/oceanengine-adapter';
@@ -90,10 +91,20 @@ function evidenceOf(s: Stats): string {
   return `消耗 ${y(s.spent)} · 全域成交金额 ${y(s.globalGmv)} · 全域订单 ${n(s.globalOrderCount)} · 支付ROI ${n(s.globalPayRoi)} · 订单成本 ${y(s.globalOrderCost)}`;
 }
 
+// 测试用白名单：LIVE_OPT_ONLY_PROJECT_IDS=逗号分隔的 project_id（即 externalId，后台「计划ID」）。
+// 设置后本轮巡检只处理这些计划，其余计划直接跳过；不设置=原行为，全量活跃计划都跑。
+function testOnlyProjectIds(): Set<string> | null {
+  const raw = process.env.LIVE_OPT_ONLY_PROJECT_IDS;
+  if (!raw || !raw.trim()) return null;
+  return new Set(raw.split(',').map(s => s.trim()).filter(Boolean));
+}
+
 export async function runLiveOptimizationOnce(): Promise<{ checked: number; hits: number }> {
   lastScan = { at: new Date().toISOString(), status: 'running', checked: lastScan.checked, hits: lastScan.hits };
   const date = bjToday();
-  const active = adCampaigns.filter(c => c.status === 'active' && c.externalId);
+  const onlyIds = testOnlyProjectIds();
+  let active = adCampaigns.filter(c => c.status === 'active' && c.externalId);
+  if (onlyIds) active = active.filter(c => onlyIds.has(c.externalId!));
   const hits: LiveOptHit[] = [];
   let checked = 0;
 
