@@ -7,9 +7,16 @@
 //   · 其余控损规则（空烧/订单成本）暂仍只写 operationLogs，不生成待审批项。
 // 护栏：缺数据/null 不触发；同 ruleCode+计划 30min 冷却不重复；新计划 30min 冷启动只观察不控损。
 // 测试白名单：设置 LIVE_OPT_ONLY_PROJECT_IDS（逗号分隔 project_id）可只巡检指定计划，验证单条规则时用。
+//
+// ROI 校准埋点（Phase 4，见 mighty-enchanting-firefly.md D 节）：只在已配 Cookie 的账户
+// （今天只有南极）上，额外记一条「全域ROI vs 总成交ROI」对照日志，供未来给没有 Cookie 的
+// 自助入驻客户校准 oto_pay_order_roi 阈值用。这是 1-2 周的时间盒校准动作，不是永久功能——
+// 默认开启，数据积累够了之后设 LIVE_OPT_ROI_CALIBRATION=false 关掉（省一次额外 API 调用，
+// 也避免 operationLogs 无限增长——目前还没做持久化，长期开着会占用不少内存）。
 
 import { adCampaigns, operationLogs, aiDecisions, normalizeOceanEngineAccountId, brandById } from '../db';
 import { OceanEngineAdapter } from '../adapters/oceanengine-adapter';
+import { adAdapter } from '../adapters/index';
 import type { OperationLog, AiDecision } from '../../types/index';
 
 const COOLDOWN_MIN   = 30;   // 同 ruleCode+计划 冷却
@@ -99,6 +106,11 @@ function testOnlyProjectIds(): Set<string> | null {
   return new Set(raw.split(',').map(s => s.trim()).filter(Boolean));
 }
 
+// 校准埋点开关：默认开（时间盒 1-2 周），设 'false' 关闭。
+function calibrationEnabled(): boolean {
+  return process.env.LIVE_OPT_ROI_CALIBRATION !== 'false';
+}
+
 export async function runLiveOptimizationOnce(): Promise<{ checked: number; hits: number }> {
   lastScan = { at: new Date().toISOString(), status: 'running', checked: lastScan.checked, hits: lastScan.hits };
   const date = bjToday();
@@ -120,6 +132,30 @@ export async function runLiveOptimizationOnce(): Promise<{ checked: number; hits
         spent: raw.spent, globalGmv: raw.globalGmv, globalOrderCount: raw.globalOrderCount,
         globalPayRoi: raw.globalPayRoi, globalOrderCost: raw.globalOrderCost,
       };
+
+      // ROI 校准埋点（Phase 4）：只在走到这里（即已配 Cookie，今天只有南极）的账户上跑，
+      // 和下面真实的 6.5/7.0 红线判断完全独立、不影响任何实际触发或动作——纯粹是为了
+      // 积累「全域ROI（Cookie）vs 总成交ROI（oto_pay_order_roi，纯 Access-Token）」
+      // 在同一时刻的真实对照数据。自助入驻客户没有 Cookie，压根拿不到 globalPayRoi，
+      // 也就无法产生这份对照数据——校准只能靠南极自己的账户积累，不能靠猜。
+      // 不在这里编造换算阈值，只如实记录两个指标的真实值，留给未来数据驱动定阈值用。
+      if (calibrationEnabled()) try {
+        const payReports = await adAdapter.fetchProjectReport(advid, [projectId]);
+        const payRoi = payReports.find(r => r.externalId === projectId)?.roas ?? null;
+        const calibLog: OperationLog = {
+          id: `log_roicalib_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          source: 'system', level: 'info',
+          campaignId: c.id, campaignName: c.name,
+          action: `[ROI校准埋点] 全域ROI(Cookie)=${s.globalPayRoi ?? '—'} vs 总成交ROI(oto_pay_order_roi)=${payRoi ?? '—'}`,
+          success: true, createdAt: new Date().toISOString(),
+          brandId: c.brand, advertiserId: advid, projectId, ruleCode: 'ROI_CALIBRATION',
+          evidence: `消耗 ¥${s.spent ?? '—'}`, dryRun: true,
+          tenantId: c.tenantId,
+        };
+        operationLogs.unshift(calibLog);
+      } catch (e) {
+        console.warn(`[LiveOpt] ROI校准埋点失败 projectId=${projectId}: ${String(e)}`);
+      }
 
       // 冷启动：首见计划记录时间，30min 内只观察不控损
       if (!firstSeen.has(projectId)) firstSeen.set(projectId, Date.now());
