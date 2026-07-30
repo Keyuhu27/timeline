@@ -9,7 +9,7 @@ export const GET: RouteHandler = (req, res) => {
   // GET /api/auth/login → 返回当前会话信息
   const session = getSession(req);
   if (!session) return err(res, '未登录', 401);
-  ok(res, { userId: session.userId, name: session.name, role: session.role, orgId: session.orgId });
+  ok(res, { userId: session.userId, name: session.name, role: session.role, tenantId: session.tenantId });
 };
 
 export const POST: RouteHandler = async (req, res) => {
@@ -35,6 +35,6 @@ export const POST: RouteHandler = async (req, res) => {
     userId: result.session.userId,
     name: result.session.name,
     role: result.session.role,
-    orgId: result.session.orgId,
+    tenantId: result.session.tenantId,
   });
 };

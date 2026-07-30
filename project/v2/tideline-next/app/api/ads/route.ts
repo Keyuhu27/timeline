@@ -161,6 +161,7 @@ export const POST: RouteHandler = async (req, res) => {
     status:     'active',
     startDate:  body.startDate ?? new Date().toISOString().slice(0, 10),
     externalId,
+    tenantId:   account.tenantId,
   };
   adCampaigns.push(campaign);
   ok(res, campaign);

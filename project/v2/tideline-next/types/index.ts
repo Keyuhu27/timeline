@@ -1,11 +1,33 @@
 // 潮线 Tideline · 核心类型定义
 
+// ─── 多租户 ───────────────────────────────────────────────────────────────
+export interface Tenant {
+  id: string;
+  name: string;
+  planTier: 'trial' | 'active' | 'suspended';
+  createdAt: string;
+}
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+}
+
+/** User↔Tenant 多对多：一个用户可属于多个租户（不同角色），一个租户可有多个用户 */
+export interface TenantMember {
+  userId: string;
+  tenantId: string;
+  role: string;
+}
+
 export interface Brand {
   id: string;
   name: string;
   cat: string;
   logo: string;
   hidden?: boolean;  // 归档/合并时隐藏，不在侧栏显示
+  tenantId: string;
 }
 
 export interface TeamMember {
@@ -84,6 +106,7 @@ export interface Account {
     syncedAt: number;
     source: 'account_report';
   };
+  tenantId: string;
 }
 
 export interface LiveSession {
@@ -156,6 +179,7 @@ export interface AdCampaign {
   startDate: string;
   externalId?: string;
   lastSyncAt?: number;
+  tenantId: string;
 }
 
 export interface ScheduleItem {
@@ -205,6 +229,7 @@ export interface AutoRule {
   createdBy: string;
   createdAt: string;
   lastTriggeredAt?: string;
+  tenantId: string;
 }
 
 // ─── 操作日志 ─────────────────────────────────────────────────────────────
@@ -237,6 +262,9 @@ export interface OperationLog {
   evidence?: string;
   suggestedAction?: string;
   dryRun?: boolean;
+  // 多租户：可选，Phase 1 起新写入尽量携带；历史日志/部分写入点暂缺，Phase 2 随
+  // token 路由改造一起补全所有写入点。
+  tenantId?: string;
 }
 
 // ─── 外部投流复盘（Codex 等外部代理写入，平台只存+展示）──────────────────────
@@ -326,6 +354,8 @@ export interface AiDecision {
   executionResult?: { success: boolean; errorMsg?: string; before?: Record<string, unknown>; after?: Record<string, unknown> };
   errorMsg?: string;
   createdAt: string;
+  // 多租户：可选，理由同 OperationLog.tenantId
+  tenantId?: string;
 }
 
 // ─── 平台凭证 ─────────────────────────────────────────────────────────────
@@ -339,6 +369,9 @@ export interface PlatformCredential {
   advertiserId?: string;
   appId?: string;
   updatedAt: string;
+  // 多租户：Phase 2 会把 token-manager 的缓存 key 从 accountId 改成 tenantId，
+  // 这个字段先加上，Phase 1 阶段先跟着 accountId 一起注册（见 index.ts bootstrapFromEnv）。
+  tenantId?: string;
 }
 
 // ─── 告警配置 ─────────────────────────────────────────────────────────────

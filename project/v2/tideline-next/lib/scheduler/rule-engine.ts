@@ -116,6 +116,7 @@ async function executeAction(
     success,
     errorMsg,
     createdAt:    new Date().toISOString(),
+    tenantId:     campaign.tenantId,
   };
   operationLogs.push(log);
 

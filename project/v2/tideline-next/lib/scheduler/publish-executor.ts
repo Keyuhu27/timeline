@@ -2,7 +2,7 @@
 // 扫描 status='scheduled' 且到达发布时间的排期项，自动调用发布接口
 
 import type { ScheduleItem, OperationLog } from '../../types/index';
-import { schedule, operationLogs }         from '../db';
+import { schedule, operationLogs, brandById } from '../db';
 import { contentAdapter, alertService }    from '../adapters/index';
 
 export async function runSchedulerOnce(): Promise<{ published: number; failed: number }> {
@@ -50,6 +50,7 @@ async function publishOne(item: ScheduleItem): Promise<void> {
         level:      'success',
         action:     `自动发布: ${item.title}`,
         scheduleId: item.id,
+        brand:      item.brand,
         before,
         after: { status: 'published', externalVideoId: item.externalVideoId },
         success: true,
@@ -67,6 +68,7 @@ async function publishOne(item: ScheduleItem): Promise<void> {
       level:      'error',
       action:     `自动发布失败: ${item.title}`,
       scheduleId: item.id,
+      brand:      item.brand,
       before,
       after: { status: 'failed' },
       success:  false,
@@ -86,6 +88,7 @@ function writeLog(params: {
   level: OperationLog['level'];
   action: string;
   scheduleId: string;
+  brand: string;
   before: Record<string, unknown>;
   after: Record<string, unknown>;
   success: boolean;
@@ -101,6 +104,7 @@ function writeLog(params: {
     success:   params.success,
     errorMsg:  params.errorMsg,
     createdAt: new Date().toISOString(),
+    tenantId:  brandById(params.brand)?.tenantId,
   };
   operationLogs.push(log);
 }

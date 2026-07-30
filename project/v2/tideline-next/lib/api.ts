@@ -3,10 +3,13 @@
 // 迁移到真实 Next.js 时：直接把 handler 函数 export 为 GET/POST
 
 import type { ApiResponse } from '../types/index';
+import type { Session } from './auth';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 export type RouteHandler = (
-  req: IncomingMessage & { query: Record<string, string>; body?: unknown },
+  // session 只在受保护路由（非 PUBLIC_ROUTES）上一定存在，由 server/index.ts 的
+  // requireAuth() 结果挂载；公开路由（login/oauth 回调）不挂，handler 里不读它。
+  req: IncomingMessage & { query: Record<string, string>; body?: unknown; session?: Session },
   res: TideResponse,
 ) => Promise<void> | void;
 

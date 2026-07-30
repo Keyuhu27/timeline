@@ -38,6 +38,7 @@ export const POST: RouteHandler = async (req, res) => {
       action: `AI创意生成：${body.product.slice(0, 30)}${body.trigger && body.trigger !== 'standalone' ? ` · 触发原因 ${body.trigger}` : ''}`,
       success: true,
       createdAt: new Date().toISOString(),
+      tenantId: req.session?.tenantId,
     });
 
     res.json({ data: result });

@@ -27,7 +27,7 @@ import { extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { enhanceRes, parseQuery, readBody, type RouteHandler, type TideResponse } from '../lib/api';
-import { requireAuth, getSession } from '../lib/auth';
+import { requireAuth, getSession, type Session } from '../lib/auth';
 
 // ── 静态导入所有 route handlers ──────────────────────────────────────────
 import * as routeBrands     from '../app/api/brands/route';
@@ -209,14 +209,16 @@ async function handler(rawReq: IncomingMessage, rawRes: ServerResponse) {
   // API routes
   const mod = ROUTES[pathname];
   if (mod) {
+    let session: Session | undefined;
     if (!PUBLIC_ROUTES.has(pathname)) {
       const s = requireAuth(rawReq, res);
       if (!s) return;
+      session = s;
     }
     if (method === 'POST' || method === 'PATCH') {
       (rawReq as IncomingMessage & { body?: unknown }).body = await readBody(rawReq);
     }
-    const req = Object.assign(rawReq, { query: parseQuery(url) });
+    const req = Object.assign(rawReq, { query: parseQuery(url), session });
     const fn = (mod as Record<string, RouteHandler>)[method];
     if (fn) return await fn(req as Parameters<RouteHandler>[0], res);
     return res.json({ error: `Method ${method} not allowed` }, 405);

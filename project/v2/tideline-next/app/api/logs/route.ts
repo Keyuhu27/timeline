@@ -6,7 +6,8 @@ import type { RouteHandler } from '../../../lib/api';
 
 export const GET: RouteHandler = (req, res) => {
   const { source, level, campaignId, ruleId, from, to } = req.query;
-  let filtered = operationLogs.slice().reverse(); // 最新的在前
+  const tenantLogs = operationLogs.filter(l => l.tenantId === req.session?.tenantId);
+  let filtered = tenantLogs.slice().reverse(); // 最新的在前
 
   if (source)     filtered = filtered.filter(l => l.source     === source);
   if (level)      filtered = filtered.filter(l => l.level      === level);
@@ -16,14 +17,14 @@ export const GET: RouteHandler = (req, res) => {
   if (to)         filtered = filtered.filter(l => l.createdAt  <= to);
 
   const summary = {
-    total:    operationLogs.length,
-    success:  operationLogs.filter(l => l.success).length,
-    errors:   operationLogs.filter(l => !l.success).length,
+    total:    tenantLogs.length,
+    success:  tenantLogs.filter(l => l.success).length,
+    errors:   tenantLogs.filter(l => !l.success).length,
     bySource: {
-      auto_rule: operationLogs.filter(l => l.source === 'auto_rule').length,
-      scheduler: operationLogs.filter(l => l.source === 'scheduler').length,
-      manual:    operationLogs.filter(l => l.source === 'manual').length,
-      system:    operationLogs.filter(l => l.source === 'system').length,
+      auto_rule: tenantLogs.filter(l => l.source === 'auto_rule').length,
+      scheduler: tenantLogs.filter(l => l.source === 'scheduler').length,
+      manual:    tenantLogs.filter(l => l.source === 'manual').length,
+      system:    tenantLogs.filter(l => l.source === 'system').length,
     },
   };
 

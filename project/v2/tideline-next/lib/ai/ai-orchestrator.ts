@@ -71,6 +71,7 @@ export async function analyzeAndRecommend(campaign: AdCampaign): Promise<AiDecis
       phoneCalls: campaign.phoneCalls,
     },
     createdAt: new Date().toISOString(),
+    tenantId: campaign.tenantId,
   };
 
   aiDecisions.push(decision);
@@ -86,6 +87,7 @@ export async function analyzeAndRecommend(campaign: AdCampaign): Promise<AiDecis
     success: true,
     aiReason: analysis.summary,
     createdAt: new Date().toISOString(),
+    tenantId: campaign.tenantId,
   });
 
   return decision;

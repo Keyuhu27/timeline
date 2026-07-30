@@ -4,6 +4,7 @@
 
 import { createHmac, pbkdf2Sync, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { tenantMembers } from './db';
 
 const JWT_SECRET  = process.env.JWT_SECRET ?? 'tideline-dev-secret-change-in-prod';
 const TOKEN_TTL   = 7 * 24 * 60 * 60; // 7天（秒）
@@ -14,7 +15,7 @@ export interface Session {
   userId: string;
   name: string;
   role: string;
-  orgId: string;
+  tenantId: string;
   iat: number;
   exp: number;
 }
@@ -72,8 +73,12 @@ function parseCookies(req: IncomingMessage): Record<string, string> {
 export function login(email: string, password: string): { token: string; session: Session } | null {
   const account = DEMO_ACCOUNTS[email];
   if (!account || !verifyPassword(password, account.passwordHash)) return null;
+  // tenantId 不再写死在账号 profile 里，登录时按 TenantMember 关系查出来
+  // （一个用户可能属于多个租户，这里先取第一条——多租户切换是后续功能）。
+  const membership = tenantMembers.find(m => m.userId === account.profile.userId);
+  if (!membership) return null;
   const now = Math.floor(Date.now() / 1000);
-  const session: Session = { ...account.profile, iat: now, exp: now + TOKEN_TTL };
+  const session: Session = { ...account.profile, tenantId: membership.tenantId, iat: now, exp: now + TOKEN_TTL };
   return { token: signToken(session), session };
 }
 
@@ -100,7 +105,8 @@ function checkApiKey(req: IncomingMessage): Session | null {
   });
   if (!valid) return null;
   const now = Math.floor(Date.now() / 1000);
-  return { userId: 'machine', name: 'API Client', role: '主理人', orgId: 'system', iat: now, exp: now + TOKEN_TTL };
+  // 机器会话固定挂在 'nanji' 租户下（目前唯一租户）；多租户 API Key 轮换是后续功能。
+  return { userId: 'machine', name: 'API Client', role: '主理人', tenantId: 'nanji', iat: now, exp: now + TOKEN_TTL };
 }
 
 export function requireAuth(req: IncomingMessage, res: ServerResponse): Session | null {
@@ -127,13 +133,15 @@ export function logout(res: ServerResponse): void {
 }
 
 // ─── 演示账号（启动时生成哈希，生产替换为 DB 查询）──────────────────────
-const DEMO_ACCOUNTS: Record<string, { passwordHash: string; profile: Omit<Session, 'iat' | 'exp'> }> = {
+// profile 不含 tenantId——租户归属由 TenantMember 关系决定（见 login()），
+// 同一个 User 未来可以属于多个租户。
+const DEMO_ACCOUNTS: Record<string, { passwordHash: string; profile: Omit<Session, 'iat' | 'exp' | 'tenantId'> }> = {
   'chen@nanji.cn': {
     passwordHash: hashPassword('tideline2026'),
-    profile: { userId: 'u1', name: '陈思远', role: '主理人', orgId: 'nanji' },
+    profile: { userId: 'u1', name: '陈思远', role: '主理人' },
   },
   'lin@nanji.cn': {
     passwordHash: hashPassword('tideline2026'),
-    profile: { userId: 'u2', name: '林玥', role: '编导', orgId: 'nanji' },
+    profile: { userId: 'u2', name: '林玥', role: '编导' },
   },
 };

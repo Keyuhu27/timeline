@@ -72,7 +72,7 @@ function isPlaceholderName(name: string | undefined): boolean {
 export const GET: RouteHandler = (req, res) => {
   const { brand } = req.query;
   // 只返回有真实生意经数据的账户（白名单 + 按 externalId 去重），过滤重复/脏账户
-  let filtered = visibleAccounts().filter(a => !a.hidden);
+  let filtered = visibleAccounts().filter(a => !a.hidden && a.tenantId === req.session?.tenantId);
   if (brand) filtered = filtered.filter(a => a.brand === brand);
   const { items, total, page, pageSize } = paginate(filtered, req.query);
   ok(res, items, { total, page, pageSize });
@@ -155,11 +155,14 @@ export async function syncLocalAccounts(
     const accountId = `a_${lid}`;
     const colorIdx = (accounts.length % 10) + 1;
     const seedName = nameById?.get(lid)?.trim() || KNOWN_LOCAL_ACCOUNT_NAMES[lid] || `本地推账户 ${lid}`;
-    const newBrand: Brand = { id: brandId, name: seedName, cat: '本地推', logo: seedName.slice(0, 1) };
+    // TODO(Phase 3): 多租户自助入驻上线后，这里的 tenantId 要从触发本次同步的
+    // session/OAuth 授权上下文传入，而不是写死 'nanji'。今天全站只有这一个租户。
+    const newBrand: Brand = { id: brandId, name: seedName, cat: '本地推', logo: seedName.slice(0, 1), tenantId: 'nanji' };
     const newAccount: Account = {
       id: accountId, name: seedName, externalId: lid,
       brand: brandId, color: `c${colorIdx}`,
       followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0,
+      tenantId: 'nanji',
       ...(ARCHIVED_LOCAL_ACCOUNT_IDS.has(lid) ? { hidden: true } : {}),
     };
     brands.push(newBrand);
@@ -261,6 +264,7 @@ export async function syncLocalAccounts(
           status:     normalizedStatus,
           startDate:  new Date().toISOString().slice(0, 10),
           lastSyncAt: now,
+          tenantId:   account.tenantId,
         };
         adCampaigns.push(newCamp);
         campaignsSynced++;
@@ -752,6 +756,7 @@ export const syncStatus: RouteHandler = async (req, res) => {
             status: normalizedStatus,
             startDate: new Date().toISOString().slice(0, 10),
             lastSyncAt: now,
+            tenantId: account.tenantId,
           };
           adCampaigns.push(newCamp);
           addedInAcc++;

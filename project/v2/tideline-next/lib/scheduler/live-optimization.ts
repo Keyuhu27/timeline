@@ -156,6 +156,7 @@ export async function runLiveOptimizationOnce(): Promise<{ checked: number; hits
           success: true, createdAt,
           brandId: c.brand, advertiserId: advid, projectId, ruleCode: rule.code,
           evidence, suggestedAction: rule.action, dryRun: !needsApproval,
+          tenantId: c.tenantId,
         };
         operationLogs.unshift(log);
 
@@ -179,6 +180,7 @@ export async function runLiveOptimizationOnce(): Promise<{ checked: number; hits
               costPerLead: 0, roas: s.globalPayRoi ?? 0, storeVisits: 0, phoneCalls: 0,
             },
             createdAt,
+            tenantId: c.tenantId,
           };
           aiDecisions.unshift(decision);
         }

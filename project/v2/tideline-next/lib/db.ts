@@ -3,22 +3,43 @@
 // 结构对齐 SQL schema，后续可直接替换为 Prisma/Drizzle 调用。
 
 import type {
+  Tenant, User, TenantMember,
   Brand, TeamMember, Task, Account, LiveSession,
   Product, FinanceRecord, AdCampaign, ScheduleItem, Competitor, AiDecision,
   DailyReport, ExternalReport,
 } from '../types/index';
 
+// ─── 多租户 ────────────────────────────────────────────────────────────────
+// 南极 MCN 自己是租户 #1，原地迁移，不特殊化。新租户走 OAuth 自助入驻时在这里 push。
+export const tenants: Tenant[] = [
+  { id: 'nanji', name: '南极 MCN', planTier: 'active', createdAt: '2026-01-01T00:00:00Z' },
+];
+
+export const users: User[] = [
+  { id: 'u1', email: 'chen@nanji.cn', name: '陈思远' },
+  { id: 'u2', email: 'lin@nanji.cn',  name: '林玥' },
+];
+
+// User↔Tenant 多对多；即使今天每个用户只属于一个租户，也从一开始按多对多建模
+// （代运营机构类客户必然需要"一个员工管多个客户租户"，后补这个关系成本很高）。
+export const tenantMembers: TenantMember[] = [
+  { userId: 'u1', tenantId: 'nanji', role: '主理人' },
+  { userId: 'u2', tenantId: 'nanji', role: '编导' },
+];
+
+const NANJI = 'nanji';
+
 // ─── Brands ────────────────────────────────────────────────────────────────
 export const brands: Brand[] = [
-  { id: 'b1',  name: '快乐蜂（中国）餐饮',         cat: '餐饮',     logo: '快' },
-  { id: 'b2',  name: '耀银-广州烨道餐饮',           cat: '餐饮',     logo: '耀' },
-  { id: 'b3',  name: '广州烨道餐饮上城钱江',        cat: '餐饮',     logo: '广', hidden: true },  // 已合并入 b2
-  { id: 'b4',  name: '亿滋本地推',                  cat: '餐饮',     logo: '亿' },
-  { id: 'b6',  name: '武义蝶来望境温泉酒店',        cat: '酒店',     logo: '蝶' },
-  { id: 'b7',  name: '武义宏马文化发展',            cat: '文旅',     logo: '宏' },
-  { id: 'b10', name: '半日懒竹林漂流',              cat: '户外休闲', logo: '竹' },
-  { id: 'b11', name: '天鸿丝绸福田三区店',          cat: '本地推',   logo: '天' },
-  { id: 'b12', name: '浙江武义文旅资源运营发展有限公司', cat: '文旅', logo: '武' },
+  { id: 'b1',  name: '快乐蜂（中国）餐饮',         cat: '餐饮',     logo: '快', tenantId: NANJI },
+  { id: 'b2',  name: '耀银-广州烨道餐饮',           cat: '餐饮',     logo: '耀', tenantId: NANJI },
+  { id: 'b3',  name: '广州烨道餐饮上城钱江',        cat: '餐饮',     logo: '广', hidden: true, tenantId: NANJI },  // 已合并入 b2
+  { id: 'b4',  name: '亿滋本地推',                  cat: '餐饮',     logo: '亿', tenantId: NANJI },
+  { id: 'b6',  name: '武义蝶来望境温泉酒店',        cat: '酒店',     logo: '蝶', tenantId: NANJI },
+  { id: 'b7',  name: '武义宏马文化发展',            cat: '文旅',     logo: '宏', tenantId: NANJI },
+  { id: 'b10', name: '半日懒竹林漂流',              cat: '户外休闲', logo: '竹', tenantId: NANJI },
+  { id: 'b11', name: '天鸿丝绸福田三区店',          cat: '本地推',   logo: '天', tenantId: NANJI },
+  { id: 'b12', name: '浙江武义文旅资源运营发展有限公司', cat: '文旅', logo: '武', tenantId: NANJI },
 ];
 
 // ─── Team ────────────────────────────────────────────────────────────────
@@ -49,17 +70,17 @@ export const tasks: Task[] = [
 // ─── Accounts ────────────────────────────────────────────────────────────
 // externalId = 巨量引擎广告主 ID（advertiser_id）
 export const accounts: Account[] = [
-  { id: 'a1',  name: '快乐蜂（中国）餐饮管理有限公司',        externalId: '1745303406415880', brand: 'b1',  color: 'c1',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
-  { id: 'a2',  name: '耀银-广州烨道餐饮-上城钱江路',          externalId: '1847915308786764', brand: 'b2',  color: 'c2',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  { id: 'a1',  name: '快乐蜂（中国）餐饮管理有限公司',        externalId: '1745303406415880', brand: 'b1',  color: 'c1',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0, tenantId: NANJI },
+  { id: 'a2',  name: '耀银-广州烨道餐饮-上城钱江路',          externalId: '1847915308786764', brand: 'b2',  color: 'c2',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0, tenantId: NANJI },
   // a3 合并入耀银-广州烨道餐饮(b2)；两个账户共用同一品牌详情页
-  { id: 'a3',  name: '广州烨道餐饮管理有限公司上城钱江',      externalId: '1839229761224026', brand: 'b2',  color: 'c3',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
-  { id: 'a4',  name: '亿滋本地推',                             externalId: '1851121699721292', brand: 'b4',  color: 'c4',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
-  { id: 'a6',  name: '武义蝶来望境温泉酒店',                  externalId: '1845654470244352', brand: 'b6',  color: 'c6',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
-  { id: 'a7',  name: '武义宏马文化发展有限公司',              externalId: '1845654181143703', brand: 'b7',  color: 'c7',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
-  { id: 'a10', name: '半日懒竹林漂流',                        externalId: '1770545948162062', brand: 'b10', color: 'c10', followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  { id: 'a3',  name: '广州烨道餐饮管理有限公司上城钱江',      externalId: '1839229761224026', brand: 'b2',  color: 'c3',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0, tenantId: NANJI },
+  { id: 'a4',  name: '亿滋本地推',                             externalId: '1851121699721292', brand: 'b4',  color: 'c4',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0, tenantId: NANJI },
+  { id: 'a6',  name: '武义蝶来望境温泉酒店',                  externalId: '1845654470244352', brand: 'b6',  color: 'c6',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0, tenantId: NANJI },
+  { id: 'a7',  name: '武义宏马文化发展有限公司',              externalId: '1845654181143703', brand: 'b7',  color: 'c7',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0, tenantId: NANJI },
+  { id: 'a10', name: '半日懒竹林漂流',                        externalId: '1770545948162062', brand: 'b10', color: 'c10', followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0, tenantId: NANJI },
   // 天鸿丝绸福田三区店：仅本地推 statQuery 数据，无生意经日报映射
-  { id: 'a11', name: '天鸿丝绸福田三区店',                    externalId: '1844144155187404', brand: 'b11', color: 'c1',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
-  { id: 'a12', name: '浙江武义文旅资源运营发展有限公司',      externalId: '1809564038287363', brand: 'b12', color: 'c2',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0 },
+  { id: 'a11', name: '天鸿丝绸福田三区店',                    externalId: '1844144155187404', brand: 'b11', color: 'c1',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0, tenantId: NANJI },
+  { id: 'a12', name: '浙江武义文旅资源运营发展有限公司',      externalId: '1809564038287363', brand: 'b12', color: 'c2',  followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0, tenantId: NANJI },
 ];
 
 // ─── Live Sessions ────────────────────────────────────────────────────────
@@ -137,6 +158,29 @@ export const fmtPct = (n: number, sign = true): string =>
 export const brandById = (id: string) => brands.find(b => b.id === id);
 export const userById  = (id: string) => team.find(u => u.id === id);
 export const accountById = (id: string) => accounts.find(a => a.id === id);
+
+// ─── 租户过滤访问函数 ──────────────────────────────────────────────────────
+// 路由处理函数应该走这些函数而不是直接读全局数组，防止跨租户数据泄漏。
+export function brandsForTenant(tenantId: string): Brand[] {
+  return visibleBrands().filter(b => b.tenantId === tenantId);
+}
+export function accountsForTenant(tenantId: string): Account[] {
+  return visibleAccounts().filter(a => a.tenantId === tenantId);
+}
+export function campaignsForTenant(tenantId: string): AdCampaign[] {
+  return adCampaigns.filter(c => c.tenantId === tenantId);
+}
+export function rulesForTenant(tenantId: string): AutoRule[] {
+  return autoRules.filter(r => r.tenantId === tenantId);
+}
+export function logsForTenant(tenantId: string): OperationLog[] {
+  return operationLogs.filter(l => l.tenantId === tenantId);
+}
+/** 按账户（内部 id 或 externalId/local_account_id）反查其所属租户，供调度器写日志/决策时打标 */
+export function tenantIdForAccount(accountRef: string): string | undefined {
+  const acct = accounts.find(a => a.id === accountRef || a.externalId === accountRef);
+  return acct?.tenantId;
+}
 
 // ─── 生意经真实日报白名单 ──────────────────────────────────────────────────
 // 只有这些 externalId（= 生意经 poiId）能拉到真实生意经日报数据。
@@ -216,6 +260,7 @@ export const autoRules: AutoRule[] = [
     cooldownMinutes: 120,
     createdBy: 'u1',
     createdAt: '2026-05-01T09:00:00Z',
+    tenantId: NANJI,
   },
   {
     id: 'rule_02',
@@ -229,6 +274,7 @@ export const autoRules: AutoRule[] = [
     cooldownMinutes: 60,
     createdBy: 'u1',
     createdAt: '2026-05-01T09:00:00Z',
+    tenantId: NANJI,
   },
   {
     id: 'rule_03',
@@ -243,6 +289,7 @@ export const autoRules: AutoRule[] = [
     cooldownMinutes: 180,
     createdBy: 'u1',
     createdAt: '2026-05-05T10:00:00Z',
+    tenantId: NANJI,
   },
   {
     id: 'rule_04',
@@ -257,6 +304,7 @@ export const autoRules: AutoRule[] = [
     cooldownMinutes: 240,
     createdBy: 'u6',
     createdAt: '2026-05-08T14:00:00Z',
+    tenantId: NANJI,
   },
 ];
 
@@ -277,6 +325,7 @@ export const operationLogs: OperationLog[] = [
     after:  { status: 'paused' },
     success: true,
     createdAt: '2026-05-10T14:30:00Z',
+    tenantId: NANJI,
   },
   {
     id: 'log_002',
@@ -291,6 +340,7 @@ export const operationLogs: OperationLog[] = [
     after:  { budget: 96000 },
     success: true,
     createdAt: '2026-05-11T10:00:00Z',
+    tenantId: NANJI,
   },
   {
     id: 'log_003',
@@ -299,6 +349,7 @@ export const operationLogs: OperationLog[] = [
     action: '定时同步：拉取所有活跃计划数据',
     success: true,
     createdAt: '2026-05-12T08:00:00Z',
+    tenantId: NANJI,
   },
 ];
 

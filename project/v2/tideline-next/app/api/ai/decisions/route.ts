@@ -17,12 +17,13 @@ function describeBudgetChange(rec: AiRecommendation): string {
 export const GET: RouteHandler = (req, res) => {
   const { status, campaignId } = req.query;
 
-  let list = [...aiDecisions];
+  const forTenant = aiDecisions.filter(d => d.tenantId === req.session?.tenantId);
+  let list = forTenant;
   if (status) list = list.filter(d => d.status === status);
   if (campaignId) list = list.filter(d => d.campaignId === campaignId);
   list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
-  const pending = aiDecisions.filter(d => d.status === 'pending').length;
+  const pending = forTenant.filter(d => d.status === 'pending').length;
   res.json({ data: { decisions: list, pending, total: list.length } });
 };
 
@@ -37,7 +38,7 @@ export const POST: RouteHandler = async (req, res) => {
 
   if (!id || !action) return res.json({ error: 'id 和 action 必填' }, 400);
 
-  const decision = aiDecisions.find(d => d.id === id);
+  const decision = aiDecisions.find(d => d.id === id && d.tenantId === req.session?.tenantId);
   if (!decision) return res.json({ error: '决策不存在' }, 404);
   if (decision.status !== 'pending') return res.json({ error: `决策已是 ${decision.status} 状态` }, 409);
 
@@ -73,6 +74,7 @@ export const POST: RouteHandler = async (req, res) => {
       aiReason: rec.reason,
       approvedBy: decision.approvedBy,
       createdAt: new Date().toISOString(),
+      tenantId: decision.tenantId,
     });
     return res.json({ data: decision });
   }
@@ -93,6 +95,7 @@ export const POST: RouteHandler = async (req, res) => {
       aiReason: rec.reason,
       approvedBy: decision.approvedBy,
       createdAt: new Date().toISOString(),
+      tenantId: decision.tenantId,
     });
     return res.json({ data: decision });
   }
@@ -115,6 +118,7 @@ export const POST: RouteHandler = async (req, res) => {
       dryRun: true,
       suggestedAction: rec.action,
       createdAt: new Date().toISOString(),
+      tenantId: decision.tenantId,
     });
     return res.json({ data: decision });
   }
@@ -172,6 +176,7 @@ export const POST: RouteHandler = async (req, res) => {
       aiReason: rec.reason,
       approvedBy: decision.approvedBy,
       createdAt: new Date().toISOString(),
+      tenantId: decision.tenantId,
     });
 
     res.json({ data: decision });

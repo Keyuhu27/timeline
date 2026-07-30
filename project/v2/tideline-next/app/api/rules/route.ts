@@ -10,7 +10,7 @@ import type { AutoRule }     from '../../../types/index';
 
 export const GET: RouteHandler = (req, res) => {
   const { brand, enabled, metric } = req.query;
-  let filtered = autoRules.slice();
+  let filtered = autoRules.filter(r => r.tenantId === req.session?.tenantId);
   if (brand)   filtered = filtered.filter(r => r.brand === brand || r.brand === 'all');
   if (enabled) filtered = filtered.filter(r => String(r.enabled) === enabled);
   if (metric)  filtered = filtered.filter(r => r.metric === metric);
@@ -25,6 +25,7 @@ export const POST: RouteHandler = (req, res) => {
   if (!body.name || !body.metric || !body.operator || body.threshold === undefined || !body.action) {
     return err(res, 'name, metric, operator, threshold, action 为必填项');
   }
+  if (!req.session) return err(res, '未登录', 401);
 
   const rule: AutoRule = {
     id:               `rule_${Date.now()}`,
@@ -39,6 +40,7 @@ export const POST: RouteHandler = (req, res) => {
     cooldownMinutes:  body.cooldownMinutes ?? 60,
     createdBy:        body.createdBy ?? 'u1',
     createdAt:        new Date().toISOString(),
+    tenantId:         req.session.tenantId,
   };
   autoRules.push(rule);
   ok(res, rule);
@@ -46,7 +48,7 @@ export const POST: RouteHandler = (req, res) => {
 
 export const PATCH: RouteHandler = (req, res) => {
   const { id } = req.query;
-  const idx = autoRules.findIndex(r => r.id === id);
+  const idx = autoRules.findIndex(r => r.id === id && r.tenantId === req.session?.tenantId);
   if (idx === -1) return err(res, '规则不存在', 404);
 
   const allowed = ['name', 'enabled', 'threshold', 'actionValue', 'cooldownMinutes', 'brand'];
@@ -61,7 +63,7 @@ export const PATCH: RouteHandler = (req, res) => {
 
 export const DELETE: RouteHandler = (req, res) => {
   const { id } = req.query;
-  const idx = autoRules.findIndex(r => r.id === id);
+  const idx = autoRules.findIndex(r => r.id === id && r.tenantId === req.session?.tenantId);
   if (idx === -1) return err(res, '规则不存在', 404);
   autoRules.splice(idx, 1);
   ok(res, { id, deleted: true });
