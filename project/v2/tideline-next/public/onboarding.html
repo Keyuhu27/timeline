@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="/styles.css">
 <style>
   body { background: var(--bg-app); }
   .ob-shell { max-width: 640px; margin: 56px auto; padding: 0 24px; }
@@ -106,7 +106,7 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
 }
 
-async function confirm() {
+async function confirmSelection() {
   const btn = document.getElementById('confirmBtn');
   const msgEl = document.getElementById('obMsg');
   const selected = Array.from(document.querySelectorAll('#obList input:checked')).map(el => el.value);
@@ -138,7 +138,7 @@ async function confirm() {
   }
 }
 
-document.getElementById('confirmBtn').addEventListener('click', confirm);
+document.getElementById('confirmBtn').addEventListener('click', confirmSelection);
 load();
 </script>
 </body>
