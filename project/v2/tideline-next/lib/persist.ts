@@ -116,7 +116,9 @@ function loadCredentials(): void {
     const raw = kvGet('credentials');
     if (!raw) return;
     const creds = JSON.parse(raw) as PlatformCredential[];
-    for (const c of creds) tokenManager.register(c);
+    // 向后兼容：Phase 2 之前持久化的凭证没有 tenantId 字段，按 'nanji'
+    // 兜底（多租户上线前，磁盘上出现过的凭证只可能属于这一个租户）。
+    for (const c of creds) tokenManager.register({ ...c, tenantId: c.tenantId ?? 'nanji' });
     console.log(`[Persist] 🔑 已注册 ${creds.length} 个持久化 OAuth 凭证`);
   } catch (e) {
     console.error('[Persist] 加载凭证失败:', String(e));

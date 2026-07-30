@@ -15,9 +15,11 @@ const credentials = new Map<string, PlatformCredential>();
 // 提前刷新时间窗口（秒）
 const REFRESH_AHEAD_SECS = 30 * 60; // 30分钟
 
-/** 缓存 key：accountId + platform */
-function cacheKey(accountId: string, platform: string): string {
-  return `${accountId}::${platform}`;
+/** 缓存 key：tenantId + platform（不是 accountId——一次 OAuth 授权对应整个
+ *  工作台下所有账户，不是单个账户，按 accountId 存会导致同一租户的凭证
+ *  重复占位、也解决不了本地推 local_account_id 与 advertiser_id 两套编号不对应的问题）。 */
+function cacheKey(tenantId: string, platform: string): string {
+  return `${tenantId}::${platform}`;
 }
 
 export const tokenManager = {
@@ -31,7 +33,7 @@ export const tokenManager = {
 
   /** 注册凭证（对接 API 后通过 OAuth 回调写入） */
   register(cred: PlatformCredential): void {
-    const key = cacheKey(cred.accountId, cred.platform);
+    const key = cacheKey(cred.tenantId, cred.platform);
     credentials.set(key, cred);
     // 同时写入缓存，避免立即触发刷新
     if (cred.accessToken) {
@@ -43,8 +45,8 @@ export const tokenManager = {
   },
 
   /** 获取有效 token，必要时自动刷新 */
-  async getToken(accountId: string, platform: PlatformCredential['platform']): Promise<string> {
-    const key = cacheKey(accountId, platform);
+  async getToken(tenantId: string, platform: PlatformCredential['platform']): Promise<string> {
+    const key = cacheKey(tenantId, platform);
     const cached = tokenCache.get(key);
     const now = Math.floor(Date.now() / 1000);
 
@@ -56,7 +58,7 @@ export const tokenManager = {
     // 需要刷新
     const cred = credentials.get(key);
     if (!cred) {
-      throw new Error(`[TokenManager] 未找到凭证: ${key}，请先通过 POST /api/auth 注册 Token`);
+      throw new Error(`[TokenManager] 未找到凭证: ${key}，请先为该租户完成 OAuth 授权`);
     }
 
     return this._refresh(key, cred);
@@ -164,12 +166,17 @@ export const tokenManager = {
     }
   },
 
-  /** 获取任意一个可用 token（当不确定 accountId 时使用） */
+  /** 获取任意一个可用 token（不区分租户）。
+   *  ⚠️ 只能在明确知道"当前只有一个租户"的场景下用（内部管理端点/调试接口/
+   *  账户发现流程，这些还没有真正的多租户上下文）。任何针对具体账户的读写操作
+   *  （暂停/改预算/拉报表）都必须走 getToken(tenantId, platform)，先从账户反查
+   *  租户，不能在这里"随便挑一个"——多租户上线后这里会把别的租户的 token 用
+   *  到当前账户上。 */
   async getAnyToken(platform: PlatformCredential['platform']): Promise<string> {
     // 优先从已注册凭证中找
-    for (const [key, cred] of credentials) {
+    for (const [, cred] of credentials) {
       if (cred.platform === platform) {
-        return this.getToken(cred.accountId, platform);
+        return this.getToken(cred.tenantId, platform);
       }
     }
     // 降级：直接用环境变量中的 access token
@@ -184,9 +191,10 @@ export const tokenManager = {
   },
 
   /** 获取所有凭证状态摘要（供 API 返回） */
-  getStatus(): Array<{ accountId: string; platform: string; expiresAt: number; healthy: boolean }> {
+  getStatus(): Array<{ tenantId: string; accountId: string; platform: string; expiresAt: number; healthy: boolean }> {
     const now = Date.now();
     return Array.from(credentials.values()).map(c => ({
+      tenantId:  c.tenantId,
       accountId: c.accountId,
       platform:  c.platform,
       expiresAt: c.expiresAt,
@@ -202,13 +210,16 @@ export const tokenManager = {
   const appId        = process.env.OCEANENGINE_APP_ID;
 
   if (accessToken && refreshToken && appId) {
-    // 用 appId 作为默认 accountId，也可后续通过 POST /api/auth 覆盖
+    // TODO(Phase 3): 多租户自助入驻上线后，.env 里的凭证不再够用（每个租户
+    // 有自己的一套 token），这段整体会被 OAuth 回调注册取代。今天只有 'nanji'
+    // 一个租户，凭证挂在这个固定 tenantId 下。
     // 注意：.env 里的 access_token 很可能已过期（巨量有效期仅 2 小时），
     // 不能假定它是新的——否则缓存命中会一直拿过期 token 报 40105。
     // 标记为「已过期」，让第一次 getToken 用 refresh_token 自动换新 token（自愈）。
     const cred: PlatformCredential = {
       id:           'env_default',
       accountId:    appId,
+      tenantId:     'nanji',
       platform:     'oceanengine',
       appId,
       accessToken,
@@ -218,11 +229,11 @@ export const tokenManager = {
     };
     tokenManager.register(cred);
     // 缓存也写成已过期：getToken 会因 expiresAt-now < 刷新窗口而走 refresh_token 换新
-    const key = `${appId}::oceanengine`;
+    const key = cacheKey('nanji', 'oceanengine');
     tokenCache.set(key, {
       token:     accessToken,
       expiresAt: Math.floor(Date.now() / 1000) - 1,
     });
-    console.log(`[TokenManager] 已从环境变量注入 Token（标记为待刷新，首次调用将用 refresh_token 换新）: accountId=${appId}`);
+    console.log(`[TokenManager] 已从环境变量注入 Token（标记为待刷新，首次调用将用 refresh_token 换新）: tenantId=nanji`);
   }
 }());

@@ -369,9 +369,9 @@ export interface PlatformCredential {
   advertiserId?: string;
   appId?: string;
   updatedAt: string;
-  // 多租户：Phase 2 会把 token-manager 的缓存 key 从 accountId 改成 tenantId，
-  // 这个字段先加上，Phase 1 阶段先跟着 accountId 一起注册（见 index.ts bootstrapFromEnv）。
-  tenantId?: string;
+  // 多租户：token-manager 的凭证缓存按 (tenantId, platform) 为 key，
+  // 不再按 accountId——一次 OAuth 授权对应整个工作台下所有账户，不是单个账户。
+  tenantId: string;
 }
 
 // ─── 告警配置 ─────────────────────────────────────────────────────────────

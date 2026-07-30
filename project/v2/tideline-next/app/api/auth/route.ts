@@ -47,13 +47,14 @@ export const GET: RouteHandler = async (req, res) => {
       const expiresAt = Date.now() + expires_in * 1000;
       const ids: string[] = Array.isArray(advertiser_ids) ? advertiser_ids.map(String) : [];
       const primaryId = ids[0] ?? APP_ID;
+      // TODO(Phase 3): 自助入驻上线后，tenantId 要从发起这次授权的租户上下文取
+      // （比如授权链接的 state 参数），不能写死——今天只有 'nanji' 一个租户。
       const cred: PlatformCredential = {
-        id: `cred_${Date.now()}`, accountId: primaryId,
+        id: `cred_${Date.now()}`, accountId: primaryId, tenantId: 'nanji',
         platform: 'oceanengine', accessToken: access_token, refreshToken: refresh_token,
         expiresAt, advertiserId: primaryId, appId: APP_ID, updatedAt: new Date().toISOString(),
       };
       tokenManager.register(cred);
-      tokenManager.register({ ...cred, id: `cred_app_${Date.now()}`, accountId: APP_ID });
       saveCredentials();  // token 存数据库，不再写 .env
       console.log(`[OAuth] ✅ 授权成功 advertiser_ids: ${ids.join(', ')}, expires_in: ${expires_in}s`);
       redirect(res, '/?oauth=success');
@@ -78,11 +79,12 @@ export const POST: RouteHandler = (req, res) => {
   const body = req.body as Partial<PlatformCredential>;
   if (!body.accountId || !body.accessToken || !body.refreshToken) return err(res, '缺少必填项');
   const cred: PlatformCredential = {
-    id: `cred_${Date.now()}`, accountId: body.accountId, platform: body.platform ?? 'oceanengine',
+    id: `cred_${Date.now()}`, accountId: body.accountId, tenantId: body.tenantId ?? 'nanji',
+    platform: body.platform ?? 'oceanengine',
     accessToken: body.accessToken, refreshToken: body.refreshToken,
     expiresAt: body.expiresAt ?? Date.now() + 86400000,
     advertiserId: body.advertiserId, appId: APP_ID, updatedAt: new Date().toISOString(),
   };
   tokenManager.register(cred);
-  ok(res, { message: '凭证注册成功', accountId: cred.accountId });
+  ok(res, { message: '凭证注册成功', accountId: cred.accountId, tenantId: cred.tenantId });
 };
