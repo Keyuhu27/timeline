@@ -118,12 +118,20 @@ export function normalizeProjectStatus(raw: unknown): AdCampaign['status'] {
 
 /**
  * 把一批本地推 local_account_id 同步进内存（账户/品牌 upsert），
- * 再逐账户拉项目列表 + 项目报表，最后落盘。供 sync 与 add-local 复用。
+ * 再逐账户拉项目列表 + 项目报表，最后落盘。供 sync / add-local / 自助入驻确认 复用。
+ *
+ * @param tenantId 新建的 Brand/Account 归属的租户
+ * @param bypassWhitelist 跳过 KNOWN_LOCAL_ACCOUNT_IDS 白名单检查——白名单是为了防止
+ *   内部账户发现脚本（EBP/agent/workbench 那几个历史遗留接口）抓到的 Localad-xxx
+ *   垃圾账户被误建成品牌；自助入驻确认流程走的是真实 OAuth 授权 + 用户手动勾选，
+ *   不存在这个风险，必须传 true，否则新租户的账户会被静默跳过。
  */
 export async function syncLocalAccounts(
   localIds: string[],
   accessToken: string,
+  tenantId: string,
   nameById?: Map<string, string>,
+  bypassWhitelist = false,
 ): Promise<{ synced: number; campaignsSynced: number; accounts: Account[]; errors: string[] }> {
   let synced = 0;
   let campaignsSynced = 0;
@@ -134,7 +142,7 @@ export async function syncLocalAccounts(
     const existed = accounts.find(a => a.externalId === lid);
     if (existed) {
       // 同步归档状态（防止已存在账户未标 hidden）
-      if (ARCHIVED_LOCAL_ACCOUNT_IDS.has(lid) || !KNOWN_LOCAL_ACCOUNT_IDS.includes(lid)) existed.hidden = true;
+      if (!bypassWhitelist && (ARCHIVED_LOCAL_ACCOUNT_IDS.has(lid) || !KNOWN_LOCAL_ACCOUNT_IDS.includes(lid))) existed.hidden = true;
       // 用真实 account_name 覆盖占位名（Localad-xxx / 本地推账户 xxx / 空 / unknown）
       const realName = (nameById?.get(lid) ?? '').trim() || KNOWN_LOCAL_ACCOUNT_NAMES[lid];
       if (realName && isPlaceholderName(existed.name)) {
@@ -147,7 +155,7 @@ export async function syncLocalAccounts(
       continue;
     }
     // 不在白名单的账户（Localad-xxx / 本地推账户 xxx 等）跳过，不创建品牌条目
-    if (!KNOWN_LOCAL_ACCOUNT_IDS.includes(lid)) {
+    if (!bypassWhitelist && !KNOWN_LOCAL_ACCOUNT_IDS.includes(lid)) {
       console.log(`[AccountSync] 跳过非白名单账户 ${lid}（未在 KNOWN_LOCAL_ACCOUNT_IDS 中登记）`);
       continue;
     }
@@ -155,15 +163,13 @@ export async function syncLocalAccounts(
     const accountId = `a_${lid}`;
     const colorIdx = (accounts.length % 10) + 1;
     const seedName = nameById?.get(lid)?.trim() || KNOWN_LOCAL_ACCOUNT_NAMES[lid] || `本地推账户 ${lid}`;
-    // TODO(Phase 3): 多租户自助入驻上线后，这里的 tenantId 要从触发本次同步的
-    // session/OAuth 授权上下文传入，而不是写死 'nanji'。今天全站只有这一个租户。
-    const newBrand: Brand = { id: brandId, name: seedName, cat: '本地推', logo: seedName.slice(0, 1), tenantId: 'nanji' };
+    const newBrand: Brand = { id: brandId, name: seedName, cat: '本地推', logo: seedName.slice(0, 1), tenantId };
     const newAccount: Account = {
       id: accountId, name: seedName, externalId: lid,
       brand: brandId, color: `c${colorIdx}`,
       followers: 0, growth7d: 0, gmv7d: 0, live7d: 0, video7d: 0, avgVV: 0, ctr: 0, cvr: 0,
-      tenantId: 'nanji',
-      ...(ARCHIVED_LOCAL_ACCOUNT_IDS.has(lid) ? { hidden: true } : {}),
+      tenantId,
+      ...(!bypassWhitelist && ARCHIVED_LOCAL_ACCOUNT_IDS.has(lid) ? { hidden: true } : {}),
     };
     brands.push(newBrand);
     accounts.push(newAccount);
@@ -385,7 +391,7 @@ export const addLocal: RouteHandler = async (req, res) => {
   }
 
   try {
-    const r = await syncLocalAccounts(ids, accessToken);
+    const r = await syncLocalAccounts(ids, accessToken, 'nanji');
     ok(res, { added: r.synced, campaignsSynced: r.campaignsSynced, accounts: r.accounts }, {});
   } catch (e) {
     err(res, `同步失败: ${String(e)}`);
@@ -473,7 +479,7 @@ export const POST: RouteHandler = async (req, res) => {
     return err(res, '未配置本地推账户：请在 .env 设置 OCEANENGINE_LOCAL_ACCOUNT_IDS（从本地推后台 URL 的 advid 取得）');
   }
 
-  const r = await syncLocalAccounts(localIds, accessToken, nameById);
+  const r = await syncLocalAccounts(localIds, accessToken, 'nanji', nameById);
   ok(res, { synced: r.synced, total: localIds.length, campaignsSynced: r.campaignsSynced, accounts: r.accounts, errors: r.errors }, {});
 };
 

@@ -56,6 +56,9 @@ const Ads = function Ads() {
             </p>
           </div>
           <div className="page-actions">
+            <button className="btn" onClick={() => { window.location.href = '/api/auth'; }}>
+              <Icon name="plus" size={13} /> 连接我的本地推账户
+            </button>
             <button className="btn" onClick={syncAdvertisers} disabled={syncing}>
               <Icon name="refresh" size={13} /> {syncing ? '同步中…' : '同步广告主'}
             </button>

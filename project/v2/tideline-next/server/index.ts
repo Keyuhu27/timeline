@@ -58,6 +58,7 @@ import * as routeAdDiagnosis  from '../app/api/ad-diagnosis/route';
 import * as routeLiveOptim     from '../app/api/live-optimization/route';
 import * as routeLocaladsReach from '../app/api/debug/localads-reach/route';
 import * as routeReportsExternal from '../app/api/reports/external/route';
+import * as routeOnboarding from '../app/api/onboarding/route';
 
 // 启动即注水：把上次同步的真实数据从磁盘恢复到内存
 loadPersisted();
@@ -106,9 +107,13 @@ const ROUTES: Record<string, RouteModule> = {
   '/api/live-optimization': routeLiveOptim,
   '/api/debug/localads-reach': routeLocaladsReach,
   '/api/reports/external': routeReportsExternal,
+  '/api/onboarding/pending': { GET: routeOnboarding.pending },
+  '/api/onboarding/confirm': { POST: routeOnboarding.confirm },
 };
 
-const PUBLIC_ROUTES = new Set(['/api/auth/login', '/api/auth', '/api/auth/callback']);
+// /api/auth 和 /api/auth/callback 不再公开——自助入驻要求已登录，租户身份
+// 完全来自 session，不依赖容易被篡改的 query 参数（见 app/api/auth/route.ts）。
+const PUBLIC_ROUTES = new Set(['/api/auth/login']);
 
 // ── 静态文件 ─────────────────────────────────────────────────────────────
 const MIME: Record<string, string> = {
@@ -233,6 +238,18 @@ async function handler(rawReq: IncomingMessage, rawRes: ServerResponse) {
     }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     return res.end(renderShell(session));
+  }
+
+  // Page: 自助入驻确认（OAuth 回调发现候选账户后跳转到这里，需要已登录）
+  if (pathname === '/onboarding/connect-review') {
+    const session = getSession(rawReq);
+    if (!session) {
+      res.writeHead(302, { Location: '/login' });
+      return res.end();
+    }
+    const html = readFileSync(join(ROOT, 'public/onboarding.html'), 'utf-8');
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    return res.end(html);
   }
 
   // Page: 登录

@@ -4,7 +4,7 @@ import { normalizeOceanEngineAccountId } from '../db';
 const BASE = 'https://ad.oceanengine.com/open_api/2/';
 // 巨量本地推（升级版）走 v3.0 local 接口，账户是"项目/广告"结构，非经典版"计划"
 const LOCAL_BASE = 'https://api.oceanengine.com/open_api/v3.0/local/';
-const ADVERTISER_LIST_URL = 'https://open.oceanengine.com/open_api/oauth2/advertiser/get/';
+const ADVERTISER_LIST_URL = 'https://api.oceanengine.com/open_api/oauth2/advertiser/get/';
 
 // ─── 本地推指标列表 ───────────────────────────────────────────────────────────
 // 巨量本地推数据报表「获取项目数据」支持的指标字段（非千川电商指标）
@@ -323,45 +323,90 @@ export class OceanEngineAdapter implements IAdAdapter {
   }
 
   /**
-   * 拉取当前 AppId 下已授权的广告主列表。
-   * 文档：GET https://open.oceanengine.com/open_api/oauth2/advertiser/get/
+   * 拉取本次 OAuth 授权下已授权的账户列表（自助入驻发现链路第一跳）。
+   * 文档：GET https://api.oceanengine.com/open_api/oauth2/advertiser/get/
+   * 实测响应字段与官方文档不一致：不是 {advertiser_id, advertiser_name, company, status}，
+   * 而是 {account_id, account_name, account_role, account_type, advertiser_id,
+   * advertiser_name, advertiser_role, is_valid}（2026-07-30 真实调用确认）。
+   * 只需 access_token，不需要 app_id/secret。
    */
-  static async fetchAdvertiserList(
-    appId: string,
-    appSecret: string,
-    accessToken: string,
-  ): Promise<Array<{
+  static async fetchAuthorizedAccounts(accessToken: string): Promise<Array<{
+    account_id: string;
+    account_name: string;
+    account_role: string;
+    account_type: string;
     advertiser_id: string;
     advertiser_name: string;
-    company: string;
-    status: string;
+    advertiser_role: string;
+    is_valid: boolean;
   }>> {
-    console.log(`[OceanEngine] GET ${ADVERTISER_LIST_URL} appId=${appId}`);
+    const data = await oeRequest<{
+      list?: Array<{
+        account_id: string;
+        account_name: string;
+        account_role: string;
+        account_type: string;
+        advertiser_id: string;
+        advertiser_name: string;
+        advertiser_role: string;
+        is_valid: boolean;
+      }>;
+    }>(ADVERTISER_LIST_URL, accessToken, { method: 'GET', params: { access_token: accessToken } });
 
-    const res = await fetch(
-      `${ADVERTISER_LIST_URL}?app_id=${encodeURIComponent(appId)}&secret=${encodeURIComponent(appSecret)}`,
-      { method: 'GET', headers: { 'Access-Token': accessToken } },
-    );
+    return data.list ?? [];
+  }
 
-    const text = await res.text();
-    const json = safeJsonParse<{
-      code: number;
-      message: string;
-      data: {
-        list: Array<{
-          advertiser_id: string;
-          advertiser_name: string;
-          company: string;
-          status: string;
-        }>;
-      };
-    }>(text);
+  /**
+   * 抖音来客（PLATFORM_ROLE_LIFE）账户名下的本地推账户列表 —— 自助入驻发现链路第二跳。
+   * 文档不在官方站常规导航里，只在 Scope 权限表中登记为
+   * 「本地推账户管理 / 查询本地推账户 / /local/life/advertiser/list/」。
+   * 实测（2026-07-30）：GET v3.0/local/life/advertiser/list/?life_account_id=<来客advertiser_id>，
+   * 返回 data.adv_list[]，一个来客账户下可能挂多个 local_account_id
+   * （带 account_main_copy_tag: MAIN_ACCOUNT/COPY_ACCOUNT、
+   * local_account_role: DIRECT_ACCOUNT/VIRTUAL_ACCOUNT 标记）。
+   */
+  static async fetchLifeAdvertiserList(accessToken: string, lifeAccountId: string): Promise<Array<{
+    local_account_id: string;
+    local_account_name: string;
+    account_main_copy_tag: string;
+    local_account_role: string;
+  }>> {
+    const data = await oeRequest<{
+      adv_list?: Array<Record<string, unknown>>;
+    }>(`${LOCAL_BASE}life/advertiser/list/`, accessToken, {
+      method: 'GET',
+      params: { life_account_id: String(lifeAccountId) },
+    });
 
-    if (json.code !== 0) {
-      throw new Error(`巨量引擎 广告主列表: ${json.message} (code=${json.code})`);
+    return (data.adv_list ?? []).map(raw => ({
+      local_account_id:      String(raw.local_account_id ?? ''),
+      local_account_name:    String(raw.local_account_name ?? raw.account_name ?? ''),
+      account_main_copy_tag: String(raw.account_main_copy_tag ?? ''),
+      local_account_role:    String(raw.local_account_role ?? ''),
+    }));
+  }
+
+  /**
+   * 入驻确认页用：某个候选 local_account_id 名下是否已有投放项目（供客户勾选时
+   * 参考"哪个账户是在用的"）。用原始 accessToken 直接查，不经过租户 token 路由——
+   * 此时候选账户还没有被同步进 Account 表，也没有注册 PlatformCredential，
+   * 走不通 fetchCampaignList()（它依赖 this.getAccessToken 反查租户）。
+   * 静默失败返回 0（探测接口，不应因单个账户查询失败阻塞整个候选列表展示）。
+   */
+  static async countProjectsForLocalAccount(accessToken: string, localAccountId: string): Promise<number> {
+    try {
+      const data = await oeRequest<{
+        project_list?: Array<Record<string, unknown>>;
+        page_info?: { total_number?: number };
+      }>(`${LOCAL_BASE}project/list/`, accessToken, {
+        method: 'GET',
+        params: { local_account_id: String(localAccountId), page: '1', page_size: '1' },
+      });
+      return data.page_info?.total_number ?? (data.project_list ?? []).length;
+    } catch (e) {
+      console.error(`[OceanEngine] 探测账户 ${localAccountId} 项目数失败（忽略）:`, String(e));
+      return 0;
     }
-
-    return json.data.list ?? [];
   }
 
   // ── 计划列表 ────────────────────────────────────────────────────────────────

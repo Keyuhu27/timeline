@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>连接本地推账户 · 潮线 Tideline</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>
+  body { background: var(--bg-app); }
+  .ob-shell { max-width: 640px; margin: 56px auto; padding: 0 24px; }
+  .ob-card { background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: 12px; padding: 32px; }
+  .ob-eyebrow { font-size: 11px; color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase; font-family: var(--font-mono); margin-bottom: 10px; }
+  .ob-title { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
+  .ob-sub { font-size: 13px; color: var(--text-muted); margin-top: 8px; line-height: 1.6; }
+  .ob-list { margin-top: 24px; display: flex; flex-direction: column; gap: 10px; }
+  .ob-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px; border: 1px solid var(--border-strong); border-radius: 8px;
+    cursor: pointer;
+  }
+  .ob-row:hover { background: var(--bg-hover); }
+  .ob-row input { width: 16px; height: 16px; accent-color: oklch(0.54 0.14 258); flex-shrink: 0; }
+  .ob-row-main { flex: 1; min-width: 0; }
+  .ob-row-name { font-size: 13.5px; font-weight: 500; }
+  .ob-row-meta { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+  .ob-tag {
+    font-size: 10.5px; padding: 2px 6px; border-radius: 4px;
+    background: var(--surface); color: var(--text-muted); font-family: var(--font-mono);
+  }
+  .ob-tag.main { color: oklch(0.55 0.14 258); background: oklch(0.55 0.14 258 / 0.12); }
+  .ob-actions { margin-top: 24px; display: flex; gap: 10px; }
+  .primary-btn {
+    padding: 11px 20px; border-radius: 8px; background: var(--accent); color: white;
+    border: none; font-family: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer;
+  }
+  .primary-btn:hover { background: var(--accent-hover); }
+  .primary-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .ghost-btn {
+    padding: 11px 20px; border-radius: 8px; background: transparent; color: var(--text-secondary);
+    border: 1px solid var(--border-strong); font-family: inherit; font-size: 13.5px; cursor: pointer;
+  }
+  .ob-empty { font-size: 13px; color: var(--text-muted); text-align: center; padding: 40px 0; }
+  .ob-msg { margin-top: 16px; padding: 10px 14px; border-radius: 8px; font-size: 12.5px; }
+  .ob-msg.error { color: oklch(0.6 0.18 25); background: oklch(0.96 0.03 25); border: 1px solid oklch(0.88 0.07 25); }
+  .ob-msg.ok { color: oklch(0.5 0.14 150); background: oklch(0.96 0.05 150); border: 1px solid oklch(0.88 0.08 150); }
+</style>
+</head>
+<body>
+<div class="ob-shell">
+  <div class="ob-card">
+    <div class="ob-eyebrow">自助入驻</div>
+    <h1 class="ob-title">连接你的本地推账户</h1>
+    <p class="ob-sub" id="obSub">正在读取授权发现的账户…</p>
+    <div class="ob-list" id="obList"></div>
+    <div class="ob-actions" id="obActions" style="display:none;">
+      <button class="primary-btn" id="confirmBtn">确认连接</button>
+      <button class="ghost-btn" onclick="window.location.href='/'">取消</button>
+    </div>
+    <div id="obMsg"></div>
+  </div>
+</div>
+
+<script>
+const TAG_LABEL = { MAIN_ACCOUNT: '主账户', COPY_ACCOUNT: '复制账户' };
+const ROLE_LABEL = { DIRECT_ACCOUNT: '直营', VIRTUAL_ACCOUNT: '虚拟' };
+
+async function load() {
+  const sub = document.getElementById('obSub');
+  const list = document.getElementById('obList');
+  const actions = document.getElementById('obActions');
+  try {
+    const r = await fetch('/api/onboarding/pending');
+    const d = await r.json();
+    if (!r.ok) { sub.textContent = d.error || '加载失败'; return; }
+    const candidates = d.data?.candidates ?? [];
+    if (!d.data?.pending || !candidates.length) {
+      sub.textContent = '没有待确认的授权，请返回工作台重新点击「连接我的本地推账户」。';
+      list.innerHTML = '<div class="ob-empty">暂无候选账户</div>';
+      return;
+    }
+    sub.textContent = `发现 ${candidates.length} 个本地推账户，勾选要接入潮线的账户（已默认勾选有投放数据的账户）：`;
+    list.innerHTML = candidates.map((c, i) => `
+      <label class="ob-row">
+        <input type="checkbox" value="${c.localAccountId}" ${c.recommended ? 'checked' : ''} />
+        <div class="ob-row-main">
+          <div class="ob-row-name">${escapeHtml(c.name || c.localAccountId)}</div>
+          <div class="ob-row-meta">
+            ${c.projectCount > 0 ? `${c.projectCount} 个投放项目` : '暂无投放项目'}
+            · ID ${c.localAccountId}
+          </div>
+        </div>
+        ${c.mainCopyTag ? `<span class="ob-tag ${c.mainCopyTag === 'MAIN_ACCOUNT' ? 'main' : ''}">${TAG_LABEL[c.mainCopyTag] || c.mainCopyTag}</span>` : ''}
+        ${c.accountRole ? `<span class="ob-tag">${ROLE_LABEL[c.accountRole] || c.accountRole}</span>` : ''}
+      </label>
+    `).join('');
+    actions.style.display = 'flex';
+  } catch (e) {
+    sub.textContent = '网络异常，请刷新重试';
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+}
+
+async function confirm() {
+  const btn = document.getElementById('confirmBtn');
+  const msgEl = document.getElementById('obMsg');
+  const selected = Array.from(document.querySelectorAll('#obList input:checked')).map(el => el.value);
+  if (!selected.length) {
+    msgEl.innerHTML = '<div class="ob-msg error">请至少勾选一个账户</div>';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = '连接中…';
+  try {
+    const r = await fetch('/api/onboarding/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ localAccountIds: selected }),
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      msgEl.innerHTML = `<div class="ob-msg error">${escapeHtml(d.error || '连接失败')}</div>`;
+      btn.disabled = false;
+      btn.textContent = '确认连接';
+      return;
+    }
+    msgEl.innerHTML = `<div class="ob-msg ok">${escapeHtml(d.data.message)}，即将跳转工作台…</div>`;
+    setTimeout(() => { window.location.href = '/'; }, 1500);
+  } catch (e) {
+    msgEl.innerHTML = '<div class="ob-msg error">网络异常，请稍后重试</div>';
+    btn.disabled = false;
+    btn.textContent = '确认连接';
+  }
+}
+
+document.getElementById('confirmBtn').addEventListener('click', confirm);
+load();
+</script>
+</body>
+</html>
