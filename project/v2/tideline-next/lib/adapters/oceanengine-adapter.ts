@@ -623,6 +623,88 @@ export class OceanEngineAdapter implements IAdAdapter {
     return rows.map(row => mapLocalPromoRow(row, String(row.promotion_id ?? '')));
   }
 
+  // ── 素材(material)报表 —— Phase 5b，只读展示，无写操作 ──────────────────────
+
+  /**
+   * 拉取素材维度报表（每条视频/图文的真实指标）。
+   * 文档：GET v3.0/local/report/material/get/
+   * 注意这是纯 Access-Token 的开放 API——之前"素材级数据要签名才能拿"的结论只
+   * 针对后台"直播间画面"网页接口，不适用于这里（2026-07-31 文档确认）。
+   * 素材没有单独的暂停/恢复接口（只能通过单元的素材列表全量替换间接改），
+   * 所以本方法只用于报表展示，不接任何自动化动作。
+   */
+  async fetchMaterialReport(
+    localAccountId: string,
+    opts: { materialIds?: string[]; promotionIds?: string[]; startDate?: string; endDate?: string } = {},
+  ): Promise<Array<{
+    materialId: string; materialName: string; materialType: string;
+    spent: number; roas: number; gmv: number; orders: number;
+    impressions: number; clicks: number; ctr: number; cpm: number;
+    convertCnt: number; conversionRate: number;
+    playOverRate: number; dyLikeRate: number;
+  }>> {
+    localAccountId = normalizeOceanEngineAccountId(localAccountId);
+    const token = await this.getAccessToken(localAccountId);
+    const today = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
+    const end   = opts.endDate   ?? today;
+    const start = opts.startDate ?? today;
+
+    // 素材报表的指标集：通用指标 + 视频互动指标（完播率/点赞率是素材质量的核心信号）
+    const metrics = [
+      ...LOCAL_PROMO_METRICS,
+      'conversion_rate', 'play_over_rate', 'dy_like_rate',
+    ];
+
+    const params: Record<string, string> = {
+      local_account_id: localAccountId,
+      time_granularity: 'TIME_GRANULARITY_TOTAL',
+      start_date: start,
+      end_date: end,
+      metrics: JSON.stringify(metrics),
+      page: '1',
+      page_size: '100',
+    };
+    // material_ids / promotion_ids 都是 19 位大整数，同 fetchProjectReport 的
+    // 原始字面量拼接方案；字段名按文档，实测不生效再用 /api/debug/oe/material-report 探针核对。
+    const filters: string[] = [];
+    if (opts.materialIds?.length) {
+      const ids = opts.materialIds.map(id => String(id).replace(/[^0-9]/g, '')).filter(Boolean);
+      if (ids.length) filters.push(`"material_ids":[${ids.join(',')}]`);
+    }
+    if (opts.promotionIds?.length) {
+      const ids = opts.promotionIds.map(id => String(id).replace(/[^0-9]/g, '')).filter(Boolean);
+      if (ids.length) filters.push(`"promotion_ids":[${ids.join(',')}]`);
+    }
+    if (filters.length) params.filtering = `{${filters.join(',')}}`;
+
+    const data = await oeRequest<{
+      material_list?: Array<Record<string, unknown>>;
+      page_info?: { total_number: number };
+    }>(`${LOCAL_BASE}report/material/get/`, token, { method: 'GET', params });
+
+    const rows = data.material_list ?? [];
+    if (rows.length > 0) {
+      console.log(`[OceanEngine] 本地推素材报表首行:`, JSON.stringify(rows[0]).slice(0, 300));
+    }
+    return rows.map(row => ({
+      materialId:     String(row.material_id ?? ''),
+      materialName:   String(row.material_name ?? ''),
+      materialType:   String(row.material_type ?? ''),
+      spent:          Number(row.stat_cost ?? 0),
+      roas:           Number(row.oto_pay_order_roi ?? 0),
+      gmv:            Number(row.oto_pay_order_amount ?? 0),
+      orders:         Number(row.oto_pay_order_count ?? 0),
+      impressions:    Number(row.show_cnt ?? 0),
+      clicks:         Number(row.click_cnt ?? 0),
+      ctr:            Number(row.ctr ?? 0) / 100,          // 百分数转小数，同 mapLocalPromoRow
+      cpm:            Number(row.cpm_platform ?? 0),
+      convertCnt:     Number(row.convert_cnt ?? 0),
+      conversionRate: Number(row.conversion_rate ?? 0) / 100,
+      playOverRate:   Number(row.play_over_rate ?? 0) / 100,
+      dyLikeRate:     Number(row.dy_like_rate ?? 0) / 100,
+    }));
+  }
+
   // ── 统计数据 ────────────────────────────────────────────────────────────────
 
   /**

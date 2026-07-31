@@ -60,6 +60,29 @@ export const statQueryRange: RouteHandler = async (req, res) => {
   }
 };
 
+// GET /api/ads/materials?brand=b1[&start=YYYY-MM-DD&end=YYYY-MM-DD]
+// Phase 5b：素材维度报表（每条视频/图文的真实指标），实时拉取不落盘。
+// 只读展示——素材没有单独的暂停/恢复开放接口，不接任何自动化动作。
+export const materialsReport: RouteHandler = async (req, res) => {
+  const brand = (req.query.brand ?? '').trim();
+  if (!brand) return err(res, 'brand 必填');
+  const acct = accounts.find(a => a.brand === brand && a.tenantId === req.session?.tenantId);
+  const advid = acct?.externalId;
+  if (!advid) return err(res, `品牌 ${brand} 无关联本地推账户`, 404);
+
+  const today = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
+  const start = (req.query.start ?? '').trim() || today;
+  const end   = (req.query.end ?? '').trim() || start;
+
+  try {
+    const oe = adAdapter as OceanEngineAdapter;
+    const materials = await oe.fetchMaterialReport(advid, { startDate: start, endDate: end });
+    ok(res, { materials, range: { start, end }, localAccountId: advid }, { total: materials.length });
+  } catch (e) {
+    err(res, `拉取素材报表失败: ${String(e)}`);
+  }
+};
+
 export const GET: RouteHandler = (req, res) => {
   const { brand, status } = req.query;
   // 隐藏归档账户的计划（hidden 账户不在常规列表展示）

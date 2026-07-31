@@ -87,6 +87,7 @@ const Ads = function Ads() {
           <div className={`tab ${tab === 'review'    ? 'active' : ''}`} onClick={() => setTab('review')}>投流复盘</div>
           <div className={`tab ${tab === 'campaigns' ? 'active' : ''}`} onClick={() => setTab('campaigns')}>投放计划</div>
           <div className={`tab ${tab === 'promotions' ? 'active' : ''}`} onClick={() => setTab('promotions')}>单元管理</div>
+          <div className={`tab ${tab === 'materials' ? 'active' : ''}`} onClick={() => setTab('materials')}>素材分析</div>
           <div className={`tab ${tab === 'rules'     ? 'active' : ''}`} onClick={() => setTab('rules')}>自动规则</div>
           <div className={`tab ${tab === 'logs'      ? 'active' : ''}`} onClick={() => setTab('logs')}>操作日志</div>
           <div className={`tab ${tab === 'ai'        ? 'active' : ''}`} onClick={() => setTab('ai')}>
@@ -99,6 +100,7 @@ const Ads = function Ads() {
         {tab === 'review'    && <ExternalReports />}
         {tab === 'campaigns' && <Campaigns />}
         {tab === 'promotions' && <Promotions />}
+        {tab === 'materials' && <Materials />}
         {tab === 'rules'     && <Rules />}
         {tab === 'logs'      && <Logs />}
         {tab === 'ai'        && <AiDecisions />}
@@ -567,6 +569,123 @@ function Promotions() {
                   {p.status === 'ended'  && <Chip tone="default">已结束</Chip>}
                   {p.status === 'unknown' && <Chip tone="default">未知</Chip>}
                 </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+// ── 素材分析（Phase 5b：只读报表——素材没有单独暂停/恢复的开放接口，
+//    只展示原始数字，不做好坏色标/阈值判断）────────────────────────────────
+function Materials() {
+  const todayStr = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
+  const [brand, setBrand] = useState('');
+  const [start, setStart] = useState(todayStr);
+  const [end, setEnd] = useState(todayStr);
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [errMsg, setErrMsg] = useState('');
+  const [loaded, setLoaded] = useState(false);
+
+  const brandOptions = (TL.brands || []).slice().sort((a, b) => a.name.localeCompare(b.name, 'zh'));
+
+  const load = async () => {
+    if (!brand) { setErrMsg('请先选择品牌'); return; }
+    setLoading(true);
+    setErrMsg('');
+    try {
+      const r = await fetch(`/api/ads/materials?brand=${encodeURIComponent(brand)}&start=${start}&end=${end}`);
+      const d = await r.json();
+      if (!r.ok) {
+        setErrMsg(d.error || '拉取失败');
+        setRows([]);
+      } else {
+        setRows(d.data?.materials || []);
+      }
+      setLoaded(true);
+    } catch (e) {
+      setErrMsg('网络异常: ' + e.message);
+      setRows([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const pct = (v) => (v > 0 ? (v * 100).toFixed(1) + '%' : '—');
+  const money = (v) => (v > 0 ? `¥ ${Number(v).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}` : '—');
+
+  return (
+    <div className="card">
+      <div className="card-h" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <h3>素材分析{loaded ? ` · ${rows.length} 条素材` : ''}</h3>
+        <div className="row tight" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <select
+            value={brand}
+            onChange={e => setBrand(e.target.value)}
+            style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12.5 }}
+          >
+            <option value="">选择品牌…</option>
+            {brandOptions.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+          <input type="date" value={start} onChange={e => setStart(e.target.value)}
+            style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12.5 }} />
+          <span className="muted" style={{ fontSize: 12 }}>~</span>
+          <input type="date" value={end} onChange={e => setEnd(e.target.value)}
+            style={{ padding: '5px 8px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12.5 }} />
+          <button className="btn" onClick={load} disabled={loading}>
+            <Icon name="refresh" size={13} /> {loading ? '拉取中…' : '查询'}
+          </button>
+        </div>
+      </div>
+      {errMsg && (
+        <div style={{ padding: '8px 12px', margin: '0 16px 12px', background: 'var(--surface)', borderRadius: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+          ⚠️ {errMsg}
+        </div>
+      )}
+      {!loaded ? (
+        <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>
+          <div style={{ marginBottom: 8 }}>选择品牌和日期区间后点「查询」</div>
+          <div style={{ fontSize: 12 }}>实时从巨量本地推拉取每条视频/图文素材的真实投放数据，不落库</div>
+        </div>
+      ) : loading ? (
+        <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>正在从巨量引擎拉取数据…</div>
+      ) : !rows.length ? (
+        <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>该品牌在此区间内暂无素材投放数据</div>
+      ) : (
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>素材</th>
+              <th>类型</th>
+              <th className="num">消耗</th>
+              <th className="num">支付ROI</th>
+              <th className="num">成交金额</th>
+              <th className="num">点击率</th>
+              <th className="num">转化率</th>
+              <th className="num">完播率</th>
+              <th className="num">点赞率</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(m => (
+              <tr key={m.materialId}>
+                <td>
+                  <span style={{ fontWeight: 500 }}>{m.materialName || '(未命名素材)'}</span>
+                  <div className="muted mono" style={{ fontSize: 11 }}>{m.materialId}</div>
+                </td>
+                <td className="muted" style={{ fontSize: 12 }}>
+                  {m.materialType === 'VIDEO' ? '视频' : m.materialType === 'CASURAL' ? '图文' : (m.materialType || '—')}
+                </td>
+                <td className="num mono">{money(m.spent)}</td>
+                <td className="num mono">{m.roas > 0 ? m.roas.toFixed(2) : '—'}</td>
+                <td className="num mono">{money(m.gmv)}</td>
+                <td className="num mono">{pct(m.ctr)}</td>
+                <td className="num mono">{pct(m.conversionRate)}</td>
+                <td className="num mono">{pct(m.playOverRate)}</td>
+                <td className="num mono">{pct(m.dyLikeRate)}</td>
               </tr>
             ))}
           </tbody>
