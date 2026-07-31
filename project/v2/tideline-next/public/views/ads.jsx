@@ -456,6 +456,7 @@ function Promotions() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
+  const [brandFilter, setBrandFilter] = useState('');
 
   const load = useCallback(() => {
     setLoading(true);
@@ -467,6 +468,12 @@ function Promotions() {
   }, []);
 
   useEffect(load, [load]);
+
+  // 品牌下拉——用 TL.brands（该租户全部品牌），不是从单元数据里反推，
+  // 不然还没关联上项目的单元就永远筛不出该有的品牌选项。
+  const brandOptions = (TL.brands || []).slice().sort((a, b) => a.name.localeCompare(b.name, 'zh'));
+  const filteredRows = brandFilter ? rows.filter(p => p.brand === brandFilter) : rows;
+  const unlinkedCount = rows.filter(p => !p.projectInternalId).length;
 
   const syncPromotions = async () => {
     setSyncing(true);
@@ -491,15 +498,31 @@ function Promotions() {
 
   return (
     <div className="card">
-      <div className="card-h" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h3>单元管理 · {rows.filter(p => p.status === 'active').length} 个投放中</h3>
-        <button className="btn" onClick={syncPromotions} disabled={syncing}>
-          <Icon name="refresh" size={13} /> {syncing ? '同步中…' : '同步单元数据'}
-        </button>
+      <div className="card-h" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <h3>单元管理 · {filteredRows.filter(p => p.status === 'active').length} 个投放中</h3>
+        <div className="row tight" style={{ gap: 8 }}>
+          <select
+            value={brandFilter}
+            onChange={e => setBrandFilter(e.target.value)}
+            style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 12.5 }}
+          >
+            <option value="">全部品牌</option>
+            {brandOptions.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+          <button className="btn" onClick={syncPromotions} disabled={syncing}>
+            <Icon name="refresh" size={13} /> {syncing ? '同步中…' : '同步单元数据'}
+          </button>
+        </div>
       </div>
       {syncMsg && (
         <div style={{ padding: '8px 12px', margin: '0 16px 12px', background: 'var(--surface)', borderRadius: 6, fontSize: 12, color: 'var(--text-muted)' }}>
           {syncMsg}
+        </div>
+      )}
+      {unlinkedCount > 0 && (
+        <div style={{ padding: '8px 12px', margin: '0 16px 12px', background: 'var(--warning-bg, #fff7e6)', borderRadius: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+          ⚠️ {unlinkedCount} 个单元暂未关联到所属品牌/项目（多半是项目太新、上一次「同步广告主」还没拉到）——
+          先去「投放计划」tab 点一次「同步广告主」，再回来点「同步单元数据」就会补上。
         </div>
       )}
       {loading ? (
@@ -509,11 +532,14 @@ function Promotions() {
           <div style={{ marginBottom: 8 }}>暂无单元数据</div>
           <div style={{ fontSize: 12 }}>点击「同步单元数据」拉取当前租户下所有账户的单元列表</div>
         </div>
+      ) : !filteredRows.length ? (
+        <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>该品牌下暂无单元数据</div>
       ) : (
         <table className="tbl">
           <thead>
             <tr>
               <th>单元 / 所属项目</th>
+              <th>品牌</th>
               <th className="num">消耗</th>
               <th className="num">支付ROI</th>
               <th className="num">点击率</th>
@@ -522,11 +548,14 @@ function Promotions() {
             </tr>
           </thead>
           <tbody>
-            {rows.map(p => (
+            {filteredRows.map(p => (
               <tr key={p.id}>
                 <td>
                   <span style={{ fontWeight: 500 }}>{p.name}</span>
                   <div className="muted mono" style={{ fontSize: 11 }}>{p.promotionId}</div>
+                </td>
+                <td className="muted" style={{ fontSize: 12.5 }}>
+                  {TL.brandById(p.brand)?.name || (p.brand ? p.brand : '—')}
                 </td>
                 <td className="num mono">{p.spent > 0 ? `¥ ${p.spent.toLocaleString()}` : '—'}</td>
                 <td className="num mono">{p.roas > 0 ? p.roas.toFixed(2) : '—'}</td>
