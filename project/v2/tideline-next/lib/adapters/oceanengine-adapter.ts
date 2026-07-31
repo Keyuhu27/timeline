@@ -649,10 +649,16 @@ export class OceanEngineAdapter implements IAdAdapter {
     const end   = opts.endDate   ?? today;
     const start = opts.startDate ?? today;
 
-    // 素材报表的指标集：通用指标 + 视频互动指标（完播率/点赞率是素材质量的核心信号）
+    // 素材报表专属指标集——不能照搬项目报表的 LOCAL_PROMO_METRICS：
+    // 实测（2026-07-31，亿滋账户）带 poi_recommend_count 会报
+    // 「指标：poi_recommend_count不在数据集配置中 (code=40000)」，
+    // 到店场景专属指标（poi_recommend_count/phone_confirm_cnt/form_cnt/
+    // clue_pay_order_cnt）在素材维度的数据集里不存在，只保留通用+视频互动指标。
     const metrics = [
-      ...LOCAL_PROMO_METRICS,
-      'conversion_rate', 'play_over_rate', 'dy_like_rate',
+      'stat_cost', 'show_cnt', 'click_cnt', 'ctr', 'cpm_platform',
+      'convert_cnt', 'conversion_rate',
+      'oto_pay_order_count', 'oto_pay_order_amount', 'oto_pay_order_roi',
+      'play_over_rate', 'dy_like_rate',
     ];
 
     const params: Record<string, string> = {
