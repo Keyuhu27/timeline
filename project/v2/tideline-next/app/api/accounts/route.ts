@@ -1,13 +1,14 @@
 // GET  /api/accounts         — 返回当前账户列表
 // POST /api/accounts/sync    — 从巨量引擎 API 自动发现并同步所有授权广告主
 
-import { accounts, brands, adCampaigns, normalizeOceanEngineAccountId, visibleAccounts } from '../../../lib/db';
+import { accounts, brands, adCampaigns, adPromotions, normalizeOceanEngineAccountId, visibleAccounts } from '../../../lib/db';
 import { ok, err, paginate }             from '../../../lib/api';
 import { OceanEngineAdapter }            from '../../../lib/adapters/oceanengine-adapter';
 import { tokenManager, adAdapter }       from '../../../lib/adapters/index';
 import { saveSnapshot }                  from '../../../lib/persist';
 import type { RouteHandler }             from '../../../lib/api';
-import type { Account, Brand, AdCampaign } from '../../../types/index';
+import type { Account, Brand, AdCampaign, AdPromotion } from '../../../types/index';
+import type { CampaignStats } from '../../../lib/adapters/ad-adapter';
 
 // 已授权本地推账户白名单（兜底）——确保这些账户始终被同步发现，
 // 不依赖 .env / EBP / 代理商接口是否覆盖。新增已授权账户时在此登记。
@@ -113,6 +114,24 @@ export function normalizeProjectStatus(raw: unknown): AdCampaign['status'] {
 
   // 未知：不默认成 paused，避免把投放中的项目误标为已暂停
   console.warn(`[normalizeProjectStatus] ⚠️ 未知状态枚举: "${raw}" — 暂标为 unknown`);
+  return 'unknown';
+}
+
+/**
+ * 单元(promotion) 状态归一化——promotion_status_first 是文档写明的封闭枚举
+ * （ENABLE/DISABLE/DONE/FROZEN/DELETED），不像项目状态那样要在多个候选字段里猜，
+ * 但枚举值本身有没有变化、实际会不会出现文档外的值，还是要用
+ * /api/debug/oe/promotion-list 探针跑一次真实数据确认。
+ */
+export function normalizePromotionStatus(raw: unknown): AdPromotion['status'] {
+  const v = String(raw ?? '').toUpperCase().trim();
+  if (!v) return 'unknown';
+  if (v.includes('DELETE')) return 'deleted';
+  if (v.includes('DONE')) return 'ended';
+  if (v.includes('FROZEN')) return 'ended';
+  if (v.includes('ENABLE')) return 'active';
+  if (v.includes('DISABLE')) return 'paused';
+  console.warn(`[normalizePromotionStatus] ⚠️ 未知单元状态枚举: "${raw}" — 暂标为 unknown`);
   return 'unknown';
 }
 
@@ -336,6 +355,108 @@ export async function syncLocalAccounts(
   saveSnapshot();
   return { synced, campaignsSynced, accounts: result, errors };
 }
+
+/**
+ * 同步某个本地推账户下的全部单元(promotion) —— Phase 5a，只读展示用。
+ * 故意不并入 syncLocalAccounts：单元数量随项目数放大，先独立、按需触发，
+ * 观察真实调用量后再决定要不要跟账户同步合并（见 mighty-enchanting-firefly.md Phase 5a）。
+ */
+export async function syncPromotionsForAccount(
+  localAccountId: string,
+  tenantId: string,
+): Promise<{ synced: number; errors: string[] }> {
+  const errors: string[] = [];
+  const account = accounts.find(a => a.externalId === localAccountId && a.tenantId === tenantId);
+  if (!account) {
+    return { synced: 0, errors: [`账户 ${localAccountId} 不存在或不属于该租户`] };
+  }
+
+  const oe = adAdapter as OceanEngineAdapter;
+  let synced = 0;
+
+  try {
+    const [list, reportRows] = await Promise.all([
+      oe.fetchPromotionList(localAccountId),
+      oe.fetchPromotionReport(localAccountId).catch(e => {
+        errors.push(`拉取单元报表失败: ${String(e)}`);
+        return [] as CampaignStats[];
+      }),
+    ]);
+
+    const statsByPromotionId = new Map<string, CampaignStats>(reportRows.map(r => [r.externalId, r]));
+
+    for (const raw of list) {
+      const promotionId = raw.promotion_id;
+      if (!promotionId) continue;
+      const parentCampaign = adCampaigns.find(c => c.externalId === raw.project_id);
+      const stats = statsByPromotionId.get(promotionId);
+      const status = normalizePromotionStatus(raw.promotion_status_first);
+
+      const existing = adPromotions.find(p => p.promotionId === promotionId);
+      const fields: Partial<AdPromotion> = {
+        name: raw.promotion_name || promotionId,
+        projectId: raw.project_id,
+        projectInternalId: parentCampaign?.id,
+        account: account.id,
+        brand: parentCampaign?.brand ?? '',
+        status,
+        rawStatus: raw.promotion_status_first,
+        optStatus: raw.opt_status,
+        learningPhase: raw.learning_phase,
+        awemeId: raw.aweme_id,
+        awemeName: raw.aweme_name,
+        adType: raw.ad_type,
+        spent: stats?.spent ?? 0,
+        ctr: stats?.ctr ?? 0,
+        cpm: stats?.cpm ?? 0,
+        roas: stats?.roas ?? 0,
+        orders: stats?.orders ?? 0,
+        gmv: stats?.gmv ?? 0,
+        clicks: stats?.clicks ?? 0,
+        impressions: stats?.impressions ?? 0,
+        lastSyncAt: Date.now(),
+        tenantId,
+      };
+
+      if (existing) {
+        Object.assign(existing, fields);
+      } else {
+        adPromotions.push({
+          id: `pr_${promotionId}`,
+          promotionId,
+          startDate: new Date().toISOString().slice(0, 10),
+          ...fields,
+        } as AdPromotion);
+      }
+      synced++;
+    }
+  } catch (e) {
+    errors.push(`拉取单元列表失败: ${String(e)}`);
+  }
+
+  return { synced, errors };
+}
+
+// POST /api/accounts/sync-promotions[?local_account_id=XXX] —— 不传则同步该租户下所有账户
+export const syncPromotions: RouteHandler = async (req, res) => {
+  const tenantId = req.session?.tenantId;
+  if (!tenantId) return err(res, '请先登录');
+
+  const onlyId = (req.query.local_account_id ?? '').trim();
+  const targetAccounts = accounts.filter(a =>
+    a.tenantId === tenantId && a.externalId && (!onlyId || a.externalId === onlyId),
+  );
+  if (!targetAccounts.length) return err(res, '没有可同步的账户');
+
+  let totalSynced = 0;
+  const allErrors: string[] = [];
+  for (const acct of targetAccounts) {
+    const r = await syncPromotionsForAccount(acct.externalId!, tenantId);
+    totalSynced += r.synced;
+    allErrors.push(...r.errors);
+  }
+  ok(res, { synced: totalSynced, accountsChecked: targetAccounts.length, errors: allErrors }, {});
+};
 
 // GET /api/accounts/ebp-orgs[?advertiser_id=XXX]
 // 诊断：拉工作台层级关系，从返回里读 enterprise_organization_id。

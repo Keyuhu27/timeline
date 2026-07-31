@@ -126,6 +126,111 @@ export async function promotionReport(req: IncomingMessage, res: ServerResponse)
   await probeReport(res, req, 'report/promotion/get/');
 }
 
+export async function materialReport(req: IncomingMessage, res: ServerResponse) {
+  await probeReport(res, req, 'report/material/get/');
+}
+
+// ─── GET /api/debug/oe/promotion-list?local_account_id=...[&project_id=...] ──
+// 探测 v3.0/local/promotion/list/ 真实响应字段（Phase 5a 校准用，不硬编码字段）。
+export async function promotionList(req: IncomingMessage, res: ServerResponse) {
+  const url = new URL('http://x' + req.url!);
+  const localAccountId = url.searchParams.get('local_account_id');
+  if (!localAccountId) return sendErr(res, '缺少 local_account_id 参数');
+  const projectId = url.searchParams.get('project_id');
+
+  let token: string;
+  try {
+    token = await tokenManager.getAnyToken('oceanengine');
+  } catch (e) {
+    return sendErr(res, `获取 token 失败: ${String(e)}`, 500);
+  }
+
+  const params: Record<string, string> = {
+    local_account_id: localAccountId,
+    page: '1',
+    page_size: url.searchParams.get('page_size') ?? '20',
+  };
+  if (projectId) params.filtering = JSON.stringify({ project_id: Number(projectId) });
+
+  const qs = new URLSearchParams(params).toString();
+  const fullUrl = `${LOCAL_BASE}promotion/list/?${qs}`;
+
+  let rawText = '';
+  let httpStatus = 0;
+  try {
+    const r = await fetch(fullUrl, { headers: { 'Access-Token': token } });
+    httpStatus = r.status;
+    rawText = await r.text();
+  } catch (e) {
+    return sendErr(res, `网络请求失败: ${String(e)}`, 500);
+  }
+
+  let parsed: Record<string, unknown> | null = null;
+  try { parsed = safeJsonParse<Record<string, unknown>>(rawText); } catch { /* not JSON */ }
+
+  const data = parsed?.data as Record<string, unknown> | undefined;
+  const list = (data?.promotion_list ?? []) as unknown[];
+  const firstRow = list[0] as Record<string, unknown> | undefined;
+
+  ok(res, {
+    probe: 'promotion/list/',
+    request: { url: fullUrl, params },
+    http_status: httpStatus,
+    oe_code: parsed?.code,
+    oe_message: parsed?.message,
+    list_count: list.length,
+    first_row: firstRow ?? null,
+    first_row_keys: firstRow ? Object.keys(firstRow) : [],
+    raw_response: rawText.slice(0, 8000),
+  });
+}
+
+// ─── GET /api/debug/oe/promotion-detail?local_account_id=...&promotion_id=... ──
+// 探测 v3.0/local/promotion/detail/ 真实响应（写操作前必读，用于确认
+// customer_material_list 等字段结构，是 Phase 5d 写安全验证的前置步骤）。
+export async function promotionDetail(req: IncomingMessage, res: ServerResponse) {
+  const url = new URL('http://x' + req.url!);
+  const localAccountId = url.searchParams.get('local_account_id');
+  const promotionId = url.searchParams.get('promotion_id');
+  if (!localAccountId || !promotionId) return sendErr(res, '缺少 local_account_id 或 promotion_id 参数');
+
+  let token: string;
+  try {
+    token = await tokenManager.getAnyToken('oceanengine');
+  } catch (e) {
+    return sendErr(res, `获取 token 失败: ${String(e)}`, 500);
+  }
+
+  const params: Record<string, string> = { local_account_id: localAccountId, promotion_id: promotionId };
+  const qs = new URLSearchParams(params).toString();
+  const fullUrl = `${LOCAL_BASE}promotion/detail/?${qs}`;
+
+  let rawText = '';
+  let httpStatus = 0;
+  try {
+    const r = await fetch(fullUrl, { headers: { 'Access-Token': token } });
+    httpStatus = r.status;
+    rawText = await r.text();
+  } catch (e) {
+    return sendErr(res, `网络请求失败: ${String(e)}`, 500);
+  }
+
+  let parsed: Record<string, unknown> | null = null;
+  try { parsed = safeJsonParse<Record<string, unknown>>(rawText); } catch { /* not JSON */ }
+
+  const data = parsed?.data as Record<string, unknown> | undefined;
+
+  ok(res, {
+    probe: 'promotion/detail/',
+    request: { url: fullUrl, params },
+    http_status: httpStatus,
+    oe_code: parsed?.code,
+    oe_message: parsed?.message,
+    data_keys: data ? Object.keys(data) : [],
+    raw_response: rawText.slice(0, 8000),
+  });
+}
+
 // ─── 后台首页 statQuery 抓包复现 ──────────────────────────────────────────────
 // 开放平台 account/project/promotion 报表都拿不到「全域投放消耗」(实测全 0/空)，
 // 只能复现本地推后台首页真实接口 statQuery 来理解字段口径。

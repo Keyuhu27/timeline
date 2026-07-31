@@ -182,6 +182,39 @@ export interface AdCampaign {
   tenantId: string;
 }
 
+// ─── 单元(promotion) —— 项目(project/AdCampaign)下一级颗粒度 ───────────────
+// Phase 5a：只读展示，字段先按官方文档字段表填，实际以 /api/debug/oe/promotion-*
+// 探针拿到的真实响应为准（这个项目里已经不止一次出现"实测字段和文档不一致"）。
+export interface AdPromotion {
+  id: string;                  // 内部 id，`pr_${promotionId}`
+  promotionId: string;         // externalId，19 位大整数 → 字符串
+  projectId: string;           // 对应 AdCampaign.externalId
+  projectInternalId?: string;  // 对应 AdCampaign.id，同步时按 externalId 反查回填
+  name: string;
+  account: string;             // 同 AdCampaign.account 语义
+  brand: string;
+  status: 'active' | 'paused' | 'ended' | 'deleted' | 'unknown';
+  rawStatus?: string;
+  optStatus?: string;          // 原始 opt_status，写操作前的 detail-merge 要用
+  learningPhase?: string;
+  awemeId?: string;
+  awemeName?: string;
+  adType?: string;
+  spent: number;
+  ctr: number;
+  cpm: number;
+  roas: number;                // oto_pay_order_roi
+  liveRoas?: number;           // live_oto_pay_order_roi
+  videoRoas?: number;          // video_oto_pay_order_roi
+  orders: number;
+  gmv: number;
+  clicks: number;
+  impressions: number;
+  lastSyncAt?: number;
+  startDate: string;
+  tenantId: string;
+}
+
 export interface ScheduleItem {
   id: string;
   title: string;
@@ -230,6 +263,12 @@ export interface AutoRule {
   createdAt: string;
   lastTriggeredAt?: string;
   tenantId: string;
+  // Phase 5c：规则作用的颗粒度，缺省='project'（历史规则全部是项目级，无需迁移）。
+  // 'promotion' 级规则的可选 metric 范围比项目级窄——report/promotion/get/ 目前
+  // 确认返回的指标里没有 poi_recommend_count/phone_confirm_cnt/form_cnt/
+  // clue_pay_order_cnt 这类到店场景专属字段，UI 建规则时需按 scope 过滤 metric 选项，
+  // 不能假设项目级的全部指标在单元级也拿得到。
+  scope?: 'project' | 'promotion';
 }
 
 // ─── 操作日志 ─────────────────────────────────────────────────────────────
@@ -257,6 +296,7 @@ export interface OperationLog {
   brandId?: string;
   advertiserId?: string;
   projectId?: string;
+  promotionId?: string;
   materialId?: string;
   ruleCode?: string;
   evidence?: string;

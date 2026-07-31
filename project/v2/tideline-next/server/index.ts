@@ -59,6 +59,7 @@ import * as routeLiveOptim     from '../app/api/live-optimization/route';
 import * as routeLocaladsReach from '../app/api/debug/localads-reach/route';
 import * as routeReportsExternal from '../app/api/reports/external/route';
 import * as routeOnboarding from '../app/api/onboarding/route';
+import * as routePromotions from '../app/api/promotions/route';
 
 // 启动即注水：把上次同步的真实数据从磁盘恢复到内存
 loadPersisted();
@@ -76,6 +77,7 @@ const ROUTES: Record<string, RouteModule> = {
   '/api/accounts/test-fetch':  { POST: routeAccounts.testFetch },
   '/api/accounts/sync-status': { POST: routeAccounts.syncStatus },
   '/api/accounts/sync-diagnosis': { GET: routeAccounts.syncDiagnosis },
+  '/api/accounts/sync-promotions': { POST: routeAccounts.syncPromotions },
   '/api/lives':      routeLives,
   '/api/products':   routeProducts,
   '/api/finance':    routeFinance,
@@ -97,6 +99,9 @@ const ROUTES: Record<string, RouteModule> = {
   '/api/debug/oe/account-report':   { GET: routeDebugOE.accountReport },
   '/api/debug/oe/project-report':   { GET: routeDebugOE.projectReport },
   '/api/debug/oe/promotion-report': { GET: routeDebugOE.promotionReport },
+  '/api/debug/oe/material-report':  { GET: routeDebugOE.materialReport },
+  '/api/debug/oe/promotion-list':   { GET: routeDebugOE.promotionList },
+  '/api/debug/oe/promotion-detail': { GET: routeDebugOE.promotionDetail },
   '/api/debug/oe/stat-query':       { GET: routeDebugOE.statQueryAuto, POST: routeDebugOE.statQuery },
   '/api/debug/oe/workbench-local-accounts': { GET: routeDebugOE.workbenchLocalAccounts },
   '/api/debug/laike/replay':    { POST: routeDebugReplay.laikeReplay },
@@ -109,6 +114,7 @@ const ROUTES: Record<string, RouteModule> = {
   '/api/reports/external': routeReportsExternal,
   '/api/onboarding/pending': { GET: routeOnboarding.pending },
   '/api/onboarding/confirm': { POST: routeOnboarding.confirm },
+  '/api/promotions': routePromotions,
 };
 
 // /api/auth 和 /api/auth/callback 不再公开——自助入驻要求已登录，租户身份

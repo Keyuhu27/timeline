@@ -86,6 +86,7 @@ const Ads = function Ads() {
           </div>
           <div className={`tab ${tab === 'review'    ? 'active' : ''}`} onClick={() => setTab('review')}>投流复盘</div>
           <div className={`tab ${tab === 'campaigns' ? 'active' : ''}`} onClick={() => setTab('campaigns')}>投放计划</div>
+          <div className={`tab ${tab === 'promotions' ? 'active' : ''}`} onClick={() => setTab('promotions')}>单元管理</div>
           <div className={`tab ${tab === 'rules'     ? 'active' : ''}`} onClick={() => setTab('rules')}>自动规则</div>
           <div className={`tab ${tab === 'logs'      ? 'active' : ''}`} onClick={() => setTab('logs')}>操作日志</div>
           <div className={`tab ${tab === 'ai'        ? 'active' : ''}`} onClick={() => setTab('ai')}>
@@ -97,6 +98,7 @@ const Ads = function Ads() {
         {tab === 'liveOpt'   && <LiveOptimization />}
         {tab === 'review'    && <ExternalReports />}
         {tab === 'campaigns' && <Campaigns />}
+        {tab === 'promotions' && <Promotions />}
         {tab === 'rules'     && <Rules />}
         {tab === 'logs'      && <Logs />}
         {tab === 'ai'        && <AiDecisions />}
@@ -435,6 +437,104 @@ function Campaigns() {
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// ── 单元管理（Phase 5a：只读，无暂停/恢复——promotion/update/ 全量替换的
+//    写安全性还没在真实环境验证过，见 mighty-enchanting-firefly.md Phase 5）──
+function Promotions() {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState('');
+
+  const load = useCallback(() => {
+    setLoading(true);
+    fetch('/api/promotions?pageSize=1000')
+      .then(r => r.json())
+      .then(d => setRows(d.data || []))
+      .catch(() => setRows([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(load, [load]);
+
+  const syncPromotions = async () => {
+    setSyncing(true);
+    setSyncMsg('');
+    try {
+      const r = await fetch('/api/accounts/sync-promotions', { method: 'POST' });
+      const d = await r.json();
+      if (d.data) {
+        let msg = `已同步 ${d.data.synced} 个单元（检查了 ${d.data.accountsChecked} 个账户）`;
+        if (d.data.errors?.length > 0) msg += `\n⚠️ ${d.data.errors.length} 个错误：${d.data.errors[0]}`;
+        setSyncMsg(msg);
+        load();
+      } else {
+        setSyncMsg('❌ ' + (d.error || '同步失败'));
+      }
+    } catch (e) {
+      setSyncMsg('同步失败: ' + e.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  return (
+    <div className="card">
+      <div className="card-h" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h3>单元管理 · {rows.filter(p => p.status === 'active').length} 个投放中</h3>
+        <button className="btn" onClick={syncPromotions} disabled={syncing}>
+          <Icon name="refresh" size={13} /> {syncing ? '同步中…' : '同步单元数据'}
+        </button>
+      </div>
+      {syncMsg && (
+        <div style={{ padding: '8px 12px', margin: '0 16px 12px', background: 'var(--surface)', borderRadius: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+          {syncMsg}
+        </div>
+      )}
+      {loading ? (
+        <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>加载中…</div>
+      ) : !rows.length ? (
+        <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>
+          <div style={{ marginBottom: 8 }}>暂无单元数据</div>
+          <div style={{ fontSize: 12 }}>点击「同步单元数据」拉取当前租户下所有账户的单元列表</div>
+        </div>
+      ) : (
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>单元 / 所属项目</th>
+              <th className="num">消耗</th>
+              <th className="num">支付ROI</th>
+              <th className="num">点击率</th>
+              <th>学习期</th>
+              <th>状态</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(p => (
+              <tr key={p.id}>
+                <td>
+                  <span style={{ fontWeight: 500 }}>{p.name}</span>
+                  <div className="muted mono" style={{ fontSize: 11 }}>{p.promotionId}</div>
+                </td>
+                <td className="num mono">{p.spent > 0 ? `¥ ${p.spent.toLocaleString()}` : '—'}</td>
+                <td className="num mono">{p.roas > 0 ? p.roas.toFixed(2) : '—'}</td>
+                <td className="num mono">{p.ctr > 0 ? (p.ctr * 100).toFixed(1) + '%' : '—'}</td>
+                <td className="muted" style={{ fontSize: 12 }}>{p.learningPhase || '—'}</td>
+                <td>
+                  {p.status === 'active' && <Chip tone="success" dot>投放中</Chip>}
+                  {p.status === 'paused' && <Chip dot>已暂停</Chip>}
+                  {p.status === 'ended'  && <Chip tone="default">已结束</Chip>}
+                  {p.status === 'unknown' && <Chip tone="default">未知</Chip>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

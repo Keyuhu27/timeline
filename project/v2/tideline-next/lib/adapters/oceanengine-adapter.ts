@@ -515,6 +515,114 @@ export class OceanEngineAdapter implements IAdAdapter {
     });
   }
 
+  // ── 单元(promotion) —— 项目下一级颗粒度（Phase 5a，只读）───────────────────
+
+  /**
+   * 拉取账户下（或指定项目下）的单元列表。
+   * 文档：GET v3.0/local/promotion/list/
+   * projectId 不传则拉整个账户下所有单元。
+   */
+  async fetchPromotionList(localAccountId: string, projectId?: string): Promise<Array<{
+    promotion_id: string; project_id: string; promotion_name: string;
+    ad_type: string; promotion_status_first: string; promotion_status_second: string[];
+    learning_phase: string; aweme_id: string; aweme_name: string;
+    opt_status: string; local_delivery_scene: string;
+  }>> {
+    localAccountId = normalizeOceanEngineAccountId(localAccountId);
+    const token = await this.getAccessToken(localAccountId);
+
+    const params: Record<string, string> = { local_account_id: localAccountId, page: '1', page_size: '100' };
+    if (projectId) params.filtering = JSON.stringify({ project_id: Number(projectId) });
+
+    const data = await oeRequest<{ promotion_list?: Array<Record<string, unknown>> }>(
+      `${LOCAL_BASE}promotion/list/`, token, { method: 'GET', params },
+    );
+
+    const rows = data.promotion_list ?? [];
+    if (rows.length > 0) {
+      console.log(`[OceanEngine] 本地推单元列表首行 (账户 ${localAccountId}):`, JSON.stringify(rows[0]));
+    }
+    return rows.map(raw => ({
+      promotion_id:           String(raw.promotion_id ?? ''),
+      project_id:              String(raw.project_id ?? ''),
+      promotion_name:          String(raw.promotion_name ?? ''),
+      ad_type:                 String(raw.ad_type ?? ''),
+      promotion_status_first:  String(raw.promotion_status_first ?? ''),
+      promotion_status_second: (raw.promotion_status_second as string[] | undefined) ?? [],
+      learning_phase:          String(raw.learning_phase ?? ''),
+      aweme_id:                String(raw.aweme_id ?? ''),
+      aweme_name:              String(raw.aweme_name ?? ''),
+      opt_status:              String(raw.opt_status ?? ''),
+      local_delivery_scene:    String(raw.local_delivery_scene ?? ''),
+    }));
+  }
+
+  /**
+   * 拉取单元详情——写操作（Phase 5d 的 promotion/update/）前必须先调这个，
+   * 原样透传，不预先假设字段结构（customer_material_list 等要等真实响应确认）。
+   * 文档：GET v3.0/local/promotion/detail/
+   */
+  async fetchPromotionDetail(localAccountId: string, promotionId: string): Promise<Record<string, unknown>> {
+    localAccountId = normalizeOceanEngineAccountId(localAccountId);
+    const token = await this.getAccessToken(localAccountId);
+    return oeRequest<Record<string, unknown>>(`${LOCAL_BASE}promotion/detail/`, token, {
+      method: 'GET',
+      params: { local_account_id: localAccountId, promotion_id: promotionId },
+    });
+  }
+
+  /**
+   * 拉取单元维度报表（与 fetchProjectReport 同构，同一套指标口径）。
+   * 文档：GET v3.0/local/report/promotion/get/
+   * 注意：report/promotion/get/ 实测确认返回的指标集比项目报表窄——没有
+   * poi_recommend_count/phone_confirm_cnt/form_cnt/clue_pay_order_cnt 这类到店场景
+   * 专属字段，复用 mapLocalPromoRow() 时这些字段会读到 0，leads 计算会退化成只看
+   * convert_cnt（如果这个字段本身也不在单元报表里返回，leads 会恒为 0，这是已知
+   * 限制，不是 bug）。
+   */
+  async fetchPromotionReport(
+    localAccountId: string,
+    promotionIds?: string[],
+    startDate?: string,
+    endDate?: string,
+  ): Promise<CampaignStats[]> {
+    localAccountId = normalizeOceanEngineAccountId(localAccountId);
+    const token = await this.getAccessToken(localAccountId);
+    const today = new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
+    const end   = endDate   ?? today;
+    const start = startDate ?? today;
+
+    const params: Record<string, string> = {
+      local_account_id: localAccountId,
+      time_granularity: 'TIME_GRANULARITY_TOTAL',
+      start_date: start,
+      end_date: end,
+      metrics: JSON.stringify(LOCAL_PROMO_METRICS),
+      page: '1',
+      page_size: '100',
+    };
+    if (promotionIds && promotionIds.length > 0) {
+      // 单元ID 同样是 19 位大整数，用原始字面量拼接，绕开 JS 大整数精度问题
+      // （同 fetchProjectReport 的 cdp_project_ids 处理）。字段名按文档写的
+      // promotion_ids——如果实测发现不生效，参考 fetchProjectReport 的
+      // cdp_project_ids 先例，可能需要换成内部字段名，用 /api/debug/oe/promotion-report
+      // 探针验证。
+      const idLiterals = promotionIds.map(id => String(id).replace(/[^0-9]/g, '')).filter(Boolean);
+      params.filtering = `{"promotion_ids":[${idLiterals.join(',')}]}`;
+    }
+
+    const data = await oeRequest<{
+      promotion_list?: Array<Record<string, unknown>>;
+      page_info?: { total_number: number };
+    }>(`${LOCAL_BASE}report/promotion/get/`, token, { method: 'GET', params });
+
+    const rows = data.promotion_list ?? [];
+    if (rows.length > 0) {
+      console.log(`[OceanEngine] 本地推单元报表首行:`, JSON.stringify(rows[0]).slice(0, 300));
+    }
+    return rows.map(row => mapLocalPromoRow(row, String(row.promotion_id ?? '')));
+  }
+
   // ── 统计数据 ────────────────────────────────────────────────────────────────
 
   /**

@@ -5,7 +5,7 @@
 import type {
   Tenant, User, TenantMember,
   Brand, TeamMember, Task, Account, LiveSession,
-  Product, FinanceRecord, AdCampaign, ScheduleItem, Competitor, AiDecision,
+  Product, FinanceRecord, AdCampaign, AdPromotion, ScheduleItem, Competitor, AiDecision,
   DailyReport, ExternalReport,
 } from '../types/index';
 
@@ -119,6 +119,10 @@ export const financeRecords: FinanceRecord[] = [
 // 计划列表由 /api/accounts 同步时从 API 自动填充，此处为初始占位
 export const adCampaigns: AdCampaign[] = [];
 
+// Phase 5a：单元(promotion)——项目下一级颗粒度，独立同步（见 syncPromotionsForAccount），
+// 不随 syncLocalAccounts 自动拉取，避免账户同步的调用量意外因项目数放大。
+export const adPromotions: AdPromotion[] = [];
+
 // ─── Schedule ────────────────────────────────────────────────────────────
 export const schedule: ScheduleItem[] = [
   { id: 's1', title: '云杉防晒衣专场直播',    brand: 'b4', type: 'live',  date: '2026-05-12', time: '19:00', platform: '抖音', assignee: 'u5', status: 'scheduled' },
@@ -169,6 +173,9 @@ export function accountsForTenant(tenantId: string): Account[] {
 }
 export function campaignsForTenant(tenantId: string): AdCampaign[] {
   return adCampaigns.filter(c => c.tenantId === tenantId);
+}
+export function promotionsForTenant(tenantId: string): AdPromotion[] {
+  return adPromotions.filter(p => p.tenantId === tenantId);
 }
 export function rulesForTenant(tenantId: string): AutoRule[] {
   return autoRules.filter(r => r.tenantId === tenantId);
