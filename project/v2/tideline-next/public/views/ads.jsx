@@ -124,11 +124,19 @@ function BrandsSummary() {
   const money = (n) => `¥ ${(Number(n) || 0).toLocaleString('zh-CN', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`;
 
   useEffect(() => {
-    fetch('/api/ads?pageSize=1000')
-      .then(r => r.json())
-      .then(d => {
-        const camps = d.data?.campaigns ?? [];
+    Promise.all([
+      fetch('/api/brands').then(r => r.json()),
+      fetch('/api/ads?pageSize=1000').then(r => r.json()),
+    ])
+      .then(([brandsRes, adsRes]) => {
+        const brandList = brandsRes.data ?? [];
+        const camps = adsRes.data?.campaigns ?? [];
         const byBrand = {};
+        // 先把这个本地推账号下所有品牌都建一行——不管当前有没有投放计划/在不在投流中，
+        // 都要出现在汇总里，不能只靠"有计划数据的品牌才出现"。
+        for (const br of brandList) {
+          byBrand[br.id] = { brand: br.id, name: br.name, count: 0, active: 0, spent: 0, gmv: 0 };
+        }
         for (const c of camps) {
           const bid = c.brand;
           const b = byBrand[bid] || (byBrand[bid] = { brand: bid, name: (TL.brandById(bid)?.name) || bid, count: 0, active: 0, spent: 0, gmv: 0 });
@@ -142,7 +150,7 @@ function BrandsSummary() {
   }, []);
 
   if (loading) return <div className="card-b muted" style={{ fontSize: 12.5 }}>加载中…</div>;
-  if (!rows.length) return <div className="card-b muted" style={{ fontSize: 12.5 }}>暂无计划数据，请先「同步广告主」。</div>;
+  if (!rows.length) return <div className="card-b muted" style={{ fontSize: 12.5 }}>暂无品牌数据，请先「连接我的本地推账户」或「同步广告主」。</div>;
   return (
     <div className="card">
       <table className="tbl">
