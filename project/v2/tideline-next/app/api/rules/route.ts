@@ -27,6 +27,16 @@ export const POST: RouteHandler = (req, res) => {
   }
   if (!req.session) return err(res, '未登录', 401);
 
+  const scope = body.scope ?? 'project';
+  if (scope !== 'project' && scope !== 'promotion') {
+    return err(res, 'scope 只能是 project 或 promotion');
+  }
+  // Phase 5c：单元(promotion)级规则目前只支持"发送告警"，暂停/恢复/改预算要等
+  // promotion/update/ 的全量替换写风险验证通过后才能开放（见 Phase 5d）。
+  if (scope === 'promotion' && body.action !== 'alert') {
+    return err(res, '单元级规则目前只支持"发送告警"动作，暂不支持暂停/恢复/改预算');
+  }
+
   const rule: AutoRule = {
     id:               `rule_${Date.now()}`,
     name:             body.name,
@@ -41,6 +51,7 @@ export const POST: RouteHandler = (req, res) => {
     createdBy:        body.createdBy ?? 'u1',
     createdAt:        new Date().toISOString(),
     tenantId:         req.session.tenantId,
+    scope,
   };
   autoRules.push(rule);
   ok(res, rule);

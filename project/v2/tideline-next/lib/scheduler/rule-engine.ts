@@ -1,10 +1,17 @@
 // 潮线 Tideline · 调控规则引擎
 // 核心逻辑：按规则检查每个活跃计划，条件满足时自动执行动作并写日志
 
-import type { AutoRule, AdCampaign, OperationLog } from '../../types/index';
+import type { AutoRule, AdCampaign, AdPromotion, OperationLog, RuleMetric } from '../../types/index';
 import type { CampaignStats }                       from '../adapters/ad-adapter';
 import { adAdapter, alertService }                  from '../adapters/index';
-import { autoRules, adCampaigns, operationLogs, normalizeOceanEngineAccountId } from '../db';
+import { autoRules, adCampaigns, adPromotions, operationLogs, normalizeOceanEngineAccountId } from '../db';
+
+// ─── Phase 5c：单元(promotion)级规则可用的指标 ───────────────────────────────
+// report/promotion/get/ 实测确认不返回到店场景专属字段（poi_recommend_count 等，
+// 见 oceanengine-adapter.ts 的 fetchPromotionReport 注释），复用 mapLocalPromoRow()
+// 时 storeVisits/leads 会恒为 0；AdPromotion 也没有 budget 字段，spent_pct 无法计算。
+// 所以单元级规则的 metric 只开放在这个集合里，落在集合外的规则直接跳过评估。
+const PROMOTION_SAFE_METRICS: RuleMetric[] = ['ctr', 'cpm', 'roas', 'gmv', 'cvr'];
 
 // ─── 运算符比较 ───────────────────────────────────────────────────────────
 function compare(value: number, operator: AutoRule['operator'], threshold: number): boolean {
@@ -157,6 +164,63 @@ function isInCooldown(rule: AutoRule, campaignId: string): boolean {
   return elapsed < rule.cooldownMinutes;
 }
 
+// ─── Phase 5c：单元(promotion)级规则——先只做 alert，不做真实动作 ────────────
+function getPromotionMetric(stats: CampaignStats, metric: RuleMetric): number {
+  switch (metric) {
+    case 'ctr':  return stats.ctr;
+    case 'cpm':  return stats.cpm;
+    case 'roas': return stats.roas;
+    case 'cvr':  return stats.cvr;
+    case 'gmv':  return stats.gmv;
+    default:     return NaN; // 调用前已按 PROMOTION_SAFE_METRICS 过滤，不应该走到这里
+  }
+}
+
+function isPromotionInCooldown(rule: AutoRule, promotionId: string): boolean {
+  if (!rule.lastTriggeredAt) return false;
+  const last = operationLogs
+    .filter(l => l.ruleId === rule.id && l.promotionId === promotionId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  if (!last) return false;
+  const elapsed = (Date.now() - new Date(last.createdAt).getTime()) / 60000;
+  return elapsed < rule.cooldownMinutes;
+}
+
+async function executePromotionAlert(
+  rule: AutoRule,
+  promotion: AdPromotion,
+  metricValue: number,
+): Promise<void> {
+  const actionDesc = `告警通知 · ${rule.metric} ${rule.operator} ${rule.threshold}（实际 ${metricValue.toFixed(3)}）`;
+  const log: OperationLog = {
+    id:           `log_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    source:       'auto_rule',
+    level:        'success',
+    campaignName: promotion.name, // 复用现有展示字段，Logs 表格不用改
+    promotionId:  promotion.promotionId,
+    ruleId:       rule.id,
+    ruleName:     rule.name,
+    action:       actionDesc,
+    before:       { [rule.metric]: metricValue },
+    after:        {},
+    success:      true,
+    createdAt:    new Date().toISOString(),
+    tenantId:     promotion.tenantId,
+  };
+  operationLogs.push(log);
+
+  await alertService.send('rule_triggered', {
+    规则: rule.name,
+    单元: promotion.name,
+    指标: `${rule.metric} = ${metricValue.toFixed(3)}`,
+    阈值: `${rule.operator} ${rule.threshold}`,
+    动作: actionDesc,
+    结果: '✅ 成功',
+  });
+
+  rule.lastTriggeredAt = new Date().toISOString();
+}
+
 // ─── 主入口：对所有活跃计划跑一轮规则 ────────────────────────────────────
 export async function runRulesOnce(): Promise<{
   checked: number;
@@ -235,6 +299,67 @@ export async function runRulesOnce(): Promise<{
     }
   }
 
+  // ── Phase 5c：单元(promotion)级规则巡检 ─────────────────────────────────
+  const promotionRules   = enabledRules.filter(r => r.scope === 'promotion');
+  const activePromotions = adPromotions.filter(p => p.status === 'active');
+
+  if (promotionRules.length > 0 && activePromotions.length > 0) {
+    console.log(`[RuleEngine] 单元级巡检: ${promotionRules.length} 条规则 × ${activePromotions.length} 个活跃单元`);
+
+    const byPromoAccount = new Map<string, { acctExternalId: string; promotions: typeof activePromotions }>();
+    for (const promotion of activePromotions) {
+      let externalAccountId: string;
+      try {
+        externalAccountId = normalizeOceanEngineAccountId(promotion.account);
+      } catch (e) {
+        console.warn(`[RuleEngine] 跳过单元 ${promotion.id}（${promotion.name}）: ${String(e)}`);
+        errors++;
+        continue;
+      }
+      const group = byPromoAccount.get(externalAccountId) ?? { acctExternalId: externalAccountId, promotions: [] };
+      group.promotions.push(promotion);
+      byPromoAccount.set(externalAccountId, group);
+    }
+
+    const promoStatsMap = new Map<string, CampaignStats>();
+    let promoAccountIdx = 0;
+    for (const [acctExtId, group] of byPromoAccount) {
+      if (promoAccountIdx++ > 0) await new Promise(r => setTimeout(r, 1000));
+      try {
+        const promotionIds = group.promotions.map(p => p.promotionId);
+        const batchStats    = await adAdapter.fetchPromotionReport(acctExtId, promotionIds);
+        for (const st of batchStats) {
+          promoStatsMap.set(st.externalId, st);
+        }
+        console.log(`[RuleEngine] 单元账户 ${acctExtId}: 拉取 ${batchStats.length}/${group.promotions.length} 个单元数据`);
+      } catch (e) {
+        console.error(`[RuleEngine] 单元账户 ${acctExtId} 批量拉取失败:`, e);
+        errors += group.promotions.length;
+      }
+    }
+
+    for (const promotion of activePromotions) {
+      const stats = promoStatsMap.get(promotion.promotionId);
+      if (!stats) continue;
+
+      for (const rule of promotionRules) {
+        if (rule.brand !== 'all' && rule.brand !== promotion.brand) continue;
+        if (rule.action !== 'alert') continue; // Phase 5c：先只做告警，暂停/恢复留到 5d（需先过写操作安全验证）
+        if (!PROMOTION_SAFE_METRICS.includes(rule.metric)) continue;
+        if (isPromotionInCooldown(rule, promotion.promotionId)) continue;
+
+        const value   = getPromotionMetric(stats, rule.metric);
+        const matches = compare(value, rule.operator, rule.threshold);
+
+        if (matches) {
+          triggered++;
+          console.log(`[RuleEngine] 单元规则触发: ${rule.name} → ${promotion.name}`);
+          await executePromotionAlert(rule, promotion, value);
+        }
+      }
+    }
+  }
+
   console.log(`[RuleEngine] 巡检完成: 触发 ${triggered}，错误 ${errors}`);
 
   // 硬边界规则跑完后，非阻塞触发 AI 软优化（生成 pending 决策供人工审批）
@@ -246,5 +371,5 @@ export async function runRulesOnce(): Promise<{
     });
   }
 
-  return { checked: activeCampaigns.length, triggered, errors };
+  return { checked: activeCampaigns.length + activePromotions.length, triggered, errors };
 }

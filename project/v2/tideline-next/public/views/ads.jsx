@@ -734,12 +734,13 @@ function Rules() {
       <div className="card-h"><h3>自动调控规则</h3></div>
       <table className="tbl">
         <thead>
-          <tr><th>规则名</th><th>品牌</th><th>触发条件</th><th>动作</th><th>冷却</th><th>最近触发</th><th>状态</th></tr>
+          <tr><th>规则名</th><th>颗粒度</th><th>品牌</th><th>触发条件</th><th>动作</th><th>冷却</th><th>最近触发</th><th>状态</th></tr>
         </thead>
         <tbody>
           {rules.map(r => (
             <tr key={r.id}>
               <td style={{ fontWeight: 500 }}>{r.name}</td>
+              <td><Chip tone={r.scope === 'promotion' ? 'warn' : 'default'}>{r.scope === 'promotion' ? '单元' : '项目'}</Chip></td>
               <td><Chip>{r.brand === 'all' ? '全部品牌' : (TL.brandById?.(r.brand)?.name || r.brand)}</Chip></td>
               <td className="mono" style={{ fontSize: 11 }}>{metricLabel[r.metric] ?? r.metric} {r.operator} {r.threshold}</td>
               <td>
