@@ -450,7 +450,11 @@ export const syncPromotions: RouteHandler = async (req, res) => {
 
   let totalSynced = 0;
   const allErrors: string[] = [];
+  let idx = 0;
   for (const acct of targetAccounts) {
+    // 账户间加 1 秒间隔防限流，同 rule-engine.ts 的批量拉取写法——真实环境
+    // 实测过连续无间隔请求会触发巨量 API 的 40100（系统请求频率超限）。
+    if (idx++ > 0) await new Promise(r => setTimeout(r, 1000));
     const r = await syncPromotionsForAccount(acct.externalId!, tenantId);
     totalSynced += r.synced;
     allErrors.push(...r.errors);
